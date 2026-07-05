@@ -9,6 +9,21 @@
 
 这两者是最接近“全局音频流转”的**合规**方案，但**不等于**捕获系统所有音频。
 
+## 1b. 移动端应用分层（Flutter 主 App + 原生采集）
+
+移动端采用「Flutter 主 App + 原生采集组件」分层混合架构（决策见 07 §6）：
+
+| 部分 | 技术 | 职责 | 进程 |
+|---|---|---|---|
+| 主 App | Flutter | 配对/设备发现/设置/广播引导 UI、发起授权 | 主进程 |
+| iOS 采集 | 原生 Swift（Broadcast Upload Extension） | 采集 → Opus 编码 → 加密 → UDP 发送 | 独立 Extension 进程 |
+| Android 采集 | 原生 Kotlin（前台 Service） | 采集 → Opus 编码 → 加密 → UDP 发送 | 前台 Service |
+
+跨进程约束：
+- **Flutter 不进入采集组件**：Extension/Service 保持原生轻量，规避 §2/§3 的内存与合规限制。
+- 主 App 与采集组件经 **iOS App Groups 共享容器 / Android Service IPC** 传递配置（对端地址、密钥、开关状态）。
+- **音频数据不回传主 App**：采集组件内直接编码发送，避免跨进程搬运音频造成延迟与内存压力。
+
 ## 2. iOS
 
 | 能力 | 可否 | 说明 |

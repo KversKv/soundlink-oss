@@ -17,7 +17,7 @@
 | 阶段 | 目标 | 平台 | 状态 | 完成日期 |
 |---|---|---|---|---|
 | 1 · 桌面接收器 MVP | 接收测试流并输出到设备 | Win / macOS | ✅ 完成 | 2026-07-05 |
-| 2 · 移动端采集 MVP | iOS/Android 采集编码发送 | iOS / Android | ⬜ 未开始 | — |
+| 2 · 移动端采集 MVP | Flutter 主 App + 原生采集编码发送 | iOS / Android | ⬜ 未开始 | — |
 | 3 · 配对与设备发现 | mDNS + 配对码 + 自动重连 | 全端 | ⬜ 未开始 | — |
 | 4 · 体验优化 | 降延迟/抗丢包/自适应 | 全端 | ⬜ 未开始 | — |
 | 5 · 桌面发送端 | 双电脑互传 | Win / macOS | ⬜ 未开始 | — |
@@ -46,23 +46,27 @@
 
 ---
 
-## 3. 阶段 2 · 移动端采集 MVP（iOS + Android 并行）
+## 3. 阶段 2 · 移动端采集 MVP（Flutter 主 App + 原生采集）
 
-**目标**：手机开启广播/授权，采集应用音频，编码 Opus，发送到桌面播放。
+**目标**：手机开启广播/授权，采集应用音频，编码 Opus，发送到桌面播放。UI 用 Flutter 统一，采集组件保持原生（架构决策见 07 §6、08 §1b）。
 
-### iOS
-- [ ] Xcode 工程：MainApp + BroadcastExtension + Shared framework + App Group（§8.2）
+### Flutter 主 App（iOS/Android 共用）
+- [ ] Flutter 工程搭建 + 原生工程集成（iOS/Android 宿主）
+- [ ] 主界面：配对/设备发现/设置/广播引导（一套 UI 双端复用）
+- [ ] 与原生采集组件通信通道（iOS App Groups / Android Service IPC）
+
+### iOS 采集（原生 Swift）
+- [ ] Xcode 工程：Flutter 主 App + BroadcastExtension + Shared framework + App Group（§8.2）
 - [ ] ReplayKit 采集，CMSampleBuffer → PCM (Int16 交错)
 - [ ] Opus 编码（libopus）
 - [ ] AudioPacket 打包加密 + UDP 发送（§2）
-- [ ] 引导用户开启广播的 UI
 
-### Android
-- [ ] Gradle app module（minSdk 29），权限与前台服务声明（§8.3）
+### Android 采集（原生 Kotlin）
+- [ ] Gradle：Flutter 宿主 + 采集 Service module（minSdk 29），权限与前台服务声明（§8.3）
 - [ ] MediaProjection + AudioPlaybackCapture，AudioRecord → PCM
 - [ ] Opus 编码
 - [ ] AudioPacket 打包加密 + UDP 发送（§2）
-- [ ] 前台 Service + 通知 + 授权 UI
+- [ ] 前台 Service + 通知
 
 **阶段验收**：
 - [ ] iOS 播放音乐，桌面端能听到，端到端可用

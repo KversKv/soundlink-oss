@@ -1,0 +1,9 @@
+# SoundLink 桌面端工具链约束。
+# Windows 上 Tauri 需 MSVC 工具链（编译图标资源 / 链接 WebView2），
+# 故推荐使用 stable-msvc（需先安装 Visual Studio Build Tools + Windows SDK）。
+# 若仅编译无 Tauri 外壳的核心库/示例（cargo build --lib / --example），
+# GNU 工具链亦可。
+[toolchain]
+channel = "stable"
+components = ["rustfmt", "clippy"]
+targets = ["x86_64-pc-windows-msvc"]

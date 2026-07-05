@@ -1,0 +1,43 @@
+# SoundLink 环境依赖清单（requirements）
+#
+# 这不是 pip 依赖文件；而是各端“系统级 / 工具链”前置依赖的统一清单，
+# 供开发者按平台自查。语言级依赖由各自清单管理：
+#   - 桌面 Rust  → desktop/src-tauri/Cargo.toml (+ Cargo.lock)
+#   - 桌面前端   → desktop/ui/package.json (+ package-lock.json)
+#   - Android    → mobile/android 的 Gradle 配置（脚手架阶段）
+#   - iOS        → SwiftPM / CocoaPods（脚手架阶段）
+# 详细搭建步骤见 docs/user/。
+
+# ── 通用 ─────────────────────────────────────────────
+git                     >= 2.30
+node                    = 20.x (LTS, 见 desktop/ui/.nvmrc)
+npm                     >= 10   # 或 pnpm >= 8
+
+# ── 桌面端（Tauri 2 + Rust） ────────────────────────
+rust (stable)           >= 1.80   # MSRV，见 rust-toolchain.toml / Cargo.toml
+cargo-tauri             >= 2.0    # cargo install tauri-cli 或 npx tauri
+# opus feature 额外需要：
+cmake                   >= 3.20   # 编译 vendored libopus
+c-compiler                        # MSVC(Windows) / clang(macOS) / gcc(Linux)
+
+# Windows 专属
+visual-studio-build-tools         # “使用 C++ 的桌面开发”工作负载（MSVC + Win SDK）
+webview2-runtime                  # Win10 需手动安装；Win11 通常内置
+
+# macOS 专属
+xcode-command-line-tools          # clang + CoreAudio 头文件
+
+# Linux 专属（后续阶段）
+libwebkit2gtk-4.1-dev
+libgtk-3-dev
+libpipewire-0.3-dev               # PipeWire 输出（后续）
+
+# ── iOS 端（仅 macOS） ──────────────────────────────
+macos                             # iOS 开发仅限 macOS
+xcode                             # App Store 最新稳定版
+apple-developer-account           # 真机 + Broadcast Extension 签名
+
+# ── Android 端 ──────────────────────────────────────
+jdk                     = 17
+android-studio                    # 含 SDK Manager / AVD
+android-sdk (min-api)   = 29      # AudioPlaybackCapture 要求

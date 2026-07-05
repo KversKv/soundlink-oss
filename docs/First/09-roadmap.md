@@ -10,10 +10,11 @@
 
 **验收**：本地发一个测试 Opus/UDP 流，桌面能选择设备并稳定播放。
 
-## 阶段 2 · 移动端采集 MVP（iOS + Android 并行）
-**目标**：手机可开启广播/授权，采集应用音频，编码 Opus，发送到桌面播放。
-- iOS：ReplayKit、CMSampleBuffer 解析、AudioBufferList→PCM、Opus 编码、UDP 发送
-- Android：MediaProjection、AudioPlaybackCapture、AudioRecord→PCM、Opus 编码、UDP 发送
+## 阶段 2 · 移动端采集 MVP（Flutter 主 App + 原生采集）
+**目标**：手机可开启广播/授权，采集应用音频，编码 Opus，发送到桌面播放。UI 用 Flutter 统一，采集组件保持原生（决策见 07 §6、08 §1b）。
+- Flutter 主 App：配对/设备/设置/广播引导界面（iOS/Android 共用一套）
+- iOS 采集（原生 Swift Extension）：ReplayKit、CMSampleBuffer 解析、AudioBufferList→PCM、Opus 编码、UDP 发送；经 App Groups 与主 App 通信
+- Android 采集（原生 Kotlin Service）：MediaProjection、AudioPlaybackCapture、AudioRecord→PCM、Opus 编码、UDP 发送；经 Service IPC 与主 App 通信
 
 **验收**：手机播放音乐，桌面端能听到，端到端可用。
 

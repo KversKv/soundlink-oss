@@ -39,7 +39,7 @@ credentials.*
 desktop/src-tauri/target/
 target/
 **/*.rs.bk
-Cargo.lock            # 库场景可忽略；若作为可执行应用发布，可视需要取消忽略
+# 注意：桌面端为可执行应用，Cargo.lock 需提交（不忽略）以锁定依赖版本。
 desktop/src-tauri/gen/
 desktop/src-tauri/WixTools/
 
