@@ -1,0 +1,58 @@
+[package]
+name = "soundlink"
+version = "0.1.0"
+edition = "2021"
+description = "SoundLink 桌面接收端（Tauri 2 + Rust 核心）"
+rust-version = "1.80"
+
+[lib]
+name = "soundlink_lib"
+path = "src/lib.rs"
+
+[[bin]]
+name = "soundlink"
+path = "src/main.rs"
+
+[features]
+default = []
+# 启用真实 libopus（需 cmake + C 编译器； vendored libopus 1.5）。
+opus = ["dep:libopus_sys"]
+# 启用 Tauri 应用外壳（需 MSVC Build Tools + WebView2）。
+tauri_app = ["dep:tauri", "dep:tauri-build", "dep:dirs", "dep:tauri-plugin-opener"]
+
+[dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "net", "sync", "time", "macros", "io-util", "signal"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "1"
+parking_lot = "0.12"
+rand = "0.8"
+rand_core = "0.6"
+chacha20poly1305 = "0.10"
+x25519-dalek = { version = "2", features = ["static_secrets"] }
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+hkdf = "0.12"
+hmac = "0.12"
+sha2 = "0.10"
+subtle = "2"
+cpal = "0.15"
+base64 = "0.22"
+libopus_sys = { version = "0.3", optional = true }
+tauri = { version = "2", optional = true, features = [] }
+tauri-plugin-opener = { version = "2", optional = true }
+dirs = { version = "5", optional = true }
+
+[build-dependencies]
+tauri-build = { version = "2", optional = true }
+
+[dev-dependencies]
+
+[[example]]
+name = "loopback_sender"
+path = "examples/loopback_sender.rs"
+
+[profile.release]
+opt-level = 3
+lto = "thin"

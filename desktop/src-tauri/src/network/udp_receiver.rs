@@ -1,4 +1,2 @@
-// network/udp_receiver.rs — 占位
-//
-// 职责：tokio UDP 监听音频端口，接收 AudioPacket，AEAD 解密+校验，
-// 按 sequence 重排、丢弃过期包，投递到 audio::jitter_buffer。
+//! UDP 接收逻辑已整合进 `receiver::ReceiverEngine`（统一管理 UDP 任务与 cpal 输出）。
+//! 本模块保留接口指针，便于阶段 4 拆分细化。

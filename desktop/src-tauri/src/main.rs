@@ -1,20 +1,31 @@
-// main.rs — 占位（Tauri 2 桌面端入口）
-//
-// 职责：初始化 tracing 日志、加载配置、启动 Rust Core（网络/音频/发现），
-// 注册 Tauri commands（见 commands/），运行 Tauri 应用。
-//
-// 模块划分：
-//   mod commands;  // 暴露给前端的命令
-//   mod audio;     // jitter_buffer / opus_decoder / resampler / output
-//   mod network;   // discovery / udp_receiver / control_server / packet
-//   mod pairing;   // pairing_code / key_exchange / trust_store
-//   mod device;    // audio_device / device_identity
-//   mod config;    // 配置读写 (SQLite/JSON)
-//   mod logging;   // tracing 初始化
-//
-// 注意：进入阶段 1 时由 `tauri init` 生成的脚手架整合本文件。
-// 详见 docs/First/02-architecture.md
+// 顶部引用 + 非 tauri 入口
+#![cfg_attr(not(feature = "tauri_app"), allow(dead_code))]
 
+#[cfg(feature = "tauri_app")]
 fn main() {
-    // TODO: 阶段 1 实现
+    soundlink_lib::logging::init();
+    tauri::Builder::default()
+        .plugin(tauri_plugin_opener::init())
+        .manage(soundlink_lib::commands::AppState::new())
+        .invoke_handler(tauri::generate_handler![
+            soundlink_lib::commands::start_receiver,
+            soundlink_lib::commands::stop_receiver,
+            soundlink_lib::commands::get_pairing_code,
+            soundlink_lib::commands::list_output_devices,
+            soundlink_lib::commands::select_output_device,
+            soundlink_lib::commands::get_status,
+        ])
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
+}
+
+// 无 Tauri 外壳时：打印用法提示。Phase 1 验收用 `cargo run --example loopback_sender`。
+#[cfg(not(feature = "tauri_app"))]
+fn main() {
+    soundlink_lib::logging::init();
+    println!("SoundLink 桌面核心（无 Tauri 外壳）。");
+    println!();
+    println!("阶段 1 自测：  cargo run --example loopback_sender");
+    println!("真实 Opus：    cargo run --example loopback_sender --features opus");
+    println!("GUI 外壳：     cargo build --features tauri_app  (需 MSVC Build Tools + WebView2)");
 }

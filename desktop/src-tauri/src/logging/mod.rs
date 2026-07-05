@@ -1,4 +1,13 @@
-// logging/mod.rs — 占位
-//
-// 职责：初始化 tracing 订阅者（控制台 + 本地文件），统一日志格式与级别。
-// 禁止记录密钥/配对码等敏感信息。
+//! tracing 日志初始化（控制台）。禁止记录密钥/配对码。
+//! 文件日志后续补；级别由环境变量 `SOUNDLINK_LOG` 控制，默认 info。
+
+use tracing_subscriber::{fmt, prelude::*, EnvFilter};
+
+pub fn init() {
+    let filter =
+        EnvFilter::try_from_env("SOUNDLINK_LOG").unwrap_or_else(|_| EnvFilter::new("info"));
+    let _ = tracing_subscriber::registry()
+        .with(fmt::layer().with_target(false))
+        .with(filter)
+        .try_init();
+}

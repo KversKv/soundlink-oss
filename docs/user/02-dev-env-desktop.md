@@ -88,3 +88,100 @@ cargo clippy --all-targets
 # 前端
 cd desktop/ui && pnpm lint
 ```
+
+> 注：若前端依赖未安装，`vite.config.ts` 会报 "找不到模块 'vite' / '@vitejs/plugin-react'"。先在 `desktop/ui` 下执行 `npm install`（或 `pnpm install`）。
+
+---
+
+## 7. 常见坑（Windows / 国内网络故障排查）
+
+阶段 1 在 Windows 上从零搭建时实际踩到的坑，按现象→原因→修复列出。仅列与**环境/工具链**相关的问题；代码级 bug 不在此。
+
+### 7.1 Rust 工具链
+
+- **现象**：`rustup-init.exe` 双击后卡住、长时间无输出，或 `cargo --version` 报 "linker `link.exe` not found"。
+- **原因**：rustup 默认连官方 CDN 慢；或默认工具链选了 MSVC 但未装 VS Build Tools。
+- **修复**：
+  ```powershell
+  # 用清华镜像装 rustup（PowerShell）
+  $env:RUSTUP_DIST_SERVER = "https://mirrors.tuna.tsinghua.edu.cn/rustup"
+  $env:RUSTUP_UPDATE_ROOT = "https://mirrors.tuna.tsinghua.edu.cn/rustup/rustup"
+  # 若已装好但默认工具链不对，显式指定：
+  rustup default stable-x86_64-pc-windows-gnu   # 仅核心库/examples
+  # 或（推荐，配合 Tauri）
+  rustup default stable-x86_64-pc-windows-msvc
+  ```
+  cargo 镜像写到 `~/.cargo/config.toml`：
+  ```toml
+  [source.crates-io]
+  replace-with = "tuna"
+  [source.tuna]
+  registry = "sparse+https://mirrors.tuna.tsinghua.edu.cn/crates.io-index/"
+  ```
+
+### 7.2 MSVC Build Tools（Tauri 二进制必需）
+
+- **现象**：`cargo build --features tauri_app` 报 `link.exe` not found 或大量 `LNK2019`。
+- **原因**：Tauri 2 必须用 MSVC 工具链 + Windows SDK；GNU 工具链**不能**编 Tauri 二进制。
+- **修复**：
+  ```powershell
+  winget install Microsoft.VisualStudio.2022.BuildTools
+  # 在安装器里勾选"使用 C++ 的桌面开发"工作负载
+  winget install Microsoft.EdgeWebView2Runtime
+  rustup default stable-x86_64-pc-windows-msvc
+  ```
+  临时绕过：仅验证 Rust 核心（lib + examples）可不装 MSVC，用 GNU 工具链：
+  ```powershell
+  cargo run --example loopback_sender   # 不依赖 Tauri 外壳
+  ```
+
+### 7.3 CMake 缺失（启用 `opus` feature）
+
+- **现象**：`cargo build --features opus` 报 `libopus_sys` build script 失败 / `cmake not found`。
+- **原因**：`libopus_sys` 用 vendored libopus 1.5，构建需 CMake + C 编译器。
+- **修复**：`winget install Kitware.CMake`，确保 `cmake` 在 PATH。
+
+### 7.4 GNU 工具链缺 binutils（`as.exe` / `dlltool.exe`）
+
+- **现象**：用 `stable-x86_64-pc-windows-gnu` 链接时报 `error: linker 'cc' not found` 或找不到 `as.exe`、`dlltool.exe`。
+- **原因**：GNU 工具链需要配套的 binutils，rustup 不自带。
+- **修复**：装 MSYS2 并安装 mingw-w64 binutils，再把 `C:\msys64\mingw64\bin` 加到 PATH：
+  ```powershell
+  # MSYS2 已装在 C:\msys64
+  & "C:\msys64\usr\bin\bash.exe" -lc "pacman -Sy --noconfirm mingw-w64-x86_64-binutils"
+  $env:PATH = "C:\msys64\mingw64\bin;$env:PATH"
+  ```
+  MSYS2 首次启动会初始化 GPG 密钥环（连 keyserver，可能慢）。镜像换 TUNA：
+  编辑 `C:\msys64\etc\pacman.d\mirrorlist.mingw64` 等只留 TUNA 行。
+
+### 7.5 国内网络慢（npm / cargo / pacman）
+
+- **npm**：`npm install --registry=https://registry.npmmirror.com`
+- **cargo**：见 7.1 的 `~/.cargo/config.toml`
+- **MSYS2 pacman**：`C:\msys64\etc\pacman.d\mirrorlist.*` 改用 TUNA 镜像
+
+### 7.6 rustc / clippy ICE（增量缓存损坏）
+
+- **现象**：`cargo clippy` 报 `thread 'rustc' panicked at .../rmeta/encoder.rs: no entry found for key`。
+- **原因**：旧增量编译缓存与新工具链不兼容。
+- **修复**：
+  ```powershell
+  $env:CARGO_INCREMENTAL = "0"
+  cargo clean
+  cargo clippy --all-targets -- -D warnings
+  ```
+
+### 7.7 前端 `vite.config.ts` 报 "找不到模块"
+
+- **现象**：IDE 报 `找不到模块"vite"或其相应的类型声明`。
+- **原因**：`desktop/ui/node_modules` 未安装。
+- **修复**：`cd desktop/ui && npm install`（或 `pnpm install`）。
+
+### 7.8 MSYS2 首次 `pacman` 卡在密钥环
+
+- **现象**：首次 `pacman -Sy` 卡在 `gpg: 正在更新 ... 密钥`。
+- **修复**：耐心等待；若超时，手动初始化：
+  ```powershell
+  & "C:\msys64\usr\bin\bash.exe" -lc "pacman-key --init && pacman-key --populate msys2"
+  ```
+

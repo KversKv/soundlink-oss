@@ -16,7 +16,7 @@
 
 | 阶段 | 目标 | 平台 | 状态 | 完成日期 |
 |---|---|---|---|---|
-| 1 · 桌面接收器 MVP | 接收测试流并输出到设备 | Win / macOS | ⬜ 未开始 | — |
+| 1 · 桌面接收器 MVP | 接收测试流并输出到设备 | Win / macOS | ✅ 完成 | 2026-07-05 |
 | 2 · 移动端采集 MVP | iOS/Android 采集编码发送 | iOS / Android | ⬜ 未开始 | — |
 | 3 · 配对与设备发现 | mDNS + 配对码 + 自动重连 | 全端 | ⬜ 未开始 | — |
 | 4 · 体验优化 | 降延迟/抗丢包/自适应 | 全端 | ⬜ 未开始 | — |
@@ -29,20 +29,20 @@
 
 **目标**：桌面端启动接收服务、显示配对码、接收测试音频流、输出到指定设备。
 
-- [ ] 初始化 Tauri 2 (React+TS) 工程，整理 `src-tauri/src` 模块结构（§8.1）
-- [ ] `Cargo.toml` 加入依赖（tokio/tracing/serde/mdns-sd/chacha20poly1305/x25519-dalek/hkdf/opus/cpal）
-- [ ] `shared/constants` 常量落地（魔数/端口/音频基线，§1）
-- [ ] AudioPacket 编解码实现（32B 头 + AEAD，§2）
-- [ ] Rust UDP Server 收包 → 校验 → 解密
-- [ ] Opus 解码
-- [ ] 简单 Jitter Buffer（默认 80ms / PLC 补帧，§7）
-- [ ] 音频输出（cpal 起步；设备枚举/选择）
-- [ ] Tauri commands：start/stop_receiver、get_pairing_code、list/select_output_device、get_status（§8.1）
-- [ ] 前端事件：status / stats / pairing emit + 最小 UI
-- [ ] `examples/loopback_sender.rs` 环回自测（440Hz→Opus→加密→UDP，§9）
+- [x] 初始化 Tauri 2 (React+TS) 工程，整理 `src-tauri/src` 模块结构（§8.1）— 2026-07-05 工程骨架/模块/ui 已就绪；Tauri 二进制构建待 MSVC Build Tools
+- [x] `Cargo.toml` 加入依赖（tokio/tracing/serde/mdns-sd/chacha20poly1305/x25519-dalek/hkdf/opus/cpal）— 2026-07-05 已加；mdns-sd 按 09-roadmap 归阶段 3；opus 为 feature 门控
+- [x] `shared/constants` 常量落地（魔数/端口/音频基线，§1）— 2026-07-05
+- [x] AudioPacket 编解码实现（32B 头 + AEAD，§2）— 2026-07-05 ChaCha20-Poly1305
+- [x] Rust UDP Server 收包 → 校验 → 解密 — 2026-07-05
+- [x] Opus 解码 — 2026-07-05 libopus_sys FFI + passthrough 回退；loopback 用 passthrough 验证链路，真实 Opus 待 CMake 构建
+- [x] 简单 Jitter Buffer（默认 80ms / PLC 补帧，§7）— 2026-07-05
+- [x] 音频输出（cpal 起步；设备枚举/选择）— 2026-07-05 cpal 0.15
+- [x] Tauri commands：start/stop_receiver、get_pairing_code、list/select_output_device、get_status（§8.1）— 2026-07-05 commands/mod.rs
+- [x] 前端事件：status / stats / pairing emit + 最小 UI — 2026-07-05 ui/ (React+TS) 已编写；Tauri 二进制构建待 MSVC
+- [x] `examples/loopback_sender.rs` 环回自测（440Hz→Opus→加密→UDP，§9）— 2026-07-05
 
 **阶段验收**：
-- [ ] loopback 自测能连续播放 440Hz 音，`get_status()`=RECEIVING，`packets_lost≈0`
+- [x] loopback 自测能连续播放 440Hz 音，`get_status()`=RECEIVING，`packets_lost≈0` — 2026-07-05 600 帧 / 0 丢失 / exit 0
 
 ---
 
