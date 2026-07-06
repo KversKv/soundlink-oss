@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 
 import '../../app.dart';
+import '../../main.dart' show DEBUG;
 import '../models/connection_state.dart';
 
 class PairingPage extends StatefulWidget {
@@ -16,6 +17,15 @@ class PairingPage extends StatefulWidget {
 class _PairingPageState extends State<PairingPage> {
   final _codeCtrl = TextEditingController();
   bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // DEBUG 模式下默认填充固定配对码（与桌面端 DEBUG 模式生成的码一致）。
+    if (DEBUG) {
+      _codeCtrl.text = '12345678';
+    }
+  }
 
   @override
   void dispose() {

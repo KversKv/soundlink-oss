@@ -99,6 +99,12 @@ class ControlClient {
       }
     }, onError: (Object e) {
       if (!completer.isCompleted) completer.completeError(e);
+    }, onDone: () {
+      if (!completer.isCompleted) {
+        completer.completeError(
+          StateError('控制连接已断开（等待消息时 socket 关闭）'),
+        );
+      }
     });
     return completer.future.timeout(timeout, onTimeout: () {
       sub.cancel();

@@ -78,7 +78,7 @@ impl DriftResampler {
         if pairs == 0 {
             return Vec::new();
         }
-        // 初始化 last sample。
+        // 初始化 last sample（用于跨帧边界插值）。
         if !self.initialized {
             self.last_l = input[0];
             self.last_r = input.get(1).copied().unwrap_or(self.last_l);
@@ -96,13 +96,25 @@ impl DriftResampler {
             let frac = idx - i as f64;
             let cur_l = input[i * 2];
             let cur_r = input[i * 2 + 1];
-            let l = lerp_i16(self.last_l, cur_l, frac);
-            let r = lerp_i16(self.last_r, cur_r, frac);
+            // 插值需用 cur 与 next：frac=0 → 输出 cur（正确）；
+            // frac>0 → 在 cur 与 next 之间插值。
+            // 边界处 next 取自下一帧首样本（self.last_l/r 已存上一帧末样本，
+            // 但此处 i+1 越界时用 last 作为 next 不合理；改为取本帧末样本，
+            // 避免相位错位）。
+            let (next_l, next_r) = if i + 1 < pairs {
+                (input[(i + 1) * 2], input[(i + 1) * 2 + 1])
+            } else {
+                // 帧末尾：用当前样本作为 next（frac 通常已接近 1，
+                // 误差可忽略；跨帧连续由下帧的 cur[0] 接续）。
+                (cur_l, cur_r)
+            };
+            let l = lerp_i16(cur_l, next_l, frac);
+            let r = lerp_i16(cur_r, next_r, frac);
             out.push(l);
             out.push(r);
             idx += self.ratio;
         }
-        // 保存最后一个输入样本供下帧使用。
+        // 保存最后一个输入样本供下帧边界插值使用。
         let last_idx = pairs - 1;
         self.last_l = input[last_idx * 2];
         self.last_r = input[last_idx * 2 + 1];
@@ -178,6 +190,22 @@ mod tests {
         let input: Vec<i16> = (0..960).map(|i| (i % 32768) as i16).collect();
         let out = r.process(&input);
         assert_eq!(out.len(), 960, "ratio=1.0 应保持长度");
+    }
+
+    #[test]
+    fn process_ratio_one_is_identity() {
+        // 回归测试：ratio=1.0 时输出应等于输入（不能是上一帧末样本重复）。
+        // 修复前 bug：lerp(last, cur, frac=0) = last，导致输出全是上一帧末样本。
+        let mut r = DriftResampler::new();
+        r.ratio = 1.0;
+        let input: Vec<i16> = (0..960).map(|i| (i * 2) as i16).collect();
+        let out = r.process(&input);
+        assert_eq!(out, input, "ratio=1.0 时输出应等于输入");
+
+        // 第二帧：验证不会用第一帧末样本污染。
+        let input2: Vec<i16> = (0..960).map(|i| (i * 3 + 1) as i16).collect();
+        let out2 = r.process(&input2);
+        assert_eq!(out2, input2, "第二帧输出也应等于输入");
     }
 
     #[test]

@@ -44,12 +44,7 @@ class SoundLinkPlugin(
 	override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
             "writeSessionConfig" -> {
-                val config = (call.argument<Map<String, Any>>("config"))?.let { map ->
-                    // Flutter 侧已序列化为 JSON 字符串；直接存。
-                    @Suppress("UNCHECKED_CAST")
-                    val json = (call.argument<String>("config") ?: "")
-                    json
-                } ?: ""
+                // Flutter 侧 SessionConfig.toJson() 返回 JSON 字符串，直接存。
                 val rawJson = call.argument<String>("config") ?: ""
                 prefs.edit().putString(AudioCaptureService.KEY_CONFIG, rawJson).apply()
                 result.success(true)
@@ -78,6 +73,11 @@ class SoundLinkPlugin(
             }
             "requestMediaProjection" -> result.success(true)
             "getDeviceId" -> result.success(getDeviceId())
+            "setDumpPcm" -> {
+                val enabled = call.argument<Boolean>("enabled") ?: false
+                prefs.edit().putBoolean("dump_pcm", enabled).apply()
+                result.success(true)
+            }
             else -> result.notImplemented()
         }
     }

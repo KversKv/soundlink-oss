@@ -6,12 +6,12 @@
 
 ## 1. 通用依赖（所有桌面平台）
 
-| 依赖 | 说明 |
-|---|---|
-| Rust（rustup） | 稳定版工具链 |
-| Node.js LTS | 前端构建 |
-| pnpm / npm | 前端包管理 |
-| Tauri CLI | 推荐 `cargo +stable-x86_64-pc-windows-msvc install tauri-cli --version "^2" --locked`；或前端侧 `pnpm add -D @tauri-apps/cli` |
+| 依赖           | 说明                                                                                                                     |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------- |
+| Rust（rustup） | 稳定版工具链                                                                                                                 |
+| Node.js LTS  | 前端构建                                                                                                                   |
+| pnpm / npm   | 前端包管理                                                                                                                  |
+| Tauri CLI    | 推荐 `cargo +stable-x86_64-pc-windows-msvc install tauri-cli --version "^2" --locked`；或前端侧 `pnpm add -D @tauri-apps/cli` |
 
 安装 Rust：
 
@@ -88,7 +88,7 @@ Rust 核心位于 [`desktop/src-tauri/src`](../../desktop/src-tauri/src)，前�
 > 脚手架就绪后，安装前端依赖并启动开发模式：
 
 ```powershell
-cd D:\CodeProject\TRAE_Projects\SoundLink\desktop\ui
+cd D:\CodeProject\TRAE_Projects\SoundLink\desktop\src-tauri
 npm install           # 或 pnpm install
 
 # 回到 src-tauri 目录启动 Tauri GUI 开发模式（热重载）
@@ -111,7 +111,7 @@ cd desktop/ui && pnpm lint
 
 > 注：若前端依赖未安装，`vite.config.ts` 会报 "找不到模块 'vite' / '@vitejs/plugin-react'"。先在 `desktop/ui` 下执行 `npm install`（或 `pnpm install`）。
 
----
+***
 
 ## 7. 常见坑（Windows / 国内网络故障排查）
 

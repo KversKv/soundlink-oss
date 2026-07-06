@@ -6,6 +6,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import 'main.dart' show DUMP_ENABLE;
 import 'src/constants.dart';
 import 'src/models/connection_state.dart';
 import 'src/models/device.dart';
@@ -76,6 +77,14 @@ class AppState extends ChangeNotifier {
     } catch (e) {
       // 身份生成失败不阻塞，配对时 sender_identity_pub 留空。
       debugPrint('身份加载失败：$e');
+    }
+    // DUMP_ENABLE 默认开启时同步到原生侧（用户仍可在“设备发现”页手动关闭）。
+    if (DUMP_ENABLE) {
+      try {
+        await platform.setDumpPcm(true);
+      } catch (e) {
+        debugPrint('启用 PCM 转储失败：$e');
+      }
     }
     await refreshTrusted();
     notifyListeners();

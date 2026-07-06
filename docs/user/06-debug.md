@@ -29,6 +29,89 @@ RUST_LOG=debug cargo tauri dev
 
 - Tauri command 位于 [`commands/`](../../desktop/src-tauri/src/commands)；前端调用失败时对照 Rust 侧 `tracing` 日志定位。
 
+## 1.5 调试开关（DEBUG / DUMP_ENABLE）
+
+为方便开发期快速联调，各端主入口文件提供两个常量：`DEBUG` 与 `DUMP_ENABLE`（后者默认跟随 `DEBUG`）。**发布前务必改回 `false`。**
+
+### 开关位置
+
+| 端 | 文件 | 默认值 |
+|---|---|---|
+| 桌面端 | [`desktop/src-tauri/src/main.rs`](../../desktop/src-tauri/src/main.rs) | `pub const DEBUG: bool = false;`<br>`pub const DUMP_ENABLE: bool = DEBUG;` |
+| 移动端 | [`mobile/flutter_app/lib/main.dart`](../../mobile/flutter_app/lib/main.dart) | `const bool DEBUG = false;`<br>`const bool DUMP_ENABLE = DEBUG;` |
+
+### DEBUG 模式行为
+
+将 `DEBUG` 改为 `true` 重新编译后：
+
+1. **配对码固定为 `12345678`**
+   - 桌面端 [`pairing_code.rs`](../../desktop/src-tauri/src/pairing/pairing_code.rs) 的 `PairingCodeManager::with_debug(true)` 在 `issue()` 时返回固定码（不再随机）。
+   - 移动端 [`pairing_page.dart`](../../mobile/flutter_app/lib/src/pages/pairing_page.dart) 的配对码输入框默认填充 `12345678`。
+2. **手机端手动添加设备默认填写 `10.31.30.41`**
+   - 移动端 [`discovery_page.dart`](../../mobile/flutter_app/lib/src/pages/discovery_page.dart) 的「手动 IP」对话框默认填充该地址，省去手敲。
+3. **DUMP_ENABLE 同步开启**（见下）。
+
+### DUMP_ENABLE 功能
+
+控制各客户端是否把音频链路各阶段的 RAW Data 落盘，便于用 Audacity / ffmpeg / Python 分析杂音、错位、丢包等问题。
+
+**桌面端接收器**（[`receiver.rs`](../../desktop/src-tauri/src/receiver.rs) 的 `DebugDumper`）写到当前工作目录：
+
+| 文件 | 内容 |
+|---|---|
+| `soundlink_opus.bin` | 原始 Opus 帧（4 字节小端长度前缀 + 4 字节小端 seq + 数据；丢包占位为 `0xFFFFFFFF` 长度） |
+| `soundlink_pcm_decoded.raw` | Opus 解码后 PCM（i16 LE，stereo 交错，48kHz） |
+| `soundlink_pcm_resampled.raw` | 漂移校正后 PCM（i16 LE，stereo 交错，送 cpal 前） |
+
+**桌面端发送器**（[`sender.rs`](../../desktop/src-tauri/src/sender.rs) 的 `send_loop`）写到当前工作目录：
+
+| 文件 | 内容 |
+|---|---|
+| `soundlink_sender_pcm.raw` | 采集后 PCM（i16 LE，stereo 交错，编码前） |
+| `soundlink_sender_opus.bin` | Opus 帧（4 字节小端长度前缀 + 数据） |
+
+**iOS BroadcastExtension**（[`SampleHandler.swift`](../../mobile/ios/BroadcastExtension/SampleHandler.swift)）写到 App Group 共享容器 `soundlink_dump/` 子目录：
+
+| 文件 | 内容 |
+|---|---|
+| `capture_pcm.raw` | 采集归一化后 PCM（Int16 交错，编码前） |
+| `capture_opus.bin` | Opus 帧（4 字节小端长度前缀 + 数据） |
+
+主 App [`SoundLinkPlugin.swift`](../../mobile/flutter_app/ios/Runner/SoundLinkPlugin.swift) 通过 App Group 键 `soundlink.dump_pcm` 把开关传给 Extension。
+
+**Android 采集 Service**（[`AudioCaptureService.kt`](../../mobile/flutter_app/android/app/src/main/kotlin/com/soundlink/soundlink/capture/AudioCaptureService.kt)）写到公共 `Download/soundlink_dump/`（MediaStore，Android 10+ 无需权限），失败回退 app 私有目录 `getExternalFilesDir(null)/soundlink_dump/`：
+
+| 文件 | 内容 |
+|---|---|
+| `capture_pcm.raw` | 采集后 PCM（Int16 交错，编码前） |
+| `capture_opus.bin` | Opus 帧（4 字节小端长度前缀 + 数据） |
+
+开关由主 App [`SoundLinkPlugin.kt`](../../mobile/flutter_app/android/app/src/main/kotlin/com/soundlink/soundlink/SoundLinkPlugin.kt) 写入 SharedPreferences 键 `dump_pcm`，Service 启动时读取。移动端 Flutter 侧 [`app.dart`](../../mobile/flutter_app/lib/app.dart) 在 `_init()` 时调 `platform.setDumpPcm(DUMP_ENABLE)` 同步初始状态，运行时仍可在「设备发现」页的「调试：保存采集 PCM」开关手动切换。
+
+### 转储文件解析
+
+```bash
+# PCM raw → WAV（任意端 PCM 文件通用）
+ffmpeg -f s16le -ar 48000 -ac 2 -i soundlink_pcm_decoded.raw out.wav
+
+# Audacity：导入 → 原始数据 → Signed 16-bit PCM / Little-endian / Stereo / 48000 Hz
+```
+
+Opus bin 文件为长度前缀帧序列，可写小脚本逐帧解析后用 `opusdec` 或 libopus 解码对照。
+
+### 兼容入口（旧用法）
+
+桌面接收器仍支持环境变量 `SOUNDLINK_DUMP=1` 强制开启转储（与 `DUMP_ENABLE` 任一为真即启用），便于在不重编译时临时抓 dump：
+
+```powershell
+$env:SOUNDLINK_DUMP="1"; cargo run --example phase5_loopback
+```
+
+### 安全提示
+
+- 转储文件含原始音频，**勿提交仓库**（已加入 [`.gitignore`](../../.gitignore)）。
+- 转储仅在 DEBUG 开发期使用；发布构建 `DEBUG=false` 时所有 dump 路径自动失效。
+
 ## 2. iOS
 
 ### 主 App 调试（Flutter）

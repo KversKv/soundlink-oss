@@ -7,8 +7,6 @@
 //!   仅供开发自测）。生产须启用 `opus`。
 
 use crate::constants::{CHANNELS, SAMPLES_PER_FRAME_PER_CHANNEL};
-#[cfg(feature = "opus")]
-use crate::constants::{OPUS_BITRATE, SAMPLE_RATE};
 
 /// 音频编解码接口（单帧 10ms）。
 pub trait AudioCodec: Send {
@@ -67,12 +65,12 @@ impl AudioCodec for PassthroughCodec {
 #[cfg(feature = "opus")]
 pub mod libopus {
     use super::{frame_pcm_len, AudioCodec};
-    use crate::constants::{OPUS_BITRATE, SAMPLES_PER_FRAME_PER_CHANNEL};
+    use crate::constants::{OPUS_BITRATE, SAMPLE_RATE, SAMPLES_PER_FRAME_PER_CHANNEL};
     use libopus_sys as opusffi;
     use std::os::raw::{c_int, c_uchar};
     use std::ptr;
 
-    const OPUS_APPLICATION_AUDIO: c_int = 24953;
+    const OPUS_APPLICATION_AUDIO: c_int = 2049;
     const OPUS_SET_BITRATE_REQUEST: c_int = 4002;
     const OPUS_SIGNAL_REQUEST: c_int = 4024;
     const OPUS_SIGNAL_MUSIC: c_int = 3002;

@@ -22,12 +22,129 @@ use crate::network::packet::decode_packet;
 use parking_lot::Mutex;
 use serde::Serialize;
 use std::collections::VecDeque;
+use std::fs::OpenOptions;
+use std::io::Write;
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::net::UdpSocket;
 use tokio::task::JoinHandle;
+
+/// 调试保存器：把接收链路各阶段数据落盘，便于诊断杂音/错位问题。
+///
+/// 启用条件（任一成立）：
+/// - `dump_enable = true`（来自 main.rs 的 `DUMP_ENABLE`）
+/// - 环境变量 `SOUNDLINK_DUMP=1`（兼容旧用法）
+///
+/// 保存三类文件（覆盖写）：
+/// - `soundlink_opus.bin`：原始 Opus 帧，每帧前 4 字节小端长度前缀
+/// - `soundlink_pcm_decoded.raw`：Opus 解码后 PCM（i16 LE，stereo 交错）
+/// - `soundlink_pcm_resampled.raw`：漂移校正后 PCM（i16 LE，stereo 交错，送 cpal 前）
+///
+/// 用 Audacity / ffmpeg / Python 可直接分析：
+///   ffmpeg -f s16le -ar 48000 -ac 2 -i soundlink_pcm_decoded.raw out.wav
+///
+/// 实现：mpsc 异步队列。音频回调线程只负责 send（非阻塞），独立 IO 线程负责写文件，
+/// 避免阻塞 cpal 实时回调（否则会导致音频卡顿甚至 WASAPI 强制停流）。
+struct DebugDumper {
+    tx: std::sync::mpsc::Sender<DumpMsg>,
+    _io_thread: std::thread::JoinHandle<()>,
+}
+
+/// 转储消息（音频线程 → IO 线程）。
+enum DumpMsg {
+    Opus { data: Vec<u8>, seq: u32, lost: bool },
+    PcmDecoded(Vec<i16>),
+    PcmResampled(Vec<i16>),
+    /// 通知 IO 线程刷新并关闭。
+    Shutdown,
+}
+
+impl DebugDumper {
+    fn new(dump_enable: bool) -> Option<Self> {
+        let env_on = std::env::var("SOUNDLINK_DUMP").ok().as_deref() == Some("1");
+        if !dump_enable && !env_on {
+            return None;
+        }
+        let opus_file = OpenOptions::new()
+            .create(true).truncate(true).write(true)
+            .open("soundlink_opus.bin").ok()?;
+        let pcm_decoded_file = OpenOptions::new()
+            .create(true).truncate(true).write(true)
+            .open("soundlink_pcm_decoded.raw").ok()?;
+        let pcm_resampled_file = OpenOptions::new()
+            .create(true).truncate(true).write(true)
+            .open("soundlink_pcm_resampled.raw").ok()?;
+        let (tx, rx) = std::sync::mpsc::channel::<DumpMsg>();
+        tracing::info!(
+            "调试保存已启用：soundlink_opus.bin / soundlink_pcm_decoded.raw / soundlink_pcm_resampled.raw"
+        );
+        // IO 线程：从队列取消息写文件，避免阻塞音频回调。
+        let io_thread = std::thread::Builder::new()
+            .name("soundlink-dump-io".into())
+            .spawn(move || {
+                let mut opus_file = opus_file;
+                let mut pcm_decoded_file = pcm_decoded_file;
+                let mut pcm_resampled_file = pcm_resampled_file;
+                for msg in rx {
+                    match msg {
+                        DumpMsg::Opus { data, seq, lost } => {
+                            let marker: u32 = if lost { 0xFFFF_FFFF } else { data.len() as u32 };
+                            let _ = opus_file.write_all(&marker.to_le_bytes());
+                            let _ = opus_file.write_all(&seq.to_le_bytes());
+                            if !lost {
+                                let _ = opus_file.write_all(&data);
+                            }
+                        }
+                        DumpMsg::PcmDecoded(pcm) => {
+                            let mut bytes = Vec::with_capacity(pcm.len() * 2);
+                            for &s in &pcm {
+                                bytes.extend_from_slice(&s.to_le_bytes());
+                            }
+                            let _ = pcm_decoded_file.write_all(&bytes);
+                        }
+                        DumpMsg::PcmResampled(pcm) => {
+                            let mut bytes = Vec::with_capacity(pcm.len() * 2);
+                            for &s in &pcm {
+                                bytes.extend_from_slice(&s.to_le_bytes());
+                            }
+                            let _ = pcm_resampled_file.write_all(&bytes);
+                        }
+                        DumpMsg::Shutdown => break,
+                    }
+                }
+                tracing::info!("调试保存 IO 线程退出");
+            })
+            .ok()?;
+        Some(Self { tx, _io_thread: io_thread })
+    }
+
+    /// 保存原始 Opus 帧（4 字节小端长度前缀 + 数据）。
+    fn dump_opus(&self, data: &[u8], seq: u32, lost: bool) {
+        let _ = self.tx.send(DumpMsg::Opus {
+            data: data.to_vec(),
+            seq,
+            lost,
+        });
+    }
+
+    /// 保存解码后 PCM（i16 LE）。
+    fn dump_pcm_decoded(&self, pcm: &[i16]) {
+        let _ = self.tx.send(DumpMsg::PcmDecoded(pcm.to_vec()));
+    }
+
+    /// 保存重采样后 PCM（i16 LE）。
+    fn dump_pcm_resampled(&self, pcm: &[i16]) {
+        let _ = self.tx.send(DumpMsg::PcmResampled(pcm.to_vec()));
+    }
+}
+
+impl Drop for DebugDumper {
+    fn drop(&mut self) {
+        let _ = self.tx.send(DumpMsg::Shutdown);
+    }
+}
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ReceiverStatus {
@@ -85,6 +202,8 @@ pub struct ReceiverEngine {
     audio_output: Mutex<AudioOutput>,
     /// 延迟估算共享状态（push 端写入，status 端读取）。
     latency_state: Arc<Mutex<LatencyState>>,
+    /// 是否启用音频 RAW Data 转储（来自 main.rs 的 DUMP_ENABLE）。
+    dump_enable: bool,
 }
 
 /// 延迟估算状态：记录首个包接收时刻与 timestamp 基准。
@@ -109,6 +228,12 @@ struct LatencyState {
 
 impl ReceiverEngine {
     pub fn new() -> Self {
+        Self::with_dump(false)
+    }
+
+    /// `dump_enable = true` 时启用音频各阶段 RAW Data 转储。
+    /// 仍可用环境变量 `SOUNDLINK_DUMP=1` 强制开启（兼容旧用法）。
+    pub fn with_dump(dump_enable: bool) -> Self {
         Self {
             status: Arc::new(Mutex::new(ReceiverStatus::default())),
             jitter: Arc::new(Mutex::new(JitterBuffer::new(DEFAULT_JITTER_MS))),
@@ -117,6 +242,7 @@ impl ReceiverEngine {
             udp_task: Mutex::new(None),
             audio_output: Mutex::new(AudioOutput::new()),
             latency_state: Arc::new(Mutex::new(LatencyState::default())),
+            dump_enable,
         }
     }
 
@@ -151,6 +277,7 @@ impl ReceiverEngine {
             self.jitter.clone(),
             self.codec.clone(),
             self.latency_state.clone(),
+            self.dump_enable,
         ));
         if let Err(e) = self.audio_output.lock().start(device_index, playback) {
             tracing::warn!("cpal 输出启动失败（继续收包但不发声）：{}", e);
@@ -342,6 +469,8 @@ struct PlaybackFromJitter {
     consecutive_plc: usize,
     /// 临时缓冲：重采样后可能多于/少于一帧，需跨调用累积。
     resampled: VecDeque<i16>,
+    /// 调试保存器（None = 未启用）。
+    dumper: Option<DebugDumper>,
 }
 
 impl PlaybackFromJitter {
@@ -349,6 +478,7 @@ impl PlaybackFromJitter {
         jitter: Arc<Mutex<JitterBuffer>>,
         codec: Arc<Mutex<Box<dyn AudioCodec>>>,
         latency_state: Arc<Mutex<LatencyState>>,
+        dump_enable: bool,
     ) -> Self {
         Self {
             jitter,
@@ -358,6 +488,7 @@ impl PlaybackFromJitter {
             resampler: DriftResampler::new(),
             consecutive_plc: 0,
             resampled: VecDeque::with_capacity(frame_pcm_len() * 4),
+            dumper: DebugDumper::new(dump_enable),
         }
     }
 
@@ -374,12 +505,21 @@ impl PlaybackFromJitter {
         self.resampler.observe(depth, target);
 
         let pcm: Vec<i16> = match pop_result {
-            PopResult::Frame(f) => {
+            PopResult::Frame(ref f) => {
                 self.consecutive_plc = 0;
-                self.codec.lock().decode(&f.data)
+                let decoded = self.codec.lock().decode(&f.data);
+                if let Some(d) = self.dumper.as_ref() {
+                    d.dump_opus(&f.data, f.sequence, false);
+                    d.dump_pcm_decoded(&decoded);
+                }
+                decoded
             }
             PopResult::Lost => {
                 self.consecutive_plc += 1;
+                if let Some(d) = self.dumper.as_ref() {
+                    // 用当前 played_watermark 推断丢失 seq 不准；用 0 占位。
+                    d.dump_opus(&[], 0, true);
+                }
                 if self.consecutive_plc > PLC_CONSECUTIVE_LIMIT {
                     // 超过连续 PLC 上限：切静音，避免 Opus PLC 持续衰减 artifacts。
                     vec![0i16; frame_pcm_len()]
@@ -402,6 +542,9 @@ impl PlaybackFromJitter {
 
         // 重采样并累积到 resampled。
         let out = self.resampler.process(&pcm);
+        if let Some(d) = self.dumper.as_ref() {
+            d.dump_pcm_resampled(&out);
+        }
         self.resampled.extend(out);
 
         // 更新漂移比率与连续 PLC 计数到共享状态（供 status() 读取）。

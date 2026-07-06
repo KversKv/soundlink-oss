@@ -43,6 +43,13 @@ target/
 # 注意：桌面端为可执行应用，Cargo.lock 需提交（不忽略）以锁定依赖版本。
 desktop/src-tauri/gen/
 desktop/src-tauri/WixTools/
+# 调试：音频 RAW Data 转储文件（DUMP_ENABLE / SOUNDLINK_DUMP=1 生成）
+soundlink_opus.bin
+soundlink_pcm_decoded.raw
+soundlink_pcm_resampled.raw
+soundlink_sender_pcm.raw
+soundlink_sender_opus.bin
+soundlink_dump/
 
 # ---------- 桌面：Node / 前端 ----------
 node_modules/
@@ -83,6 +90,8 @@ mobile/android/.cxx/
 *.ap_
 *.dex
 captures/
+# 调试：MediaStore Download 目录转储（开发期可能落到仓库）
+mobile/android/**/soundlink_dump/
 
 # ---------- 日志 / 临时 ----------
 *.log
@@ -95,3 +104,8 @@ __pycache__/
 *.py[cod]
 .venv/
 venv/
+
+
+
+
+temp/

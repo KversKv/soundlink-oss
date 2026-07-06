@@ -54,10 +54,14 @@ pub struct AppState {
     pub mdns: Mutex<Option<MdnsBroadcaster>>,
     pub device_name: Mutex<String>,
     pub role: Mutex<Role>,
+    /// 调试：是否开启音频 RAW Data 转储（来自 main.rs 的 DUMP_ENABLE）。
+    pub dump_enable: bool,
 }
 
 impl AppState {
-    pub fn new() -> Self {
+    /// `debug`：DEBUG 模式（配对码固定 12345678）。
+    /// `dump_enable`：音频各阶段 RAW Data 转储开关。
+    pub fn new(debug: bool, dump_enable: bool) -> Self {
         let dir = config_dir();
         let identity = DeviceIdentity::load_or_create(&dir).unwrap_or_else(|e| {
             tracing::warn!("设备身份加载失败：{}；用临时身份。", e);
@@ -74,9 +78,9 @@ impl AppState {
             TrustStore::in_memory()
         });
         Self {
-            engine: Arc::new(ReceiverEngine::new()),
-            sender: Arc::new(SenderEngine::new()),
-            pairing: Arc::new(PairingCodeManager::new()),
+            engine: Arc::new(ReceiverEngine::with_dump(dump_enable)),
+            sender: Arc::new(SenderEngine::with_dump(dump_enable)),
+            pairing: Arc::new(PairingCodeManager::with_debug(debug)),
             identity: Arc::new(Mutex::new(identity)),
             trust: Arc::new(Mutex::new(trust)),
             selected_device: Arc::new(Mutex::new(None)),
@@ -84,6 +88,7 @@ impl AppState {
             mdns: Mutex::new(None),
             device_name: Mutex::new("SoundLink Receiver".to_string()),
             role: Mutex::new(Role::default()),
+            dump_enable,
         }
     }
 }

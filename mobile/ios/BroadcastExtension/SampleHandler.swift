@@ -18,6 +18,12 @@ class SampleHandler: RPBroadcastSampleHandler {
     private var sender: UdpAudioSender?
     private var started = false
 
+    /// 调试：是否转储采集 PCM + Opus 帧。由主 App 通过 App Group 写入。
+    private var dumpEnabled = false
+    /// 转储文件句柄（写入 Extension 共享容器目录）。
+    private var pcmDumpFile: FileHandle?
+    private var opusDumpFile: FileHandle?
+
     override func broadcastStarted(withSetupInfo setupInfo: [String: NSObject]?) {
         // 在 Extension 进程读取主 App 写入的会话配置。
         guard let config = PairingStateReader.read() else {
@@ -39,6 +45,13 @@ class SampleHandler: RPBroadcastSampleHandler {
             bitrate: config.bitrate)
         self.processor = AudioProcessor()
         self.started = true
+
+        // 读取转储开关；启用时在共享容器创建 dump 文件。
+        self.dumpEnabled = UserDefaults(suiteName: PairingStateReader.appGroupId)?
+            .bool(forKey: "soundlink.dump_pcm") ?? false
+        if dumpEnabled {
+            openDumpFiles()
+        }
     }
 
     override func processSampleBuffer(_ sampleBuffer: CMSampleBuffer, with sampleBufferType: RPSampleBufferType) {
@@ -49,7 +62,18 @@ class SampleHandler: RPBroadcastSampleHandler {
 
         // 2) 逐帧 Opus 编码 → 加密 → UDP 发送。
         for (i, pcmFrame) in frames.enumerated() {
+            // 转储采集后 PCM（编码前）。
+            if dumpEnabled, let fh = pcmDumpFile {
+                fh.write(pcmFrame)
+            }
             guard let opus = encoder?.encode(pcmFrame) else { continue }
+            // 转储 Opus 帧（4 字节小端长度前缀 + 数据）。
+            if dumpEnabled, let fh = opusDumpFile {
+                var len = UInt32(opus.count).littleEndian
+                let lenData = withUnsafeBytes(of: &len) { Data($0) }
+                fh.write(lenData)
+                fh.write(opus)
+            }
             let isLast = (i == frames.count - 1) && false // 正常帧不置 stream_end
             sender?.send(opusFrame: opus, streamEnd: isLast)
         }
@@ -66,5 +90,33 @@ class SampleHandler: RPBroadcastSampleHandler {
         processor?.reset()
         started = false
         PairingStateReader.clear()
+        closeDumpFiles()
+    }
+
+    /// 在 App Group 共享容器创建 PCM / Opus 转储文件（覆盖写）。
+    private func openDumpFiles() {
+        guard let groupURL = FileManager.default.containerURL(
+            forSecurityApplicationGroupIdentifier: PairingStateReader.appGroupId) else {
+            return
+        }
+        let dumpDir = groupURL.appendingPathComponent("soundlink_dump", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dumpDir, withIntermediateDirectories: true)
+        let pcmURL = dumpDir.appendingPathComponent("capture_pcm.raw")
+        let opusURL = dumpDir.appendingPathComponent("capture_opus.bin")
+        // 覆盖旧文件。
+        try? FileManager.default.removeItem(at: pcmURL)
+        try? FileManager.default.removeItem(at: opusURL)
+        FileManager.default.createFile(atPath: pcmURL.path, contents: nil)
+        FileManager.default.createFile(atPath: opusURL.path, contents: nil)
+        pcmDumpFile = try? FileHandle(forWritingTo: pcmURL)
+        opusDumpFile = try? FileHandle(forWritingTo: opusURL)
+    }
+
+    /// 关闭并释放转储文件句柄。
+    private func closeDumpFiles() {
+        try? pcmDumpFile?.close()
+        try? opusDumpFile?.close()
+        pcmDumpFile = nil
+        opusDumpFile = nil
     }
 }

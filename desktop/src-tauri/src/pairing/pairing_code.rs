@@ -49,6 +49,8 @@ pub enum PairingCodeState {
 /// 配对码管理器：生成、校验、过期/锁定。
 pub struct PairingCodeManager {
     current: Mutex<Option<PairingCode>>,
+    /// DEBUG 模式：[`issue`](Self::issue) 固定返回 `12345678`，便于开发期固定码连接。
+    debug: bool,
 }
 
 impl Default for PairingCodeManager {
@@ -59,13 +61,29 @@ impl Default for PairingCodeManager {
 
 impl PairingCodeManager {
     pub fn new() -> Self {
+        Self::with_debug(false)
+    }
+
+    /// `debug = true` 时 [`issue`](Self::issue) 返回固定码 `12345678`。
+    pub fn with_debug(debug: bool) -> Self {
         Self {
             current: Mutex::new(None),
+            debug,
         }
     }
 
     /// 生成新配对码（覆盖旧的）。
     pub fn issue(&self) -> String {
+        if self.debug {
+            let pc = PairingCode {
+                code: "12345678".into(),
+                created_at: Instant::now(),
+                attempts: 0,
+            };
+            let code = pc.code.clone();
+            *self.current.lock() = Some(pc);
+            return code;
+        }
         let pc = PairingCode::generate();
         let code = pc.code.clone();
         *self.current.lock() = Some(pc);
@@ -129,5 +147,13 @@ mod tests {
             assert_eq!(m.verify("00000000"), PairingCodeState::Wrong);
         }
         assert_eq!(m.verify("00000000"), PairingCodeState::Locked);
+    }
+
+    #[test]
+    fn debug_mode_issues_fixed_code() {
+        let m = PairingCodeManager::with_debug(true);
+        assert_eq!(m.issue(), "12345678");
+        // 固定码同样可被校验通过。
+        assert_eq!(m.verify("12345678"), PairingCodeState::Ok);
     }
 }

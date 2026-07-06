@@ -23,11 +23,15 @@ import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
 import android.os.Build
 import android.os.IBinder
+import android.provider.MediaStore
 import android.util.Log
 import com.soundlink.soundlink.codec.OpusEncoder
 import com.soundlink.soundlink.network.SenderConfig
 import com.soundlink.soundlink.network.UdpAudioSender
 import org.json.JSONObject
+import java.io.File
+import java.io.FileOutputStream
+import java.io.OutputStream
 
 class AudioCaptureService : Service() {
 
@@ -94,8 +98,14 @@ class AudioCaptureService : Service() {
 
         // SDK 36 起旧构造函数 AudioPlaybackCaptureConfiguration(MediaProjection) 与
         // captureAudioOutput() 被隐藏，统一改用 Builder（API 29+ 公开 API）。
-        // 不指定 usage 即匹配所有可捕获播放（USAGE_MEDIA/USAGE_GAME/USAGE_UNKNOWN）。
-        val captureConfig = AudioPlaybackCaptureConfiguration.Builder(projection).build()
+        // 必须显式 addMatchingUsage 至少一条，否则 AudioMixingRule 为空 build() 抛
+        // IllegalArgumentException（"Cannot build AudioMixingRule with no rules"）。
+        // 覆盖媒体/游戏/未知三类可捕获播放。
+        val captureConfig = AudioPlaybackCaptureConfiguration.Builder(projection)
+            .addMatchingUsage(AudioAttributes.USAGE_MEDIA)
+            .addMatchingUsage(AudioAttributes.USAGE_GAME)
+            .addMatchingUsage(AudioAttributes.USAGE_UNKNOWN)
+            .build()
 
         val audioFormat = AudioFormat.Builder()
             .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
@@ -122,20 +132,97 @@ class AudioCaptureService : Service() {
         record.startRecording()
 
         val pcm = ShortArray(frameSize * channels) // 960
+
+        // 调试：是否保存采集到的原始 PCM（含 Opus 编码前后）。
+        // 通过 SharedPreferences 的 dump_pcm=1 启用，文件写到公共 Download 目录。
+        val sp = getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val dumpPcm = sp.getBoolean("dump_pcm", false)
+        var pcmDumpStream: OutputStream? = null
+        var opusDumpStream: OutputStream? = null
+        if (dumpPcm) {
+            try {
+                // 用 MediaStore 写入公共 Download 目录（Android 10+ 无需权限）。
+                pcmDumpStream = openMediaStoreFile("capture_pcm.raw")
+                opusDumpStream = openMediaStoreFile("capture_opus.bin")
+                Log.i(TAG, "PCM 转储已启用（Download/soundlink_dump/）")
+            } catch (e: Exception) {
+                Log.w(TAG, "MediaStore 写入失败，回退 app 私有目录", e)
+                try {
+                    val dir = File(getExternalFilesDir(null), "soundlink_dump")
+                    dir.mkdirs()
+                    pcmDumpStream = FileOutputStream(File(dir, "capture_pcm.raw"))
+                    opusDumpStream = FileOutputStream(File(dir, "capture_opus.bin"))
+                    Log.i(TAG, "PCM 转储回退到私有目录：${dir.absolutePath}")
+                } catch (e2: Exception) {
+                    Log.w(TAG, "私有目录也失败", e2)
+                }
+            }
+        }
+
         while (running) {
             val read = record.read(pcm, 0, pcm.size)
             if (read <= 0) continue
             if (read < pcm.size) continue // 不足一帧，丢弃
+
+            // 转储原始 PCM（采集后、编码前）
+            if (pcmDumpStream != null) {
+                try {
+                    val bb = java.nio.ByteBuffer.allocate(read * 2)
+                    bb.order(java.nio.ByteOrder.LITTLE_ENDIAN)
+                    for (i in 0 until read) bb.putShort(pcm[i])
+                    pcmDumpStream.write(bb.array())
+                } catch (e: Exception) {
+                    Log.w(TAG, "PCM 转储写入失败", e)
+                }
+            }
+
             try {
                 val opus = encoder?.encode(pcm) ?: continue
+
+                // 转储 Opus 帧（4 字节长度前缀 + 数据）
+                if (opusDumpStream != null) {
+                    try {
+                        val lb = java.nio.ByteBuffer.allocate(4)
+                        lb.order(java.nio.ByteOrder.LITTLE_ENDIAN)
+                        lb.putInt(opus.size)
+                        opusDumpStream.write(lb.array())
+                        opusDumpStream.write(opus)
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Opus 转储写入失败", e)
+                    }
+                }
+
                 sender?.send(opus)
             } catch (e: Exception) {
                 Log.w(TAG, "编码/发送异常", e)
             }
         }
 
+        pcmDumpStream?.close()
+        opusDumpStream?.close()
         record.stop()
         record.release()
+    }
+
+    /// 通过 MediaStore 在公共 Download/soundlink_dump/ 下创建文件，返回 OutputStream。
+    /// Android 10+ 无需存储权限。已存在同名文件会覆盖（RELATIVE_PATH + DISPLAY_NAME）。
+    private fun openMediaStoreFile(fileName: String): OutputStream {
+        val resolver = contentResolver
+        // 先删除旧文件（避免 MediaStore 自动改名）。
+        val collection = MediaStore.Files.getContentUri("external")
+        val sel = "${MediaStore.MediaColumns.RELATIVE_PATH} = ? AND ${MediaStore.MediaColumns.DISPLAY_NAME} = ?"
+        val selArgs = arrayOf("${android.os.Environment.DIRECTORY_DOWNLOADS}/soundlink_dump/", fileName)
+        resolver.delete(collection, sel, selArgs)
+        // 插入新文件项。
+        val values = android.content.ContentValues().apply {
+            put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+            put(MediaStore.MediaColumns.RELATIVE_PATH, "${android.os.Environment.DIRECTORY_DOWNLOADS}/soundlink_dump")
+            put(MediaStore.MediaColumns.MIME_TYPE, "application/octet-stream")
+        }
+        val uri = resolver.insert(collection, values)
+            ?: throw java.io.IOException("MediaStore insert 失败：$fileName")
+        return resolver.openOutputStream(uri, "w")
+            ?: throw java.io.IOException("无法打开 OutputStream：$fileName")
     }
 
     private fun stopCapture() {

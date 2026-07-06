@@ -75,15 +75,23 @@ pub struct SenderEngine {
     running: Arc<AtomicBool>,
     send_task: Mutex<Option<JoinHandle<()>>>,
     control_task: Mutex<Option<JoinHandle<()>>>,
+    /// 是否启用音频 RAW Data 转储（来自 main.rs 的 DUMP_ENABLE）。
+    dump_enable: bool,
 }
 
 impl SenderEngine {
     pub fn new() -> Self {
+        Self::with_dump(false)
+    }
+
+    /// `dump_enable = true` 时启用采集 PCM / Opus 帧转储。
+    pub fn with_dump(dump_enable: bool) -> Self {
         Self {
             status: Arc::new(Mutex::new(SenderStatus::default())),
             running: Arc::new(AtomicBool::new(false)),
             send_task: Mutex::new(None),
             control_task: Mutex::new(None),
+            dump_enable,
         }
     }
 
@@ -178,6 +186,7 @@ impl SenderEngine {
         // 4) 发送循环任务。
         let status = self.status.clone();
         let running = self.running.clone();
+        let dump_enable = self.dump_enable;
         let send_handle = tokio::spawn(async move {
             send_loop(
                 capture,
@@ -186,6 +195,7 @@ impl SenderEngine {
                 udp,
                 status,
                 running,
+                dump_enable,
             )
             .await;
         });
@@ -440,6 +450,7 @@ async fn send_loop(
     udp: UdpSocket,
     status: Arc<Mutex<SenderStatus>>,
     running: Arc<AtomicBool>,
+    dump_enable: bool,
 ) {
     let mut codec = default_codec();
     let mut seq: u32 = 0;
@@ -448,6 +459,26 @@ async fn send_loop(
     let mut bytes_sent: u64 = 0;
     let mut bitrate_start = std::time::Instant::now();
     let mut ticker = interval(std::time::Duration::from_millis(10));
+
+    // 调试：开启时把采集 PCM / Opus 帧写到当前工作目录（覆盖写）。
+    let mut pcm_dump: Option<std::fs::File> = None;
+    let mut opus_dump: Option<std::fs::File> = None;
+    if dump_enable {
+        pcm_dump = std::fs::OpenOptions::new()
+            .create(true).truncate(true).write(true)
+            .open("soundlink_sender_pcm.raw")
+            .ok();
+        opus_dump = std::fs::OpenOptions::new()
+            .create(true).truncate(true).write(true)
+            .open("soundlink_sender_opus.bin")
+            .ok();
+        if pcm_dump.is_some() || opus_dump.is_some() {
+            tracing::info!(
+                "发送端调试保存已启用：soundlink_sender_pcm.raw / soundlink_sender_opus.bin"
+            );
+        }
+    }
+    use std::io::Write as _;
 
     while running.load(Ordering::SeqCst) {
         ticker.tick().await;
@@ -469,11 +500,27 @@ async fn send_loop(
         }
         total_samples += (FRAME_SAMPLES_TOTAL / 2) as u64;
 
+        // 转储采集后 PCM（i16 LE 交错）。
+        if let Some(f) = pcm_dump.as_mut() {
+            let mut bytes = Vec::with_capacity(pcm.len() * 2);
+            for &s in &pcm {
+                bytes.extend_from_slice(&s.to_le_bytes());
+            }
+            let _ = f.write_all(&bytes);
+        }
+
         // 编码（计时）。
         let enc_start = std::time::Instant::now();
         let frame_bytes = codec.encode(&pcm);
         let enc_elapsed = enc_start.elapsed().as_secs_f64() * 1000.0;
         encode_ms_ewma = ENCODE_MS_EWMA_ALPHA * enc_elapsed + (1.0 - ENCODE_MS_EWMA_ALPHA) * encode_ms_ewma;
+
+        // 转储 Opus 帧（4 字节小端长度前缀 + 数据）。
+        if let Some(f) = opus_dump.as_mut() {
+            let len = (frame_bytes.len() as u32).to_le_bytes();
+            let _ = f.write_all(&len);
+            let _ = f.write_all(&frame_bytes);
+        }
 
         // 打包加密 + 发送。
         let mut header = AudioPacketHeader::new(stream_id, seq, total_samples);

@@ -10,7 +10,6 @@ use cpal::{
 };
 use std::cell::RefCell;
 use std::sync::Arc;
-use std::thread::{self, ThreadId};
 
 use crate::constants::OUTPUT_BUFFER_SAMPLES;
 
@@ -29,10 +28,12 @@ pub trait PlaybackSource: Send + 'static {
 
 struct OutputState {
     stream: Option<Stream>,
-    owner_thread: ThreadId,
 }
 
 /// 音频输出器。持有 stream 保持播放。
+///
+/// 注意：cpal 0.15 的 `Stream` 是 `Send`，`play()`/`pause()`/`drop()`
+/// 可跨线程调用，因此不再强制 start/stop 在创建线程上执行。
 pub struct AudioOutput {
     state: RefCell<OutputState>,
 }
@@ -46,10 +47,7 @@ impl Default for AudioOutput {
 impl AudioOutput {
     pub fn new() -> Self {
         Self {
-            state: RefCell::new(OutputState {
-                stream: None,
-                owner_thread: thread::current().id(),
-            }),
+            state: RefCell::new(OutputState { stream: None }),
         }
     }
 
@@ -74,14 +72,6 @@ impl AudioOutput {
         cpal::default_host().default_output_device()
     }
 
-    fn ensure_owner_thread(&self) -> Result<(), String> {
-        if self.state.borrow().owner_thread == thread::current().id() {
-            Ok(())
-        } else {
-            Err("音频输出只能在创建它的线程上启动或停止".to_string())
-        }
-    }
-
     /// 在指定设备上启动播放。`device_index` 为 None 时用默认设备。
     /// `source` 由 cpal 回调线程持续拉取。
     pub fn start(
@@ -89,7 +79,6 @@ impl AudioOutput {
         device_index: Option<usize>,
         source: Box<dyn PlaybackSource>,
     ) -> Result<(), String> {
-        self.ensure_owner_thread()?;
         let host = cpal::default_host();
         let device = match device_index {
             Some(i) => host
@@ -127,9 +116,6 @@ impl AudioOutput {
 
     /// 停止播放。
     pub fn stop(&self) {
-        if self.ensure_owner_thread().is_err() {
-            return;
-        }
         let stream = self.state.borrow_mut().stream.take();
         drop(stream);
     }

@@ -16,6 +16,8 @@ class SoundLinkPlugin: NSObject, FlutterPlugin {
     static let appGroupId = "group.com.soundlink"
     static let configKey = "soundlink.session.config"
     static let deviceIdKey = "soundlink.device_id"
+    /// App Group 共享键名：是否转储采集 PCM/Opus（供 Extension 读取）。
+    static let dumpPcmKey = "soundlink.dump_pcm"
     /// Broadcast Extension 的 Bundle Identifier（在 Xcode 中配置）。
     static let preferredExtension = "com.soundlink.BroadcastExtension"
 
@@ -55,6 +57,16 @@ class SoundLinkPlugin: NSObject, FlutterPlugin {
 
         case "getDeviceId":
             result(getDeviceId())
+
+        case "setDumpPcm":
+            // 把转储开关写入 App Group，BroadcastExtension 启动时读取。
+            guard let args = call.arguments as? [String: Any],
+                  let enabled = args["enabled"] as? Bool else {
+                result(FlutterError(code: "ARG", message: "缺少 enabled", details: nil))
+                return
+            }
+            UserDefaults(suiteName: Self.appGroupId)?.set(enabled, forKey: Self.dumpPcmKey)
+            result(true)
 
         default:
             result(FlutterMethodNotImplemented)

@@ -4,6 +4,7 @@
 import 'package:flutter/material.dart';
 
 import '../../app.dart';
+import '../../main.dart' show DEBUG, DUMP_ENABLE;
 import '../models/device.dart';
 import '../services/trust_store.dart';
 
@@ -63,6 +64,8 @@ class DiscoveryPage extends StatelessWidget {
                   ],
                 ),
               ),
+              // 调试：采集 PCM 转储开关
+              _DumpPcmTile(app: app),
             ],
           );
         },
@@ -113,7 +116,8 @@ class DiscoveryPage extends StatelessWidget {
   }
 
   void _showManualDialog(BuildContext context) {
-    final ipCtrl = TextEditingController();
+    // DEBUG 模式下默认填充调试机地址，省去手敲。
+    final ipCtrl = TextEditingController(text: DEBUG ? '10.31.30.41' : '');
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
@@ -157,4 +161,34 @@ class _SectionHeader extends StatelessWidget {
   Widget build(BuildContext context) => ListTile(
         title: Text(text, style: Theme.of(context).textTheme.titleSmall),
       );
+}
+
+/// 调试：采集 PCM 转储开关。启用后下次采集会把原始 PCM + Opus 帧写到 app 私有目录。
+///
+/// 初始值跟随 [DUMP_ENABLE]（即 [DEBUG]）；运行时仍可手动切换。
+class _DumpPcmTile extends StatefulWidget {
+  final AppState app;
+  const _DumpPcmTile({required this.app});
+  @override
+  State<_DumpPcmTile> createState() => _DumpPcmTileState();
+}
+
+class _DumpPcmTileState extends State<_DumpPcmTile> {
+  late bool _enabled = DUMP_ENABLE;
+  @override
+  Widget build(BuildContext context) {
+    return SwitchListTile(
+      secondary: const Icon(Icons.bug_report, size: 20),
+      title: const Text('调试：保存采集 PCM', style: TextStyle(fontSize: 13)),
+      subtitle: Text(
+        _enabled ? '已启用，文件在 app 私有目录 soundlink_dump/' : '关闭',
+        style: const TextStyle(fontSize: 11),
+      ),
+      value: _enabled,
+      onChanged: (v) async {
+        await widget.app.platform.setDumpPcm(v);
+        setState(() => _enabled = v);
+      },
+    );
+  }
 }

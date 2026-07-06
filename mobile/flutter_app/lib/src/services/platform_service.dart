@@ -50,6 +50,11 @@ class PlatformService {
     return await _channel.invokeMethod('getDeviceId') ?? 'unknown';
   }
 
+  /// 调试：启用/禁用采集 PCM 转储（Android 写到 app 私有目录）。
+  Future<void> setDumpPcm(bool enabled) async {
+    await _channel.invokeMethod('setDumpPcm', {'enabled': enabled});
+  }
+
   /// 采集状态事件流（state/packets_sent/bitrate 等）。
   Stream<Map<String, dynamic>> get captureState => _stateChannel.receiveBroadcastStream().map(
         (event) => Map<String, dynamic>.from(event as Map),
