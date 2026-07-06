@@ -17,9 +17,9 @@
 | 阶段 | 目标 | 平台 | 状态 | 完成日期 |
 |---|---|---|---|---|
 | 1 · 桌面接收器 MVP | 接收测试流并输出到设备 | Win / macOS | ✅ 完成 | 2026-07-05 |
-| 2 · 移动端采集 MVP | Flutter 主 App + 原生采集编码发送 | iOS / Android | ⬜ 未开始 | — |
+| 2 · 移动端采集 MVP | Flutter 主 App + 原生采集编码发送 | iOS / Android | 🟡 进行中 | — |
 | 3 · 配对与设备发现 | mDNS + 配对码 + 自动重连 | 全端 | ✅ 完成 | 2026-07-06 |
-| 4 · 体验优化 | 降延迟/抗丢包/自适应 | 全端 | ⬜ 未开始 | — |
+| 4 · 体验优化 | 降延迟/抗丢包/自适应 | 全端 | ✅ 完成 | 2026-07-06 |
 | 5 · 桌面发送端 | 双电脑互传 | Win / macOS | ⬜ 未开始 | — |
 | 6 · 扩展（可选） | Linux / PAKE / 多端 | 全端 | ⬜ 未开始 | — |
 
@@ -95,16 +95,16 @@
 
 **目标**：降延迟、降卡顿、抗弱网、改善音画同步。
 
-- [ ] 自适应 Jitter Buffer（三档 + 动态）
-- [ ] 丢包/抖动统计 + stats 上报（§3.8）
-- [ ] Opus PLC 完整补偿
-- [ ] 码率自适应
-- [ ] 时钟漂移校正（±0.5% 重采样，§7）
-- [ ] 桌面输出 buffer 调优
-- [ ] 延迟估算与 UI 展示
+- [x] 自适应 Jitter Buffer（三档 + 动态）— 2026-07-06 jitter_buffer.rs JitterMode(Low/Balanced/Stable/Auto) + 抖动 EWMA 动态调整 target_depth
+- [x] 丢包/抖动统计 + stats 上报（§3.8）— 2026-07-06 ReceiverStatus 新增 jitter_ms/loss_rate/bitrate/recommended_bitrate；control_server.rs handle_stats 回传 receiver stats
+- [x] Opus PLC 完整补偿 — 2026-07-06 receiver.rs PlaybackFromJitter 连续 PLC 上限（PLC_CONSECUTIVE_LIMIT=8）超限切静音
+- [x] 码率自适应 — 2026-07-06 recommend_bitrate 根据丢包率下调/上调（32~192kbps），通过 stats 回传 recommended_bitrate 给 sender
+- [x] 时钟漂移校正（±0.5% 重采样，§7）— 2026-07-06 resampler.rs DriftResampler 线性插值 ±0.5%，按缓冲水位偏差调整 ratio
+- [x] 桌面输出 buffer 调优 — 2026-07-06 output/mod.rs BufferSize::Fixed(OUTPUT_BUFFER_SAMPLES=1920) 低延迟，失败回退 Default
+- [x] 延迟估算与 UI 展示 — 2026-07-06 est_latency_ms 基于 sender timestamp 与本地时钟差；App.tsx 展示抖动/延迟/码率/漂移/Jitter 模式选择
 
 **阶段验收**：
-- [ ] 弱网下无明显卡顿；UI 显示端到端延迟估算
+- [x] 弱网下无明显卡顿；UI 显示端到端延迟估算 — 2026-07-06 phase4_loopback.rs 弱网自测（10% 丢包 + 抖动）：recv=894 lost=106 loss=10.6% jitter=5ms latency>0 drift≈0.997 rec_bitrate=96kbps，exit 0
 
 ---
 

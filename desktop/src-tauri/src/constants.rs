@@ -48,6 +48,42 @@ pub const JITTER_LOW_MS: u32 = 40;
 pub const JITTER_BALANCED_MS: u32 = 80;
 pub const JITTER_STABLE_MS: u32 = 150;
 
+/// 自适应 Jitter 允许的最小/最大目标深度（帧）。
+pub const JITTER_AUTO_MIN_FRAMES: usize = 4; // 40ms
+pub const JITTER_AUTO_MAX_FRAMES: usize = 20; // 200ms
+/// 自适应 Jitter 抖动 EWMA 平滑系数（0..1，越小越平滑）。
+pub const JITTER_EWMA_ALPHA: f64 = 0.1;
+/// 自适应 Jitter 目标深度系数：target = jitter_ewma * k + base。
+pub const JITTER_AUTO_K: f64 = 4.0;
+pub const JITTER_AUTO_BASE_FRAMES: usize = 2;
+
+/// 连续 PLC 帧上限：超过后切静音，避免 Opus PLC 持续衰减产生 artifacts。
+pub const PLC_CONSECUTIVE_LIMIT: usize = 8;
+
+/// 时钟漂移校正范围（±0.5%，spec §7）。
+pub const DRIFT_CORRECTION_MAX_RATIO: f64 = 0.005;
+/// 漂移校正目标缓冲水位偏差阈值（帧）：偏差超过此值开始校正。
+pub const DRIFT_ADJUST_THRESHOLD_FRAMES: usize = 3;
+
+/// 桌面输出低延迟 buffer（帧数，1 帧 = 10ms）。
+pub const OUTPUT_BUFFER_FRAMES: u32 = 2;
+/// 桌面输出低延迟 buffer（样本数 = frames * frame_samples_total）。
+pub const OUTPUT_BUFFER_SAMPLES: u32 = OUTPUT_BUFFER_FRAMES * FRAME_SAMPLES_TOTAL as u32;
+
+/// 估算端到端延迟的初始值（ms）。
+pub const EST_LATENCY_INIT_MS: u32 = 80;
+/// stats 上报周期（秒，接收端回传给 sender）。
+pub const STATS_REPORT_INTERVAL_SECS: u64 = 1;
+
+/// 弱网丢包率阈值（>此值触发码率下调建议）。
+pub const LOSS_RATE_HIGH_THRESHOLD: f64 = 0.05; // 5%
+/// 弱网丢包率阈值（<此值触发码率上调建议）。
+pub const LOSS_RATE_LOW_THRESHOLD: f64 = 0.01; // 1%
+/// 码率建议下限/上限（bps）。
+pub const BITRATE_MIN: u32 = 32_000;
+pub const BITRATE_MAX: u32 = 192_000;
+pub const BITRATE_STEP: u32 = 16_000;
+
 /// 配对码位数。
 pub const PAIRING_CODE_DIGITS: usize = 8;
 

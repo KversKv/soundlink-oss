@@ -20,7 +20,23 @@ interface ReceiverStatus {
   buffer_depth: number;
   buffer_ms: number;
   est_latency_ms: number;
+  jitter_ms: number;
+  loss_rate: number;
+  bitrate: number;
+  jitter_mode: string;
+  recommended_bitrate: number;
+  drift_ratio: number;
+  consecutive_plc: number;
 }
+
+type JitterMode = "low" | "balanced" | "stable" | "auto";
+
+const JITTER_MODES: { value: JitterMode; label: string; desc: string }[] = [
+  { value: "low", label: "低延迟", desc: "40ms" },
+  { value: "balanced", label: "平衡", desc: "80ms" },
+  { value: "stable", label: "稳定", desc: "150ms" },
+  { value: "auto", label: "自适应", desc: "动态" },
+];
 
 export default function App() {
   const [running, setRunning] = useState(false);
@@ -29,6 +45,7 @@ export default function App() {
   const [devices, setDevices] = useState<OutputDevice[]>([]);
   const [selectedDevice, setSelectedDevice] = useState<number | null>(null);
   const [status, setStatus] = useState<ReceiverStatus | null>(null);
+  const [jitterMode, setJitterMode] = useState<JitterMode>("balanced");
   const [error, setError] = useState<string>("");
 
   // 列举设备。
@@ -36,6 +53,13 @@ export default function App() {
     invoke<OutputDevice[]>("list_output_devices")
       .then(setDevices)
       .catch((e) => setError(String(e)));
+  }, []);
+
+  // 获取当前 jitter 模式。
+  useEffect(() => {
+    invoke<string>("get_jitter_mode")
+      .then((m) => setJitterMode(m as JitterMode))
+      .catch(() => {});
   }, []);
 
   // 状态轮询（运行中时）。
@@ -90,8 +114,22 @@ export default function App() {
     }
   }
 
+  async function pickJitterMode(mode: JitterMode) {
+    setJitterMode(mode);
+    try {
+      await invoke("set_jitter_mode", { mode });
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
+  const lossPct = status ? (status.loss_rate * 100).toFixed(1) : "0.0";
+  const bitrateKbps = status ? Math.round(status.bitrate / 1000) : 0;
+  const recBitrateKbps = status ? Math.round(status.recommended_bitrate / 1000) : 0;
+  const driftPct = status ? ((status.drift_ratio - 1) * 100).toFixed(2) : "0.00";
+
   return (
-    <div style={{ fontFamily: "system-ui, sans-serif", maxWidth: 520, margin: "40px auto", padding: 24 }}>
+    <div style={{ fontFamily: "system-ui, sans-serif", maxWidth: 560, margin: "40px auto", padding: 24 }}>
       <h1 style={{ marginBottom: 4 }}>SoundLink</h1>
       <p style={{ color: "#666", marginTop: 0 }}>局域网音频流转 · 接收器</p>
 
@@ -121,6 +159,29 @@ export default function App() {
       </section>
 
       <section style={{ margin: "24px 0" }}>
+        <h3>Jitter 模式</h3>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {JITTER_MODES.map((m) => (
+            <button
+              key={m.value}
+              onClick={() => pickJitterMode(m.value)}
+              style={{
+                padding: "6px 12px",
+                fontSize: 13,
+                cursor: "pointer",
+                border: jitterMode === m.value ? "2px solid #22c55e" : "1px solid #ccc",
+                background: jitterMode === m.value ? "#f0fdf4" : "#fff",
+                borderRadius: 6,
+              }}
+              title={m.desc}
+            >
+              {m.label} <span style={{ color: "#888", fontSize: 11 }}>({m.desc})</span>
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section style={{ margin: "24px 0" }}>
         <button
           onClick={running ? stop : start}
           style={{
@@ -139,10 +200,16 @@ export default function App() {
           <dl style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "4px 12px", fontSize: 14 }}>
             <dt>状态</dt><dd style={{ margin: 0 }}>{status.state}</dd>
             <dt>已收包</dt><dd style={{ margin: 0 }}>{status.packets_recv}</dd>
-            <dt>丢包</dt><dd style={{ margin: 0 }}>{status.packets_lost}</dd>
+            <dt>丢包</dt><dd style={{ margin: 0 }}>{status.packets_lost}（{lossPct}%）</dd>
             <dt>丢弃</dt><dd style={{ margin: 0 }}>{status.packets_dropped}</dd>
             <dt>缓冲</dt><dd style={{ margin: 0 }}>{status.buffer_ms} ms（{status.buffer_depth} 帧）</dd>
+            <dt>抖动</dt><dd style={{ margin: 0 }}>{status.jitter_ms} ms</dd>
             <dt>估算延迟</dt><dd style={{ margin: 0 }}>{status.est_latency_ms} ms</dd>
+            <dt>接收码率</dt><dd style={{ margin: 0 }}>{bitrateKbps} kbps</dd>
+            <dt>建议码率</dt><dd style={{ margin: 0 }}>{recBitrateKbps} kbps{recBitrateKbps > 0 && recBitrateKbps !== 128 ? "（自适应）" : ""}</dd>
+            <dt>漂移校正</dt><dd style={{ margin: 0 }}>{driftPct}%</dd>
+            <dt>连续 PLC</dt><dd style={{ margin: 0 }}>{status.consecutive_plc} 帧</dd>
+            <dt>Jitter 模式</dt><dd style={{ margin: 0 }}>{status.jitter_mode}</dd>
           </dl>
         </section>
       )}
@@ -150,7 +217,7 @@ export default function App() {
       {error && <p style={{ color: "#ef4444" }}>错误：{error}</p>}
 
       <p style={{ color: "#aaa", fontSize: 12, marginTop: 32 }}>
-        阶段 1：桌面接收器 MVP。运行 <code>cargo run --example loopback_sender</code> 进行环回自测。
+        阶段 4：体验优化。运行 <code>cargo run --example phase4_loopback</code> 进行弱网自测。
       </p>
     </div>
   );

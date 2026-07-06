@@ -17,6 +17,8 @@ fn main() {
             soundlink_lib::commands::list_trusted_devices,
             soundlink_lib::commands::remove_trusted_device,
             soundlink_lib::commands::set_device_name,
+            soundlink_lib::commands::set_jitter_mode,
+            soundlink_lib::commands::get_jitter_mode,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -30,6 +32,7 @@ fn main() {
     println!();
     println!("阶段 1 自测（音频环回）：  cargo run --example loopback_sender");
     println!("阶段 3 自测（配对发现）：  cargo run --example control_loopback");
+    println!("阶段 4 自测（弱网优化）：  cargo run --example phase4_loopback");
     println!("真实 Opus：    cargo run --example loopback_sender --features opus");
     println!("GUI 外壳：     cargo build --features tauri_app  (需 MSVC Build Tools + WebView2)");
 }

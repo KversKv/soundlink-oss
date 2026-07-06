@@ -216,8 +216,8 @@ async fn handle_connection(
                 None
             }
             msg_type::STATS => {
-                tracing::debug!("stats from {}: {}", addr, msg);
-                None
+                // 阶段 4：回传 receiver stats（spec §3.8）。
+                Some(handle_stats(&msg, &state))
             }
             _ => Some(error_msg(
                 &msg,
@@ -461,6 +461,41 @@ fn handle_stream_stop(_msg: &Value, state: &ControlState) {
     if let Some(s) = state.current_session.lock().as_mut() {
         s.stream_id = 0;
     }
+}
+
+/// stats：解析 sender 上报，回传 receiver stats（spec §3.8）。
+/// 包含 packets_recv / packets_lost / jitter_ms / buffer_ms / est_latency_ms /
+/// loss_rate / bitrate / recommended_bitrate（供 sender 做码率自适应）。
+fn handle_stats(msg: &Value, state: &ControlState) -> Value {
+    let stream_id = msg.get("stream_id").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+    let sender_bitrate = msg.get("bitrate").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+    let sender_packets_sent = msg
+        .get("packets_sent")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+    tracing::debug!(
+        "stats from sender: stream_id={} sent={} bitrate={}",
+        stream_id,
+        sender_packets_sent,
+        sender_bitrate
+    );
+
+    let st = state.engine.status();
+    json!({
+        "type": msg_type::STATS,
+        "msg_id": new_msg_id("s"),
+        "ts": now_ms(),
+        "stream_id": stream_id,
+        "packets_recv": st.packets_recv,
+        "packets_lost": st.packets_lost,
+        "jitter_ms": st.jitter_ms,
+        "buffer_ms": st.buffer_ms,
+        "est_latency_ms": st.est_latency_ms,
+        "loss_rate": st.loss_rate,
+        "bitrate": st.bitrate,
+        "recommended_bitrate": st.recommended_bitrate,
+        "jitter_mode": st.jitter_mode,
+    })
 }
 
 // --- 工具函数 ---

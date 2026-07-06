@@ -10,6 +10,7 @@
 
 #![cfg(feature = "tauri_app")]
 
+use crate::audio::jitter_buffer::JitterMode;
 use crate::audio::output::OutputDeviceInfo;
 use crate::constants::{DEFAULT_AUDIO_PORT, DEFAULT_CONTROL_PORT};
 use crate::device::device_identity::DeviceIdentity;
@@ -193,4 +194,25 @@ pub fn remove_trusted_device(
 pub fn set_device_name(state: State<'_, AppState>, name: String) -> Result<(), String> {
     *state.inner().device_name.lock() = name;
     Ok(())
+}
+
+/// 切换 Jitter 模式（阶段 4）。
+/// mode: "low" | "balanced" | "stable" | "auto"
+#[tauri::command]
+pub fn set_jitter_mode(state: State<'_, AppState>, mode: String) -> Result<String, String> {
+    let m = match mode.as_str() {
+        "low" => JitterMode::Low,
+        "balanced" => JitterMode::Balanced,
+        "stable" => JitterMode::Stable,
+        "auto" => JitterMode::Auto,
+        other => return Err(format!("未知 jitter 模式：{}", other)),
+    };
+    state.inner().engine.set_jitter_mode(m);
+    Ok(m.as_str().to_string())
+}
+
+/// 获取当前 Jitter 模式（阶段 4）。
+#[tauri::command]
+pub fn get_jitter_mode(state: State<'_, AppState>) -> Result<String, String> {
+    Ok(state.inner().engine.jitter_mode().as_str().to_string())
 }

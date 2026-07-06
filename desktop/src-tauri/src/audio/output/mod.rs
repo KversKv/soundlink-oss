@@ -12,6 +12,8 @@ use std::cell::RefCell;
 use std::sync::Arc;
 use std::thread::{self, ThreadId};
 
+use crate::constants::OUTPUT_BUFFER_SAMPLES;
+
 /// 输出设备信息（供 UI 列表）。
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct OutputDeviceInfo {
@@ -143,15 +145,17 @@ fn build_stream<T: cpal::SizedSample + FromSampleI16>(
     source: Arc<parking_lot::Mutex<Box<dyn PlaybackSource>>>,
 ) -> Result<Stream, cpal::BuildStreamError> {
     let mut cfg = config.clone();
-    // 用默认缓冲（低延迟后续调优）。
-    cfg.buffer_size = BufferSize::Default;
     let _ = channels;
-    device.build_output_stream(
+    // 阶段 4：低延迟 buffer 调优。优先用固定 buffer（OUTPUT_BUFFER_SAMPLES），
+    // 失败则回退默认。
+    cfg.buffer_size = BufferSize::Fixed(OUTPUT_BUFFER_SAMPLES);
+    let source_for_fixed = source.clone();
+    let stream_result = device.build_output_stream(
         &cfg,
         move |data: &mut [T], _: &cpal::OutputCallbackInfo| {
             let mut tmp = vec![0i16; data.len()];
             {
-                let mut s = source.lock();
+                let mut s = source_for_fixed.lock();
                 s.fill(&mut tmp);
             }
             // 若设备声道数与源（2）不同，做简单截断/复制。
@@ -181,7 +185,49 @@ fn build_stream<T: cpal::SizedSample + FromSampleI16>(
         },
         |err| tracing::error!("cpal 输出错误：{}", err),
         None,
-    )
+    );
+    match stream_result {
+        Ok(s) => Ok(s),
+        Err(_) => {
+            // 回退默认 buffer。
+            cfg.buffer_size = BufferSize::Default;
+            tracing::warn!("Fixed buffer size 不支持，回退 Default");
+            device.build_output_stream(
+                &cfg,
+                move |data: &mut [T], _: &cpal::OutputCallbackInfo| {
+                    let mut tmp = vec![0i16; data.len()];
+                    {
+                        let mut s = source.lock();
+                        s.fill(&mut tmp);
+                    }
+                    let ch = cfg.channels as usize;
+                    if ch == 2 || ch == 0 {
+                        for (dst, src) in data.iter_mut().zip(tmp.iter()) {
+                            *dst = T::from_i16(*src);
+                        }
+                    } else {
+                        let frames = data.len() / ch;
+                        for f in 0..frames {
+                            let l = tmp.get(f * 2).copied().unwrap_or(0);
+                            let r = tmp.get(f * 2 + 1).copied().unwrap_or(l);
+                            for c in 0..ch {
+                                let v = if c == 0 {
+                                    l
+                                } else if c == 1 {
+                                    r
+                                } else {
+                                    (l + r) / 2
+                                };
+                                data[f * ch + c] = T::from_i16(v);
+                            }
+                        }
+                    }
+                },
+                |err| tracing::error!("cpal 输出错误（默认 buffer）：{}", err),
+                None,
+            )
+        }
+    }
 }
 
 /// `FromSampleI16` 帮 cpal 各采样类型从 i16 转换。

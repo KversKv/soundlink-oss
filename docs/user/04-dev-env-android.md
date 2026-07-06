@@ -55,6 +55,7 @@ flutter doctor          # 按提示补齐 Android 工具链、接受 SDK 许可
 cd mobile/flutter_app
 flutter pub get
 flutter run -d <android-device-id>     # flutter devices 查看设备 id
+flutter run -d 41091JEKB06514
 ```
 
 需要调试/配置原生采集组件时，用 Android Studio 打开 `mobile/flutter_app/android`（或用根目录 Flutter 工程，选 Android 模块）：
