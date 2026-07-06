@@ -18,7 +18,8 @@ default = []
 # 启用真实 libopus（需 cmake + C 编译器； vendored libopus 1.5）。
 opus = ["dep:libopus_sys"]
 # 启用 Tauri 应用外壳（需 MSVC Build Tools + WebView2）。
-tauri_app = ["dep:tauri", "dep:tauri-build", "dep:dirs", "dep:tauri-plugin-opener"]
+# 自动启用 opus（生产环境必须用真实 libopus，否则解码回退 passthrough 产生噪声）。
+tauri_app = ["dep:tauri", "dep:tauri-build", "dep:dirs", "dep:tauri-plugin-opener", "opus"]
 # 启用 Windows WASAPI Loopback 采集（阶段 5，仅 Windows）。
 wasapi = ["dep:windows"]
 

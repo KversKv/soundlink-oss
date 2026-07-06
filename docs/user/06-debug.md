@@ -55,6 +55,21 @@ RUST_LOG=debug cargo tauri dev
 
 控制各客户端是否把音频链路各阶段的 RAW Data 落盘，便于用 Audacity / ffmpeg / Python 分析杂音、错位、丢包等问题。
 
+### 文件保存位置速查
+
+> **关键**：dump 文件**不在仓库根目录**，而是写在各端运行时的工作目录或平台专属沙箱中。下表列出实际位置与访问方式。
+
+| 端 | 角色 | 实际保存目录 | 如何访问 |
+|---|---|---|---|
+| 桌面（Windows） | 接收器 / 发送器 | `cargo tauri dev` 或 `cargo run` 的**当前工作目录**，通常是 [`desktop/src-tauri/`](../../desktop/src-tauri/) | 资源管理器直接打开 `desktop\src-tauri\` 即可看到 `soundlink_*.bin` / `soundlink_*.raw` |
+| 桌面（macOS / Linux） | 接收器 / 发送器 | 同上：启动命令的 cwd | 终端 `ls desktop/src-tauri/soundlink_*` |
+| iOS | BroadcastExtension | App Group `group.com.soundlink` 容器内 `soundlink_dump/` 子目录 | Xcode → Window → Devices and Simulators → 选中设备 → 选 App → Download Container，或在 Files App 中查看（需 App 支持）；也可通过 `os_log` 查看路径日志 |
+| Android | 采集 Service | 公共下载目录 `Download/soundlink_dump/`（MediaStore，Android 10+ 无需权限），失败回退 app 私有目录 `Android/data/<package>/files/soundlink_dump/` | 系统文件管理器 → Downloads → soundlink_dump；或 `adb shell ls /sdcard/Download/soundlink_dump/`；私有目录用 `adb shell run-as com.soundlink.soundlink ls files/soundlink_dump/` |
+
+> **桌面端 cwd 提示**：Tauri 应用启动时的 cwd 不一定是仓库根。如果你用 IDE Run 按钮，cwd 通常是 `desktop/src-tauri/`；如果用 PowerShell 在仓库根执行 `cargo tauri dev`，cwd 是仓库根。**找不到文件时优先看终端启动路径。**
+
+### 各端转储文件清单
+
 **桌面端接收器**（[`receiver.rs`](../../desktop/src-tauri/src/receiver.rs) 的 `DebugDumper`）写到当前工作目录：
 
 | 文件 | 内容 |
@@ -63,6 +78,8 @@ RUST_LOG=debug cargo tauri dev
 | `soundlink_pcm_decoded.raw` | Opus 解码后 PCM（i16 LE，stereo 交错，48kHz） |
 | `soundlink_pcm_resampled.raw` | 漂移校正后 PCM（i16 LE，stereo 交错，送 cpal 前） |
 
+> 仅在收到音频包并触发解码回调时才会写入；只启动 Receiver 不发包不会产生文件。
+
 **桌面端发送器**（[`sender.rs`](../../desktop/src-tauri/src/sender.rs) 的 `send_loop`）写到当前工作目录：
 
 | 文件 | 内容 |
@@ -70,12 +87,16 @@ RUST_LOG=debug cargo tauri dev
 | `soundlink_sender_pcm.raw` | 采集后 PCM（i16 LE，stereo 交错，编码前） |
 | `soundlink_sender_opus.bin` | Opus 帧（4 字节小端长度前缀 + 数据） |
 
+> 仅在采集源 `poll_frame()` 实际产出 PCM 时才写入；只握手不启动采集不会产生文件。
+
 **iOS BroadcastExtension**（[`SampleHandler.swift`](../../mobile/ios/BroadcastExtension/SampleHandler.swift)）写到 App Group 共享容器 `soundlink_dump/` 子目录：
 
 | 文件 | 内容 |
 |---|---|
 | `capture_pcm.raw` | 采集归一化后 PCM（Int16 交错，编码前） |
 | `capture_opus.bin` | Opus 帧（4 字节小端长度前缀 + 数据） |
+
+完整路径示例：`<App Group Container>/soundlink_dump/capture_pcm.raw`，其中 App Group 容器路径类似 `/private/var/mobile/Containers/Shared/AppGroup/<UUID>/`。
 
 主 App [`SoundLinkPlugin.swift`](../../mobile/flutter_app/ios/Runner/SoundLinkPlugin.swift) 通过 App Group 键 `soundlink.dump_pcm` 把开关传给 Extension。
 
@@ -86,7 +107,17 @@ RUST_LOG=debug cargo tauri dev
 | `capture_pcm.raw` | 采集后 PCM（Int16 交错，编码前） |
 | `capture_opus.bin` | Opus 帧（4 字节小端长度前缀 + 数据） |
 
+完整路径示例：
+- 公共下载目录：`/sdcard/Download/soundlink_dump/capture_pcm.raw`
+- 私有目录回退：`/sdcard/Android/data/com.soundlink.soundlink/files/soundlink_dump/capture_pcm.raw`
+
 开关由主 App [`SoundLinkPlugin.kt`](../../mobile/flutter_app/android/app/src/main/kotlin/com/soundlink/soundlink/SoundLinkPlugin.kt) 写入 SharedPreferences 键 `dump_pcm`，Service 启动时读取。移动端 Flutter 侧 [`app.dart`](../../mobile/flutter_app/lib/app.dart) 在 `_init()` 时调 `platform.setDumpPcm(DUMP_ENABLE)` 同步初始状态，运行时仍可在「设备发现」页的「调试：保存采集 PCM」开关手动切换。
+
+> **Android 抓取 dump 命令**：
+> ```bash
+> adb shell ls /sdcard/Download/soundlink_dump/
+> adb pull /sdcard/Download/soundlink_dump/ ./dump/
+> ```
 
 ### 转储文件解析
 

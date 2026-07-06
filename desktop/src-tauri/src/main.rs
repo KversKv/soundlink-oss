@@ -9,7 +9,7 @@
 /// 2. 默认开启音频 RAW Data 转储（[DUMP_ENABLE] 跟随此值）。
 ///
 /// 发布前务必改回 `false`。
-pub const DEBUG: bool = true;
+pub const DEBUG: bool = false;
 
 /// 音频 RAW Data 转储开关。
 ///

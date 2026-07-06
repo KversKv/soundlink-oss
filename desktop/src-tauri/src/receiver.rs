@@ -87,7 +87,7 @@ impl DebugDumper {
                 let mut opus_file = opus_file;
                 let mut pcm_decoded_file = pcm_decoded_file;
                 let mut pcm_resampled_file = pcm_resampled_file;
-                for msg in rx {
+                for msg in rx.iter() {
                     match msg {
                         DumpMsg::Opus { data, seq, lost } => {
                             let marker: u32 = if lost { 0xFFFF_FFFF } else { data.len() as u32 };
@@ -112,6 +112,34 @@ impl DebugDumper {
                             let _ = pcm_resampled_file.write_all(&bytes);
                         }
                         DumpMsg::Shutdown => break,
+                    }
+                }
+                // 排空队列剩余消息（避免 Drop 时丢失未处理数据）。
+                for msg in rx.try_iter() {
+                    match msg {
+                        DumpMsg::Opus { data, seq, lost } => {
+                            let marker: u32 = if lost { 0xFFFF_FFFF } else { data.len() as u32 };
+                            let _ = opus_file.write_all(&marker.to_le_bytes());
+                            let _ = opus_file.write_all(&seq.to_le_bytes());
+                            if !lost {
+                                let _ = opus_file.write_all(&data);
+                            }
+                        }
+                        DumpMsg::PcmDecoded(pcm) => {
+                            let mut bytes = Vec::with_capacity(pcm.len() * 2);
+                            for &s in &pcm {
+                                bytes.extend_from_slice(&s.to_le_bytes());
+                            }
+                            let _ = pcm_decoded_file.write_all(&bytes);
+                        }
+                        DumpMsg::PcmResampled(pcm) => {
+                            let mut bytes = Vec::with_capacity(pcm.len() * 2);
+                            for &s in &pcm {
+                                bytes.extend_from_slice(&s.to_le_bytes());
+                            }
+                            let _ = pcm_resampled_file.write_all(&bytes);
+                        }
+                        DumpMsg::Shutdown => {}
                     }
                 }
                 tracing::info!("调试保存 IO 线程退出");
@@ -528,15 +556,12 @@ impl PlaybackFromJitter {
                 }
             }
             PopResult::Empty => {
-                // 欠流：仍计入 PLC 计数（避免无限静音后突爆）。
-                if self.consecutive_plc < PLC_CONSECUTIVE_LIMIT {
-                    self.consecutive_plc += 1;
-                }
-                if self.consecutive_plc > PLC_CONSECUTIVE_LIMIT {
-                    vec![0i16; frame_pcm_len()]
-                } else {
-                    self.codec.lock().decode_plc()
-                }
+                // 欠流：缓冲耗尽，直接返回静音。
+                // 注意：不调用 decode_plc()——PLC 会推进 Opus 解码器内部状态，
+                // 当真实帧到达时解码器状态已偏移，导致后续解码输出噪声。
+                // PLC 仅用于真正丢包（Lost），欠流用静音更安全。
+                self.consecutive_plc = self.consecutive_plc.saturating_add(1);
+                vec![0i16; frame_pcm_len()]
             }
         };
 

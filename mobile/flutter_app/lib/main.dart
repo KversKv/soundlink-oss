@@ -17,7 +17,7 @@ import 'app.dart';
 /// 3. 默认开启采集 PCM/Opus 转储（[DUMP_ENABLE] 跟随此值）。
 ///
 /// 发布前务必改回 `false`。
-const bool DEBUG = true;
+const bool DEBUG = false;
 
 /// 音频 RAW Data 转储开关。
 ///
