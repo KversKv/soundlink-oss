@@ -77,6 +77,7 @@ export default function App() {
   const [selectedDevice, setSelectedDevice] = useState<number | null>(null);
   const [status, setStatus] = useState<ReceiverStatus | null>(null);
   const [jitterMode, setJitterMode] = useState<JitterMode>("balanced");
+  const [volume, setVolume] = useState<number>(100); // 0-100
 
   // Sender 状态
   const [senderRunning, setSenderRunning] = useState(false);
@@ -110,6 +111,9 @@ export default function App() {
   useEffect(() => {
     invoke<string>("get_jitter_mode")
       .then((m) => setJitterMode(m as JitterMode))
+      .catch(() => {});
+    invoke<number>("get_volume")
+      .then((v) => setVolume(Math.round(v * 100)))
       .catch(() => {});
   }, []);
 
@@ -186,6 +190,15 @@ export default function App() {
     setJitterMode(mode);
     try {
       await invoke("set_jitter_mode", { mode });
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
+  async function changeVolume(v: number) {
+    setVolume(v);
+    try {
+      await invoke("set_volume", { volume: v / 100 });
     } catch (e) {
       setError(String(e));
     }
@@ -320,6 +333,23 @@ export default function App() {
                   {m.label} <span style={{ color: "#888", fontSize: 11 }}>({m.desc})</span>
                 </button>
               ))}
+            </div>
+          </section>
+
+          <section style={{ margin: "24px 0" }}>
+            <h3>音量</h3>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                value={volume}
+                onChange={(e) => changeVolume(Number(e.target.value))}
+                style={{ flex: 1, cursor: "pointer" }}
+              />
+              <span style={{ minWidth: 48, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                {volume}%
+              </span>
             </div>
           </section>
 

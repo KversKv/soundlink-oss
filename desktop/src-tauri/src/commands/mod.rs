@@ -244,6 +244,19 @@ pub fn get_jitter_mode(state: State<'_, AppState>) -> Result<String, String> {
     Ok(state.inner().engine.jitter_mode().as_str().to_string())
 }
 
+/// 设置输出音量（阶段 4+）。`volume ∈ [0.0, 1.0]`。
+#[tauri::command]
+pub fn set_volume(state: State<'_, AppState>, volume: f32) -> Result<f32, String> {
+    state.inner().engine.set_volume(volume);
+    Ok(state.inner().engine.volume())
+}
+
+/// 获取当前输出音量 `∈ [0.0, 1.0]`。
+#[tauri::command]
+pub fn get_volume(state: State<'_, AppState>) -> Result<f32, String> {
+    Ok(state.inner().engine.volume())
+}
+
 // ───────────────────────── 阶段 5：桌面发送端 ─────────────────────────
 
 /// 可用采集源信息。

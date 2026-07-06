@@ -468,6 +468,17 @@ impl ReceiverEngine {
         self.jitter.lock().mode()
     }
 
+    /// 设置软件音量 `v ∈ [0.0, 1.0]`。运行时实时生效（不需要重启流）。
+    pub fn set_volume(&self, v: f32) {
+        self.audio_output.lock().set_volume(v);
+        tracing::info!("输出音量设置为 {:.0}%", (v * 100.0).round());
+    }
+
+    /// 当前音量 `∈ [0.0, 1.0]`。
+    pub fn volume(&self) -> f32 {
+        self.audio_output.lock().volume()
+    }
+
     /// 是否正在接收。
     pub fn is_running(&self) -> bool {
         self.running.load(Ordering::SeqCst)

@@ -9,9 +9,36 @@ use cpal::{
     SupportedStreamConfig,
 };
 use std::cell::RefCell;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 
 use crate::constants::OUTPUT_BUFFER_SAMPLES;
+
+/// 软件音量共享状态：用 AtomicU32 存储 f32::to_bits，避免回调里加锁。
+/// 取值范围 [0.0, 1.0]，1.0 = 不增不减。
+#[derive(Clone)]
+pub struct VolumeControl(Arc<AtomicU32>);
+
+impl VolumeControl {
+    pub fn new() -> Self {
+        Self(Arc::new(AtomicU32::new(1.0f32.to_bits())))
+    }
+
+    pub fn set(&self, v: f32) {
+        let clamped = v.clamp(0.0, 1.0);
+        self.0.store(clamped.to_bits(), Ordering::Relaxed);
+    }
+
+    pub fn get(&self) -> f32 {
+        f32::from_bits(self.0.load(Ordering::Relaxed))
+    }
+}
+
+impl Default for VolumeControl {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 /// 输出设备信息（供 UI 列表）。
 #[derive(Debug, Clone, serde::Serialize)]
@@ -36,6 +63,8 @@ struct OutputState {
 /// 可跨线程调用，因此不再强制 start/stop 在创建线程上执行。
 pub struct AudioOutput {
     state: RefCell<OutputState>,
+    /// 软件音量控制（运行时可在回调外调整）。
+    volume: VolumeControl,
 }
 
 impl Default for AudioOutput {
@@ -48,7 +77,18 @@ impl AudioOutput {
     pub fn new() -> Self {
         Self {
             state: RefCell::new(OutputState { stream: None }),
+            volume: VolumeControl::new(),
         }
+    }
+
+    /// 设置软件音量 `v ∈ [0.0, 1.0]`。运行时实时生效（下一帧回调即应用）。
+    pub fn set_volume(&self, v: f32) {
+        self.volume.set(v);
+    }
+
+    /// 当前音量。
+    pub fn volume(&self) -> f32 {
+        self.volume.get()
     }
 
     /// 列举可用输出设备。
@@ -101,10 +141,17 @@ impl AudioOutput {
 
         let source: Arc<parking_lot::Mutex<Box<dyn PlaybackSource>>> =
             Arc::new(parking_lot::Mutex::new(source));
+        let volume = self.volume.clone();
         let stream = match sample_format {
-            SampleFormat::I16 => build_stream::<i16>(&device, &config, channels, source.clone()),
-            SampleFormat::F32 => build_stream::<f32>(&device, &config, channels, source.clone()),
-            SampleFormat::U16 => build_stream::<u16>(&device, &config, channels, source.clone()),
+            SampleFormat::I16 => {
+                build_stream::<i16>(&device, &config, channels, source.clone(), volume.clone())
+            }
+            SampleFormat::F32 => {
+                build_stream::<f32>(&device, &config, channels, source.clone(), volume.clone())
+            }
+            SampleFormat::U16 => {
+                build_stream::<u16>(&device, &config, channels, source.clone(), volume.clone())
+            }
             other => return Err(format!("不支持的采样格式：{:?}", other)),
         }
         .map_err(|e| format!("构建输出流失败：{}", e))?;
@@ -129,6 +176,7 @@ fn build_stream<T: cpal::SizedSample + FromSampleI16>(
     config: &StreamConfig,
     channels: ChannelCount,
     source: Arc<parking_lot::Mutex<Box<dyn PlaybackSource>>>,
+    volume: VolumeControl,
 ) -> Result<Stream, cpal::BuildStreamError> {
     let mut cfg = config.clone();
     let _ = channels;
@@ -136,6 +184,7 @@ fn build_stream<T: cpal::SizedSample + FromSampleI16>(
     // 失败则回退默认。
     cfg.buffer_size = BufferSize::Fixed(OUTPUT_BUFFER_SAMPLES);
     let source_for_fixed = source.clone();
+    let vol_for_fixed = volume.clone();
     let stream_result = device.build_output_stream(
         &cfg,
         move |data: &mut [T], _: &cpal::OutputCallbackInfo| {
@@ -143,6 +192,14 @@ fn build_stream<T: cpal::SizedSample + FromSampleI16>(
             {
                 let mut s = source_for_fixed.lock();
                 s.fill(&mut tmp);
+            }
+            // 应用软件音量（i16 阶段，避免每个采样类型重复算）。
+            let vol = vol_for_fixed.get();
+            if vol != 1.0 {
+                for s in tmp.iter_mut() {
+                    let scaled = (*s as f32 * vol).clamp(-32768.0, 32767.0) as i16;
+                    *s = scaled;
+                }
             }
             // 若设备声道数与源（2）不同，做简单截断/复制。
             let ch = cfg.channels as usize;
@@ -178,6 +235,7 @@ fn build_stream<T: cpal::SizedSample + FromSampleI16>(
             // 回退默认 buffer。
             cfg.buffer_size = BufferSize::Default;
             tracing::warn!("Fixed buffer size 不支持，回退 Default");
+            let vol_for_default = volume.clone();
             device.build_output_stream(
                 &cfg,
                 move |data: &mut [T], _: &cpal::OutputCallbackInfo| {
@@ -185,6 +243,13 @@ fn build_stream<T: cpal::SizedSample + FromSampleI16>(
                     {
                         let mut s = source.lock();
                         s.fill(&mut tmp);
+                    }
+                    let vol = vol_for_default.get();
+                    if vol != 1.0 {
+                        for s in tmp.iter_mut() {
+                            let scaled = (*s as f32 * vol).clamp(-32768.0, 32767.0) as i16;
+                            *s = scaled;
+                        }
                     }
                     let ch = cfg.channels as usize;
                     if ch == 2 || ch == 0 {

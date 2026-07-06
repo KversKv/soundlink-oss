@@ -39,6 +39,8 @@ fn main() {
             soundlink_lib::commands::set_device_name,
             soundlink_lib::commands::set_jitter_mode,
             soundlink_lib::commands::get_jitter_mode,
+            soundlink_lib::commands::set_volume,
+            soundlink_lib::commands::get_volume,
             soundlink_lib::commands::list_capture_sources,
             soundlink_lib::commands::start_sender,
             soundlink_lib::commands::stop_sender,
