@@ -86,12 +86,22 @@ class AppState extends ChangeNotifier {
         debugPrint('启用 PCM 转储失败：$e');
       }
     }
-    await refreshTrusted();
-    notifyListeners();
+    try {
+      await refreshTrusted();
+    } catch (e) {
+      debugPrint('初始化信任存储失败：$e');
+      _trusted = [];
+      notifyListeners();
+    }
   }
 
   Future<void> refreshTrusted() async {
-    _trusted = await TrustStore.loadAll();
+    try {
+      _trusted = await TrustStore.loadAll();
+    } catch (e) {
+      debugPrint('加载信任存储失败：$e');
+      _trusted = [];
+    }
     notifyListeners();
   }
 
