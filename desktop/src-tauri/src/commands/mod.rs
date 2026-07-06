@@ -71,6 +71,7 @@ pub struct StartResult {
 /// 启动接收器：生成配对码、自握手派生 audio_key、绑定 UDP、起 cpal 输出。
 #[tauri::command]
 pub async fn start_receiver(state: State<'_, AppState>) -> Result<StartResult, String> {
+    let state = state.inner();
     let code = state.pairing.issue();
     let device_id = state.identity.lock().device_id.clone();
     let pairing_secret = derive_pairing_secret(&code, &device_id);
@@ -106,6 +107,7 @@ pub async fn start_receiver(state: State<'_, AppState>) -> Result<StartResult, S
 /// 停止接收器。
 #[tauri::command]
 pub fn stop_receiver(state: State<'_, AppState>) -> Result<(), String> {
+    let state = state.inner();
     state.engine.stop();
     *state.audio_key.lock() = None;
     Ok(())
@@ -114,6 +116,7 @@ pub fn stop_receiver(state: State<'_, AppState>) -> Result<(), String> {
 /// 获取/刷新配对码。
 #[tauri::command]
 pub fn get_pairing_code(state: State<'_, AppState>) -> Result<String, String> {
+    let state = state.inner();
     Ok(state.pairing.issue())
 }
 
@@ -126,6 +129,7 @@ pub fn list_output_devices(_state: State<'_, AppState>) -> Result<Vec<OutputDevi
 /// 选择输出设备（索引，对应 list_output_devices 的顺序）。
 #[tauri::command]
 pub fn select_output_device(state: State<'_, AppState>, index: usize) -> Result<(), String> {
+    let state = state.inner();
     *state.selected_device.lock() = Some(index);
     // 若接收器在运行，需要重启以应用设备。
     if state.engine.is_running() {
@@ -137,5 +141,6 @@ pub fn select_output_device(state: State<'_, AppState>, index: usize) -> Result<
 /// 获取状态。
 #[tauri::command]
 pub fn get_status(state: State<'_, AppState>) -> Result<ReceiverStatus, String> {
+    let state = state.inner();
     Ok(state.engine.status())
 }

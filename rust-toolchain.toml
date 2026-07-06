@@ -4,6 +4,6 @@
 # 若仅编译无 Tauri 外壳的核心库/示例（cargo build --lib / --example），
 # GNU 工具链亦可。
 [toolchain]
-channel = "stable"
+channel = "stable-x86_64-pc-windows-msvc"
 components = ["rustfmt", "clippy"]
 targets = ["x86_64-pc-windows-msvc"]

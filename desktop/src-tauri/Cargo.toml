@@ -45,7 +45,7 @@ tauri-plugin-opener = { version = "2", optional = true }
 dirs = { version = "5", optional = true }
 
 [build-dependencies]
-tauri-build = { version = "2", optional = true }
+tauri-build = { version = "2", optional = true , features = [] }
 
 [dev-dependencies]
 

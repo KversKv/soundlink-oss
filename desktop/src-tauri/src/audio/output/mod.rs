@@ -5,14 +5,15 @@
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{
-    BufferSize, ChannelCount, Device, Host, SampleFormat, SampleRate, Stream, StreamConfig,
+    BufferSize, ChannelCount, Device, SampleFormat, SampleRate, Stream, StreamConfig,
     SupportedStreamConfig,
 };
-use parking_lot::Mutex;
+use std::cell::RefCell;
 use std::sync::Arc;
+use std::thread::{self, ThreadId};
 
 /// 输出设备信息（供 UI 列表）。
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct OutputDeviceInfo {
     pub id: String,
     pub name: String,
@@ -26,12 +27,12 @@ pub trait PlaybackSource: Send + 'static {
 
 struct OutputState {
     stream: Option<Stream>,
+    owner_thread: ThreadId,
 }
 
 /// 音频输出器。持有 stream 保持播放。
 pub struct AudioOutput {
-    host: Host,
-    state: Mutex<OutputState>,
+    state: RefCell<OutputState>,
 }
 
 impl Default for AudioOutput {
@@ -43,15 +44,18 @@ impl Default for AudioOutput {
 impl AudioOutput {
     pub fn new() -> Self {
         Self {
-            host: cpal::default_host(),
-            state: Mutex::new(OutputState { stream: None }),
+            state: RefCell::new(OutputState {
+                stream: None,
+                owner_thread: thread::current().id(),
+            }),
         }
     }
 
     /// 列举可用输出设备。
     pub fn list_devices(&self) -> Vec<OutputDeviceInfo> {
+        let host = cpal::default_host();
         let mut out = Vec::new();
-        if let Ok(devs) = self.host.output_devices() {
+        if let Ok(devs) = host.output_devices() {
             for (i, d) in devs.enumerate() {
                 let name = d.name().unwrap_or_else(|_| format!("Device {}", i));
                 out.push(OutputDeviceInfo {
@@ -65,7 +69,15 @@ impl AudioOutput {
 
     /// 默认输出设备。
     pub fn default_device(&self) -> Option<Device> {
-        self.host.default_output_device()
+        cpal::default_host().default_output_device()
+    }
+
+    fn ensure_owner_thread(&self) -> Result<(), String> {
+        if self.state.borrow().owner_thread == thread::current().id() {
+            Ok(())
+        } else {
+            Err("音频输出只能在创建它的线程上启动或停止".to_string())
+        }
     }
 
     /// 在指定设备上启动播放。`device_index` 为 None 时用默认设备。
@@ -75,15 +87,16 @@ impl AudioOutput {
         device_index: Option<usize>,
         source: Box<dyn PlaybackSource>,
     ) -> Result<(), String> {
+        self.ensure_owner_thread()?;
+        let host = cpal::default_host();
         let device = match device_index {
-            Some(i) => self
-                .host
+            Some(i) => host
                 .output_devices()
                 .map_err(|e| e.to_string())?
                 .nth(i)
                 .ok_or_else(|| format!("设备索引 {} 不存在", i))?,
-            None => self
-                .default_device()
+            None => host
+                .default_output_device()
                 .ok_or_else(|| "无可用输出设备".to_string())?,
         };
 
@@ -95,7 +108,8 @@ impl AudioOutput {
         let config: StreamConfig = supported.into();
         let channels = config.channels;
 
-        let source: Arc<Mutex<Box<dyn PlaybackSource>>> = Arc::new(Mutex::new(source));
+        let source: Arc<parking_lot::Mutex<Box<dyn PlaybackSource>>> =
+            Arc::new(parking_lot::Mutex::new(source));
         let stream = match sample_format {
             SampleFormat::I16 => build_stream::<i16>(&device, &config, channels, source.clone()),
             SampleFormat::F32 => build_stream::<f32>(&device, &config, channels, source.clone()),
@@ -105,22 +119,28 @@ impl AudioOutput {
         .map_err(|e| format!("构建输出流失败：{}", e))?;
 
         stream.play().map_err(|e| format!("启动播放失败：{}", e))?;
-        self.state.lock().stream = Some(stream);
+        self.state.borrow_mut().stream = Some(stream);
         Ok(())
     }
 
     /// 停止播放。
     pub fn stop(&self) {
-        let stream = self.state.lock().stream.take();
+        if self.ensure_owner_thread().is_err() {
+            return;
+        }
+        let stream = self.state.borrow_mut().stream.take();
         drop(stream);
     }
 }
+
+unsafe impl Send for AudioOutput {}
+unsafe impl Sync for AudioOutput {}
 
 fn build_stream<T: cpal::SizedSample + FromSampleI16>(
     device: &Device,
     config: &StreamConfig,
     channels: ChannelCount,
-    source: Arc<Mutex<Box<dyn PlaybackSource>>>,
+    source: Arc<parking_lot::Mutex<Box<dyn PlaybackSource>>>,
 ) -> Result<Stream, cpal::BuildStreamError> {
     let mut cfg = config.clone();
     // 用默认缓冲（低延迟后续调优）。

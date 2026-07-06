@@ -11,7 +11,7 @@
 | Rust（rustup） | 稳定版工具链 |
 | Node.js LTS | 前端构建 |
 | pnpm / npm | 前端包管理 |
-| Tauri CLI | `cargo install tauri-cli` 或 `pnpm add -D @tauri-apps/cli` |
+| Tauri CLI | 推荐 `cargo +stable-x86_64-pc-windows-msvc install tauri-cli --version "^2" --locked`；或前端侧 `pnpm add -D @tauri-apps/cli` |
 
 安装 Rust：
 
@@ -42,6 +42,24 @@ winget install Microsoft.VisualStudio.2022.BuildTools
 winget install Microsoft.EdgeWebView2Runtime
 ```
 
+推荐安装命令（自动带 C++ 工作负载）：
+
+```powershell
+winget install --id Microsoft.VisualStudio.2022.BuildTools -e --override "--wait --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
+winget install --id Microsoft.EdgeWebView2Runtime -e
+rustup toolchain install stable-x86_64-pc-windows-msvc --component rustfmt --component clippy
+rustup default stable-x86_64-pc-windows-msvc
+```
+
+校验 MSVC 链接器与工具链：
+
+```powershell
+where.exe cargo
+where.exe cargo-tauri
+where.exe link
+rustc -vV   # host 应为 x86_64-pc-windows-msvc
+```
+
 ## 3. macOS 专属
 
 - 安装 **Xcode Command Line Tools**（提供 clang、CoreAudio 头文件）。
@@ -69,14 +87,16 @@ Rust 核心位于 [`desktop/src-tauri/src`](../../desktop/src-tauri/src)，前�
 
 > 脚手架就绪后，安装前端依赖并启动开发模式：
 
-```bash
-cd desktop/ui
-pnpm install          # 或 npm install
+```powershell
+cd D:\CodeProject\TRAE_Projects\SoundLink\desktop\ui
+npm install           # 或 pnpm install
 
-# 回到 src-tauri 目录启动 Tauri 开发模式（热重载）
-cd ../src-tauri
-cargo tauri dev       # 或在 ui 目录 pnpm tauri dev
+# 回到 src-tauri 目录启动 Tauri GUI 开发模式（热重载）
+cd ..\src-tauri
+cargo tauri dev --features tauri_app
 ```
+
+> 注：本项目默认 `cargo run` / `cargo tauri dev` 不启用 Tauri 外壳，只运行 Rust 核心提示程序；启动 GUI 需显式加 `--features tauri_app`。
 
 编译与打包方式见 [05-build.md](./05-build.md)，调试见 [06-debug.md](./06-debug.md)。
 
@@ -184,4 +204,103 @@ cd desktop/ui && pnpm lint
   ```powershell
   & "C:\msys64\usr\bin\bash.exe" -lc "pacman-key --init && pacman-key --populate msys2"
   ```
+
+### 7.9 `cargo tauri dev` 报 `no such command: tauri`
+
+- **现象**：`cargo tauri dev` 报 `error: no such command: tauri`。
+- **原因**：未安装 Rust 版 Tauri CLI（`cargo-tauri.exe`），或 `%USERPROFILE%\.cargo\bin` 不在 PATH。
+- **修复**：
+  ```powershell
+  cd D:\CodeProject\TRAE_Projects\SoundLink\desktop\src-tauri
+  cargo +stable-x86_64-pc-windows-msvc install tauri-cli --version "^2" --locked
+  cargo tauri --version
+  where.exe cargo-tauri
+  ```
+  若安装成功但命令仍不可见，重新打开 PowerShell/Trae，或确认 PATH 包含：
+  ```text
+  %USERPROFILE%\.cargo\bin
+  ```
+
+### 7.10 安装 `tauri-cli` 报 `gcc.exe not found`
+
+- **现象**：`cargo install tauri-cli` 编译 `ring` 时报：
+  ```text
+  TARGET = Some(x86_64-pc-windows-gnu)
+  failed to find tool "gcc.exe"
+  ```
+- **原因**：命令在项目外（例如 `C:\Windows\system32`）执行时没有读取项目 `rust-toolchain.toml`，Cargo 使用了系统默认 GNU 工具链；VS Build Tools 不提供 GNU 的 `gcc.exe`。
+- **修复**：推荐直接指定 MSVC 工具链安装：
+  ```powershell
+  rustup toolchain install stable-x86_64-pc-windows-msvc --component rustfmt --component clippy
+  cargo +stable-x86_64-pc-windows-msvc install tauri-cli --version "^2" --locked
+  ```
+  或先切换默认工具链后重新安装：
+  ```powershell
+  rustup default stable-x86_64-pc-windows-msvc
+  rustc -vV   # host 应为 x86_64-pc-windows-msvc
+  cargo install tauri-cli --version "^2" --locked
+  ```
+
+### 7.11 安装 `tauri-cli` 报 `link.exe not found`
+
+- **现象**：MSVC 工具链下安装/构建时报：
+  ```text
+  error: linker `link.exe` not found
+  ```
+- **原因**：已切到 MSVC Rust，但未安装 Visual Studio Build Tools 的 C++ 工作负载，或安装后终端未重启。
+- **修复**：
+  ```powershell
+  winget install --id Microsoft.VisualStudio.2022.BuildTools -e --override "--wait --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
+  where.exe link
+  ```
+  若 `where.exe link` 仍找不到，重新打开 PowerShell/Trae；也可从 “x64 Native Tools Command Prompt for VS 2022” 启动验证。
+
+### 7.12 `beforeDevCommand` 找不到 `ui/package.json`
+
+- **现象**：`cargo tauri dev` 报：
+  ```text
+  npm error path D:\CodeProject\TRAE_Projects\SoundLink\ui\package.json
+  Could not read package.json
+  ```
+- **原因**：Tauri 2 执行 `beforeDevCommand` 时路径按工作区解析；若配置为 `npm --prefix ../ui run dev`，会错误指向仓库根目录下的 `ui`。
+- **修复**：本项目已将 `desktop/src-tauri/tauri.conf.json` 调整为：
+  ```json
+  "beforeDevCommand": "npm --prefix ./ui run dev",
+  "beforeBuildCommand": "npm --prefix ./ui run build"
+  ```
+  并确认前端依赖已安装：
+  ```powershell
+  cd D:\CodeProject\TRAE_Projects\SoundLink\desktop\ui
+  npm install
+  ```
+
+### 7.13 `cargo tauri dev` 只打印“无 Tauri 外壳”后退出
+
+- **现象**：命令能编译运行，但只输出：
+  ```text
+  SoundLink 桌面核心（无 Tauri 外壳）。
+  GUI 外壳： cargo build --features tauri_app
+  ```
+- **原因**：本项目将 Tauri 外壳放在可选 feature `tauri_app` 下，默认构建只运行 Rust 核心，便于不装 Tauri 环境时自测核心库。
+- **修复**：启动 GUI 时加 feature：
+  ```powershell
+  cd D:\CodeProject\TRAE_Projects\SoundLink\desktop\src-tauri
+  cargo tauri dev --features tauri_app
+  ```
+
+### 7.14 Trae 沙箱中运行 Tauri 报 AppData `拒绝访问`
+
+- **现象**：在 Trae 代理命令里运行 GUI 时出现：
+  ```text
+  Failed to setup app: 拒绝访问。 (os error 5)
+  TRAE Sandbox Error: hit restricted
+  Not allow operate files: C:\Users\...\AppData\Roaming\soundlink, C:\Users\...\AppData\Local\com.soundlink.desktop
+  ```
+- **原因**：这是 Trae 沙箱文件访问限制，不是 Tauri/项目代码编译失败。Tauri 运行时需要访问系统 AppData 目录保存应用状态。
+- **修复**：在普通 PowerShell 中运行：
+  ```powershell
+  cd D:\CodeProject\TRAE_Projects\SoundLink\desktop\src-tauri
+  cargo tauri dev --features tauri_app
+  ```
+  或调整 Trae 沙箱允许访问对应 AppData 路径后再在 IDE 代理命令中运行。
 
