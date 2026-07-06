@@ -12,5 +12,7 @@ pub mod logging;
 pub mod network;
 pub mod pairing;
 pub mod receiver;
+pub mod sender;
 
 pub use receiver::{ReceiverEngine, ReceiverStatus};
+pub use sender::{SenderEngine, SenderStatus};

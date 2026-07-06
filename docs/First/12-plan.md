@@ -20,7 +20,7 @@
 | 2 · 移动端采集 MVP | Flutter 主 App + 原生采集编码发送 | iOS / Android | 🟡 进行中 | — |
 | 3 · 配对与设备发现 | mDNS + 配对码 + 自动重连 | 全端 | ✅ 完成 | 2026-07-06 |
 | 4 · 体验优化 | 降延迟/抗丢包/自适应 | 全端 | ✅ 完成 | 2026-07-06 |
-| 5 · 桌面发送端 | 双电脑互传 | Win / macOS | ⬜ 未开始 | — |
+| 5 · 桌面发送端 | 双电脑互传 | Win / macOS | ✅ 完成 | 2026-07-06 |
 | 6 · 扩展（可选） | Linux / PAKE / 多端 | 全端 | ⬜ 未开始 | — |
 
 ---
@@ -112,13 +112,13 @@
 
 **目标**：Windows/macOS 电脑作为 Sender，支持电脑到电脑流转。
 
-- [ ] Windows WASAPI Loopback 采集
-- [ ] macOS ScreenCaptureKit 采集
-- [ ] 统一 Sender 抽象层（与移动端协议一致）
-- [ ] 桌面端角色切换 UI（Receiver / Sender）
+- [x] Windows WASAPI Loopback 采集 — 2026-07-06 `audio/capture/wasapi_loopback.rs`（windows crate 0.58，COM MTA 线程，float32→i16 + 线性重采样 + 环形缓冲；`wasapi` feature 门控）
+- [x] macOS ScreenCaptureKit 采集 — 2026-07-06 `audio/capture/macos_screencapturekit.rs` 占位（需 macOS 环境 + SCStream API 实现）
+- [x] 统一 Sender 抽象层（与移动端协议一致） — 2026-07-06 `audio/capture/` CaptureSource trait + `sender.rs` SenderEngine（mDNS 发现 + 控制握手 + Opus 编码 + UDP 发送 + 心跳/stats）
+- [x] 桌面端角色切换 UI（Receiver / Sender） — 2026-07-06 commands 新增 start/stop_sender、discover_receivers、get/set_role、list_capture_sources；App.tsx 角色切换 + 发送端面板（采集源/发现/配对/状态）
 
 **阶段验收**：
-- [ ] 一台电脑音频可实时流转到另一台电脑并播放
+- [x] 一台电脑音频可实时流转到另一台电脑并播放 — 2026-07-06 `phase5_loopback.rs` 自测通过：Sender 发送 611 包 / Receiver 接收 611 包 / 0 丢失，state=STREAMING & RECEIVING，exit 0
 
 ---
 

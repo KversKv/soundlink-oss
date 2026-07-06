@@ -41,7 +41,7 @@ class SoundLinkPlugin private constructor(
             pendingResult = null
         }
 
-    fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
+	override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
             "writeSessionConfig" -> {
                 val config = (call.argument<Map<String, Any>>("config"))?.let { map ->

@@ -63,3 +63,8 @@ dependencies {
 flutter {
     source = "../.."
 }
+
+dependencies {
+    implementation("androidx.activity:activity-ktx:1.10.1")
+    implementation("androidx.fragment:fragment-ktx:1.8.9")
+}

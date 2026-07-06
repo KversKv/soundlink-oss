@@ -125,3 +125,20 @@ pub const DEFAULT_STREAM_ID: u32 = 1;
 
 /// 单帧 PCM 样本总数（交错，Int16 或 f32）= 480 * 2。
 pub const FRAME_SAMPLES_TOTAL: usize = SAMPLES_PER_FRAME_PER_CHANNEL * CHANNELS as usize;
+
+// ───────────────────────── 阶段 5：桌面发送端 ─────────────────────────
+
+/// Sender 控制连接超时（秒）。
+pub const SENDER_CONNECT_TIMEOUT_SECS: u64 = 5;
+
+/// Sender 心跳间隔（秒，对齐 HEARTBEAT_INTERVAL_SECS）。
+pub const SENDER_HEARTBEAT_INTERVAL_SECS: u64 = HEARTBEAT_INTERVAL_SECS;
+
+/// Sender stats 上报周期（秒）。
+pub const SENDER_STATS_INTERVAL_SECS: u64 = STATS_REPORT_INTERVAL_SECS;
+
+/// Sender 编码耗时 EWMA 平滑系数。
+pub const ENCODE_MS_EWMA_ALPHA: f64 = 0.1;
+
+/// WASAPI loopback 采集线程内部环形缓冲帧数（每帧 10ms）。
+pub const CAPTURE_RING_FRAMES: usize = 64;

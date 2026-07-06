@@ -19,6 +19,8 @@ default = []
 opus = ["dep:libopus_sys"]
 # 启用 Tauri 应用外壳（需 MSVC Build Tools + WebView2）。
 tauri_app = ["dep:tauri", "dep:tauri-build", "dep:dirs", "dep:tauri-plugin-opener"]
+# 启用 Windows WASAPI Loopback 采集（阶段 5，仅 Windows）。
+wasapi = ["dep:windows"]
 
 [dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "net", "sync", "time", "macros", "io-util", "signal"] }
@@ -46,6 +48,16 @@ tauri = { version = "2", optional = true, features = [] }
 tauri-plugin-opener = { version = "2", optional = true }
 dirs = { version = "5", optional = true }
 
+# Windows WASAPI Loopback 采集（阶段 5）。
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.58", optional = true, features = [
+    "Win32_Foundation",
+    "Win32_Media_Audio",
+    "Win32_Media_KernelStreaming",
+    "Win32_System_Com",
+    "Win32_Devices_Properties",
+] }
+
 [build-dependencies]
 tauri-build = { version = "2", optional = true , features = [] }
 
@@ -62,6 +74,10 @@ path = "examples/control_loopback.rs"
 [[example]]
 name = "phase4_loopback"
 path = "examples/phase4_loopback.rs"
+
+[[example]]
+name = "phase5_loopback"
+path = "examples/phase5_loopback.rs"
 
 [profile.release]
 opt-level = 3

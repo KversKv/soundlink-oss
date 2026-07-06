@@ -7,26 +7,45 @@
 //!
 //! 阶段 3：start_receiver 启动 mDNS 广播 + 控制服务器（TCP），
 //! 真实发送端通过配对握手派生 audio_key 并启动 UDP 接收。
+//!
+//! 阶段 5：start_sender / stop_sender / get_sender_status / discover_receivers /
+//! list_capture_sources / get_role / set_role。
 
 #![cfg(feature = "tauri_app")]
 
+use crate::audio::capture::{self, CaptureSource};
 use crate::audio::jitter_buffer::JitterMode;
 use crate::audio::output::OutputDeviceInfo;
 use crate::constants::{DEFAULT_AUDIO_PORT, DEFAULT_CONTROL_PORT};
 use crate::device::device_identity::DeviceIdentity;
 use crate::network::control_server::ControlServer;
-use crate::network::discovery::MdnsBroadcaster;
+use crate::network::discovery::{DiscoveredReceiver, MdnsBroadcaster, MdnsBrowser};
 use crate::pairing::{PairingCodeManager, TrustStore, TrustedDevice};
 use crate::receiver::{ReceiverEngine, ReceiverStatus};
+use crate::sender::{SenderEngine, SenderStatus};
 use parking_lot::Mutex;
 use serde::Serialize;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::State;
 
+/// 应用角色。
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+pub enum Role {
+    Receiver,
+    Sender,
+}
+
+impl Default for Role {
+    fn default() -> Self {
+        Role::Receiver
+    }
+}
+
 /// 应用共享状态。
 pub struct AppState {
     pub engine: Arc<ReceiverEngine>,
+    pub sender: Arc<SenderEngine>,
     pub pairing: Arc<PairingCodeManager>,
     pub identity: Arc<Mutex<DeviceIdentity>>,
     pub trust: Arc<Mutex<TrustStore>>,
@@ -34,6 +53,7 @@ pub struct AppState {
     pub control: Mutex<Option<ControlServer>>,
     pub mdns: Mutex<Option<MdnsBroadcaster>>,
     pub device_name: Mutex<String>,
+    pub role: Mutex<Role>,
 }
 
 impl AppState {
@@ -55,6 +75,7 @@ impl AppState {
         });
         Self {
             engine: Arc::new(ReceiverEngine::new()),
+            sender: Arc::new(SenderEngine::new()),
             pairing: Arc::new(PairingCodeManager::new()),
             identity: Arc::new(Mutex::new(identity)),
             trust: Arc::new(Mutex::new(trust)),
@@ -62,6 +83,7 @@ impl AppState {
             control: Mutex::new(None),
             mdns: Mutex::new(None),
             device_name: Mutex::new("SoundLink Receiver".to_string()),
+            role: Mutex::new(Role::default()),
         }
     }
 }
@@ -215,4 +237,140 @@ pub fn set_jitter_mode(state: State<'_, AppState>, mode: String) -> Result<Strin
 #[tauri::command]
 pub fn get_jitter_mode(state: State<'_, AppState>) -> Result<String, String> {
     Ok(state.inner().engine.jitter_mode().as_str().to_string())
+}
+
+// ───────────────────────── 阶段 5：桌面发送端 ─────────────────────────
+
+/// 可用采集源信息。
+#[derive(Debug, Serialize)]
+pub struct CaptureSourceInfo {
+    pub id: String,
+    pub name: String,
+    pub available: bool,
+}
+
+/// 列举可用采集源。
+#[tauri::command]
+pub fn list_capture_sources() -> Result<Vec<CaptureSourceInfo>, String> {
+    let mut sources = vec![CaptureSourceInfo {
+        id: "sine".into(),
+        name: "440Hz 正弦测试源".into(),
+        available: true,
+    }];
+    #[cfg(all(windows, feature = "wasapi"))]
+    {
+        sources.push(CaptureSourceInfo {
+            id: "wasapi".into(),
+            name: "WASAPI Loopback（系统音频）".into(),
+            available: true,
+        });
+    }
+    #[cfg(target_os = "macos")]
+    {
+        sources.push(CaptureSourceInfo {
+            id: "screencapturekit".into(),
+            name: "ScreenCaptureKit（未实现）".into(),
+            available: false,
+        });
+    }
+    Ok(sources)
+}
+
+/// 构造采集源（内部辅助）。
+fn make_capture_source(source_id: &str) -> Result<Box<dyn CaptureSource>, String> {
+    match source_id {
+        "sine" | "" => Ok(capture::default_test_source()),
+        #[cfg(all(windows, feature = "wasapi"))]
+        "wasapi" => Ok(Box::new(
+            capture::wasapi_loopback::WasapiLoopbackCapture::new(),
+        )),
+        other => Err(format!("未知采集源：{}", other)),
+    }
+}
+
+/// 启动发送端：连接 Receiver → 握手 → 采集 → 发送。
+#[tauri::command]
+pub async fn start_sender(
+    state: State<'_, AppState>,
+    receiver_addr: String,
+    pairing_code: String,
+    capture_source: Option<String>,
+) -> Result<(), String> {
+    let s = state.inner();
+    let source_id = capture_source.unwrap_or_else(|| {
+        #[cfg(all(windows, feature = "wasapi"))]
+        {
+            "wasapi".into()
+        }
+        #[cfg(not(all(windows, feature = "wasapi")))]
+        {
+            "sine".into()
+        }
+    });
+    let source = make_capture_source(&source_id)?;
+    let (device_id, device_name, signing_key) = {
+        let id = s.identity.lock();
+        (
+            id.device_id.clone(),
+            s.device_name.lock().clone(),
+            id.signing_key.clone(),
+        )
+    };
+    s.sender
+        .start(
+            source,
+            &receiver_addr,
+            &pairing_code,
+            &device_id,
+            &device_name,
+            &signing_key,
+            DEFAULT_AUDIO_PORT,
+        )
+        .await
+}
+
+/// 停止发送端。
+#[tauri::command]
+pub fn stop_sender(state: State<'_, AppState>) -> Result<(), String> {
+    state.inner().sender.stop();
+    Ok(())
+}
+
+/// 获取发送端状态。
+#[tauri::command]
+pub fn get_sender_status(state: State<'_, AppState>) -> Result<SenderStatus, String> {
+    Ok(state.inner().sender.status())
+}
+
+/// 发现局域网内的 Receiver（mDNS 浏览）。
+#[tauri::command]
+pub async fn discover_receivers(
+    duration_secs: Option<u64>,
+) -> Result<Vec<DiscoveredReceiver>, String> {
+    let browser = MdnsBrowser::new();
+    browser.browse(duration_secs.unwrap_or(2))
+}
+
+/// 获取当前角色。
+#[tauri::command]
+pub fn get_role(state: State<'_, AppState>) -> Result<String, String> {
+    Ok(match *state.inner().role.lock() {
+        Role::Receiver => "receiver".into(),
+        Role::Sender => "sender".into(),
+    })
+}
+
+/// 切换角色。
+#[tauri::command]
+pub fn set_role(state: State<'_, AppState>, role: String) -> Result<String, String> {
+    let r = match role.as_str() {
+        "receiver" => Role::Receiver,
+        "sender" => Role::Sender,
+        other => return Err(format!("未知角色：{}", other)),
+    };
+    *state.inner().role.lock() = r;
+    Ok(match r {
+        Role::Receiver => "receiver".into(),
+        Role::Sender => "sender".into(),
+    })
 }
