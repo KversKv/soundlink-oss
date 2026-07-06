@@ -1,0 +1,12 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "SoundLink: Run Tauri Dev",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "cargo tauri dev --features tauri_app",
+      "cwd": "${workspaceFolder}/desktop/src-tauri"
+    }
+  ]
+}

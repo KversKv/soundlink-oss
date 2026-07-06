@@ -1,0 +1,42 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "SoundLink: install UI deps",
+      "type": "shell",
+      "command": "npm install",
+      "options": {
+        "cwd": "${workspaceFolder}/desktop/ui"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "SoundLink: run Tauri dev",
+      "type": "shell",
+      "command": "cargo tauri dev --features tauri_app",
+      "options": {
+        "cwd": "${workspaceFolder}/desktop/src-tauri"
+      },
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "SoundLink: cargo check Tauri",
+      "type": "shell",
+      "command": "cargo check --features tauri_app",
+      "options": {
+        "cwd": "${workspaceFolder}/desktop/src-tauri"
+      },
+      "group": "test",
+      "problemMatcher": ["$rustc"]
+    }
+  ]
+}
