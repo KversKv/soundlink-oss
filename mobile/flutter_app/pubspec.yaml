@@ -1,0 +1,26 @@
+name: soundlink
+description: "SoundLink 移动端 — 局域网音频流转（采集发送端）。"
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.12.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  # 跨平台纯 Dart 密码学：ChaCha20-Poly1305 / X25519 / HKDF-SHA256 / HMAC-SHA256。
+  # 与桌面端 Rust (chacha20poly1305 / x25519-dalek / hkdf) 字节级对齐。
+  cryptography: ^2.7.0
+  # mDNS / Bonjour / NSD 设备发现（跨端）。
+  multicast_dns: ^0.3.3+1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true

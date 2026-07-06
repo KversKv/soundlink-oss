@@ -1,0 +1,161 @@
+// SoundLink 移动端 App 根 + 全局状态。
+//
+// 架构：Flutter 主 App（配对/发现/设置/广播引导）+ 原生采集组件（不嵌入 Flutter）。
+// 详见 docs/First/07-tech-stack.md §6、08-platform-notes.md §1b。
+
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+
+import 'src/constants.dart';
+import 'src/models/connection_state.dart';
+import 'src/models/device.dart';
+import 'src/services/control_client.dart';
+import 'src/services/discovery_service.dart';
+import 'src/services/pairing_service.dart';
+import 'src/services/platform_service.dart';
+import 'src/pages/home_page.dart';
+
+class SoundLinkApp extends StatelessWidget {
+  const SoundLinkApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'SoundLink',
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF2E5BFF)),
+        useMaterial3: true,
+      ),
+      home: const HomePage(),
+    );
+  }
+}
+
+/// 全局应用状态。
+class AppState extends ChangeNotifier {
+  final DiscoveryService discovery = DiscoveryService();
+  final PlatformService platform = PlatformService();
+
+  LinkState _conn = LinkState.disconnected;
+  DiscoveredDevice? _selectedDevice;
+  PairingService? _pairing;
+  String? _lastError;
+  List<DiscoveredDevice> _devices = [];
+  bool _scanning = false;
+  String _deviceId = '';
+  int _jitterMs = defaultJitterMs;
+
+  LinkState get conn => _conn;
+  DiscoveredDevice? get selectedDevice => _selectedDevice;
+  String? get lastError => _lastError;
+  List<DiscoveredDevice> get devices => _devices;
+  bool get scanning => _scanning;
+  String get deviceId => _deviceId;
+  int get jitterMs => _jitterMs;
+
+  AppState() {
+    _init();
+  }
+
+  Future<void> _init() async {
+    try {
+      _deviceId = await platform.getDeviceId();
+    } catch (_) {
+      _deviceId = 'mobile-${DateTime.now().millisecondsSinceEpoch % 0x10000}';
+    }
+    notifyListeners();
+  }
+
+  void setJitterMs(int v) {
+    _jitterMs = v;
+    notifyListeners();
+  }
+
+  /// 扫描局域网设备。
+  Future<void> scan() async {
+    if (_scanning) return;
+    _scanning = true;
+    _lastError = null;
+    notifyListeners();
+    try {
+      _devices = await discovery.scan();
+    } catch (e) {
+      _lastError = '扫描失败：$e';
+    }
+    _scanning = false;
+    notifyListeners();
+  }
+
+  void selectDevice(DiscoveredDevice? d) {
+    _selectedDevice = d;
+    notifyListeners();
+  }
+
+  /// 用配对码连接并启动采集。
+  Future<void> connectAndStart({String? pairingCode}) async {
+    final device = _selectedDevice;
+    if (device == null) {
+      _lastError = '请先选择设备';
+      notifyListeners();
+      return;
+    }
+    _lastError = null;
+    _conn = LinkState.connecting;
+    notifyListeners();
+
+    final control = ControlClient(host: device.host, port: device.controlPort);
+    _pairing = PairingService(
+      control: control,
+      platform: platform,
+      deviceId: _deviceId,
+      deviceName: 'SoundLink Mobile',
+      platformName: _platformName(),
+    );
+    try {
+      await _pairing!.connectAndStart(
+        device,
+        pairingCode: pairingCode,
+        onState: (s) {
+          _conn = s;
+          notifyListeners();
+        },
+      );
+    } catch (e) {
+      _lastError = '$e';
+      _conn = LinkState.error;
+      notifyListeners();
+    }
+  }
+
+  /// 手动输入 IP 连接（兜底，无 mDNS 时）。
+  void addManualDevice(String ip, {int? controlPort, int? audioPort}) {
+    _selectedDevice = DiscoveredDevice(
+      deviceId: 'manual-$ip',
+      deviceName: ip,
+      role: 'receiver',
+      protocolVersion: protocolVersion,
+      pairingRequired: true,
+      audioCodec: 'opus',
+      sampleRate: sampleRate,
+      controlPort: controlPort ?? defaultControlPort,
+      audioPort: audioPort ?? defaultAudioPort,
+      host: ip,
+    );
+    _devices = [..._devices, _selectedDevice!];
+    notifyListeners();
+  }
+
+  Future<void> stop() async {
+    try {
+      await _pairing?.stop();
+    } catch (_) {}
+    _conn = LinkState.disconnected;
+    notifyListeners();
+  }
+
+  String _platformName() {
+    if (defaultTargetPlatform == TargetPlatform.android) return 'android';
+    return 'ios';
+  }
+}

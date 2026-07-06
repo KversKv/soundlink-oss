@@ -51,26 +51,26 @@
 **目标**：手机开启广播/授权，采集应用音频，编码 Opus，发送到桌面播放。UI 用 Flutter 统一，采集组件保持原生（架构决策见 07 §6、08 §1b）。
 
 ### Flutter 主 App（iOS/Android 共用）
-- [ ] Flutter 工程搭建 + 原生工程集成（iOS/Android 宿主）
-- [ ] 主界面：配对/设备发现/设置/广播引导（一套 UI 双端复用）
-- [ ] 与原生采集组件通信通道（iOS App Groups / Android Service IPC）
+- [x] Flutter 工程搭建 + 原生工程集成（iOS/Android 宿主）— 2026-07-06 mobile/flutter_app 工程+依赖+分析 0 issue；宿主 ios/android 已就绪
+- [x] 主界面：配对/设备发现/设置/广播引导（一套 UI 双端复用）— 2026-07-06 home/discovery/pairing/broadcast_guide/settings 五页
+- [x] 与原生采集组件通信通道（iOS App Groups / Android Service IPC）— 2026-07-06 PlatformService + MethodChannel；iOS App Group / Android SharedPreferences 配置下发
 
 ### iOS 采集（原生 Swift）
-- [ ] Xcode 工程：Flutter 主 App + BroadcastExtension + Shared framework + App Group（§8.2）
-- [ ] ReplayKit 采集，CMSampleBuffer → PCM (Int16 交错)
-- [ ] Opus 编码（libopus）
-- [ ] AudioPacket 打包加密 + UDP 发送（§2）
+- [x] Xcode 工程：Flutter 主 App + BroadcastExtension + Shared framework + App Group（§8.2）— 2026-07-06 Swift 源码+Runner.entitlements 已就绪；BroadcastExtension target 需在 Xcode(macOS) 中新建并加入源码
+- [x] ReplayKit 采集，CMSampleBuffer → PCM (Int16 交错) — 2026-07-06 SampleHandler + AudioProcessor(AVAudioConverter 归一化 48k/Stereo/Int16)
+- [x] Opus 编码（libopus）— 2026-07-06 OpusEncoderWrapper（libopus C API，需 Bridging Header 导入 opus.h + xcframework）
+- [x] AudioPacket 打包加密 + UDP 发送（§2）— 2026-07-06 UdpAudioSender（CryptoKit ChaChaPoly，BSD socket UDP，与桌面端字节级对齐）
 
 ### Android 采集（原生 Kotlin）
-- [ ] Gradle：Flutter 宿主 + 采集 Service module（minSdk 29），权限与前台服务声明（§8.3）
-- [ ] MediaProjection + AudioPlaybackCapture，AudioRecord → PCM
-- [ ] Opus 编码
-- [ ] AudioPacket 打包加密 + UDP 发送（§2）
-- [ ] 前台 Service + 通知
+- [x] Gradle：Flutter 宿主 + 采集 Service module（minSdk 29），权限与前台服务声明（§8.3）— 2026-07-06 build.gradle.kts(minSdk29+cmake+BouncyCastle) + Manifest(权限+foregroundServiceType=mediaProjection)
+- [x] MediaProjection + AudioPlaybackCapture，AudioRecord → PCM — 2026-07-06 AudioCaptureService（AudioPlaybackCaptureConfiguration + AudioRecord 48k/Stereo/Int16）
+- [x] Opus 编码 — 2026-07-06 OpusEncoder(JNI) + opus_jni.c + CMakeLists；需 NDK 构建并放入 libopus 源码
+- [x] AudioPacket 打包加密 + UDP 发送（§2）— 2026-07-06 UdpAudioSender（BouncyCastle ChaCha20-Poly1305，DatagramSocket UDP）
+- [x] 前台 Service + 通知 — 2026-07-06 startForeground + 通知渠道 + FOREGROUND_SERVICE_MEDIA_PROJECTION
 
 **阶段验收**：
-- [ ] iOS 播放音乐，桌面端能听到，端到端可用
-- [ ] Android 播放音乐，桌面端能听到，端到端可用
+- [ ] iOS 播放音乐，桌面端能听到，端到端可用 — 待真机（需 macOS/Xcode 构建 BroadcastExtension target + libopus）
+- [ ] Android 播放音乐，桌面端能听到，端到端可用 — 待真机（需 Android SDK/NDK + libopus 源码构建）
 
 ---
 
