@@ -68,12 +68,11 @@ final class AudioProcessor {
         }
         if convStatus == .error || outBuf.frameLength == 0 { return [] }
 
-        // 取 Int16 交错数据。
         let byteCount = Int(outBuf.frameLength) * Int(outChannels) * MemoryLayout<Int16>.size
-        let bytes = outBuf.int16ChannelData!.withMemoryRebound(to: UInt8.self, capacity: byteCount) { ptr in
-            Data(bytes: ptr, count: byteCount)
-        }
-        pending.append(bytes)
+        var audioBuffer = outBuf.audioBufferList.pointee.mBuffers
+        guard let data = audioBuffer.mData else { return [] }
+        let availableBytes = min(byteCount, Int(audioBuffer.mDataByteSize))
+        pending.append(Data(bytes: data, count: availableBytes))
 
         return drainFrames()
     }

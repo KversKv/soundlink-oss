@@ -70,7 +70,6 @@ pub mod libopus {
     use std::os::raw::{c_int, c_uchar};
     use std::ptr;
 
-    const OPUS_APPLICATION_AUDIO: c_int = 2049;
     const OPUS_SET_BITRATE_REQUEST: c_int = 4002;
     const OPUS_SIGNAL_REQUEST: c_int = 4024;
     const OPUS_SIGNAL_MUSIC: c_int = 3002;
@@ -96,7 +95,7 @@ pub mod libopus {
                 let enc = opusffi::opus_encoder_create(
                     SAMPLE_RATE as c_int,
                     2,
-                    OPUS_APPLICATION_AUDIO,
+                    opusffi::OPUS_APPLICATION_AUDIO as c_int,
                     &mut err,
                 );
                 if err != 0 || enc.is_null() {

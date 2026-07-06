@@ -43,47 +43,49 @@ class BroadcastGuidePage extends StatelessWidget {
   }
 
   Widget _statusCard(AppState app) => Card(
-        color: app.conn == LinkState.streaming
-            ? Colors.green.shade50
-            : Colors.grey.shade100,
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Row(
-            children: [
-              Icon(app.conn == LinkState.streaming
-                  ? Icons.cast_connected
-                  : Icons.cast),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  app.conn == LinkState.streaming
-                      ? '正在广播音频到 ${app.selectedDevice?.deviceName ?? ""}'
-                      : '尚未开始广播。请先在“配对”页连接。',
-                ),
-              ),
-            ],
+    color: app.conn == LinkState.streaming
+        ? Colors.green.shade50
+        : Colors.grey.shade100,
+    child: Padding(
+      padding: const EdgeInsets.all(12),
+      child: Row(
+        children: [
+          Icon(
+            app.conn == LinkState.streaming ? Icons.cast_connected : Icons.cast,
           ),
-        ),
-      );
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              app.conn == LinkState.streaming
+                  ? '正在广播音频到 ${app.selectedDevice?.deviceName ?? ""}'
+                  : '尚未开始广播。请先在“配对”页连接。',
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
 
   List<Widget> _iosSteps(BuildContext context) => const [
-        Text('iOS 开启广播步骤', style: TextStyle(fontWeight: FontWeight.bold)),
-        SizedBox(height: 8),
-        ListTile(leading: Text('1'), title: Text('打开系统“控制中心”（屏幕右上角下滑）')),
-        ListTile(leading: Text('2'), title: Text('长按“屏幕录制”按钮')),
-        ListTile(leading: Text('3'), title: Text('在列表中选择 SoundLink')),
-        ListTile(leading: Text('4'), title: Text('点击“开始广播”，音频将开始传输')),
-      ];
+    Text('iOS 开启广播步骤', style: TextStyle(fontWeight: FontWeight.bold)),
+    SizedBox(height: 8),
+    ListTile(leading: Text('1'), title: Text('打开系统“控制中心”（屏幕右上角下滑）')),
+    ListTile(leading: Text('2'), title: Text('长按“屏幕录制”按钮')),
+    ListTile(leading: Text('3'), title: Text('在列表中选择 SoundLink')),
+    ListTile(leading: Text('4'), title: Text('点击“开始广播”，音频将开始传输')),
+    ListTile(
+      leading: Text('!'),
+      title: Text('iOS 不支持应用静默修改全局媒体音量；如本机仍外放，请使用系统音量/静音或耳机控制'),
+    ),
+  ];
 
   List<Widget> _androidSteps(BuildContext context) => const [
-        Text('Android 开启采集步骤', style: TextStyle(fontWeight: FontWeight.bold)),
-        SizedBox(height: 8),
-        ListTile(leading: Text('1'), title: Text('在“配对”页点击“配对并开始广播”')),
-        ListTile(leading: Text('2'), title: Text('系统将弹出“屏幕共享/录制”授权弹窗')),
-        ListTile(leading: Text('3'), title: Text('点击“立即开始”授权 MediaProjection')),
-        ListTile(leading: Text('4'), title: Text('通知栏将显示采集状态，音频开始传输')),
-        ListTile(
-            leading: Text('!'),
-            title: Text('部分应用可拒绝被采集；受保护内容不可采（系统限制）')),
-      ];
+    Text('Android 开启采集步骤', style: TextStyle(fontWeight: FontWeight.bold)),
+    SizedBox(height: 8),
+    ListTile(leading: Text('1'), title: Text('在“配对”页点击“配对并开始广播”')),
+    ListTile(leading: Text('2'), title: Text('系统将弹出“屏幕共享/录制”授权弹窗')),
+    ListTile(leading: Text('3'), title: Text('点击“立即开始”授权 MediaProjection')),
+    ListTile(leading: Text('4'), title: Text('通知栏将显示采集状态，音频开始传输')),
+    ListTile(leading: Text('!'), title: Text('部分应用可拒绝被采集；受保护内容不可采（系统限制）')),
+  ];
 }

@@ -21,12 +21,15 @@ import 'pairing_service.dart' show SessionConfig;
 
 class PlatformService {
   static const MethodChannel _channel = MethodChannel('com.soundlink/platform');
-  static const EventChannel _stateChannel =
-      EventChannel('com.soundlink/capture_state');
+  static const EventChannel _stateChannel = EventChannel(
+    'com.soundlink/capture_state',
+  );
 
   /// 写入会话配置到 App Group / EncryptedSharedPreferences。
   Future<void> writeSessionConfig(SessionConfig config) async {
-    await _channel.invokeMethod('writeSessionConfig', {'config': config.toJson()});
+    await _channel.invokeMethod('writeSessionConfig', {
+      'config': config.toJson(),
+    });
   }
 
   /// 开始采集（iOS：引导用户从控制中心开启广播；Android：启动前台 Service）。
@@ -50,15 +53,15 @@ class PlatformService {
     return await _channel.invokeMethod('getDeviceId') ?? 'unknown';
   }
 
-  /// 调试：启用/禁用采集 PCM 转储（Android 写到 app 私有目录）。
+  /// 调试：启用/禁用采集 PCM/Opus 转储（iOS 写 App Group；Android 写 Download，失败回退私有目录）。
   Future<void> setDumpPcm(bool enabled) async {
     await _channel.invokeMethod('setDumpPcm', {'enabled': enabled});
   }
 
   /// 采集状态事件流（state/packets_sent/bitrate 等）。
-  Stream<Map<String, dynamic>> get captureState => _stateChannel.receiveBroadcastStream().map(
-        (event) => Map<String, dynamic>.from(event as Map),
-      );
+  Stream<Map<String, dynamic>> get captureState => _stateChannel
+      .receiveBroadcastStream()
+      .map((event) => Map<String, dynamic>.from(event as Map));
 }
 
 /// 采集状态（由原生上报）。
@@ -76,9 +79,9 @@ class CaptureState {
   });
 
   factory CaptureState.fromMap(Map<String, dynamic> m) => CaptureState(
-        state: m['state'] as String? ?? 'idle',
-        packetsSent: m['packets_sent'] as int? ?? 0,
-        bitrate: m['bitrate'] as int? ?? 0,
-        encodeMsAvg: (m['encode_ms_avg'] as num?)?.toDouble() ?? 0,
-      );
+    state: m['state'] as String? ?? 'idle',
+    packetsSent: m['packets_sent'] as int? ?? 0,
+    bitrate: m['bitrate'] as int? ?? 0,
+    encodeMsAvg: (m['encode_ms_avg'] as num?)?.toDouble() ?? 0,
+  );
 }

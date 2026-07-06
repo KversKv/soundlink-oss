@@ -1,3 +1,4 @@
+<!-- FT-0001 -->
 # 音频杂音调试实录（2026-07-06）
 
 > 场景：Android 手机（Pixel 8a）采集屏幕音频 → Opus 编码 → UDP 加密传输 → 桌面端（Windows）解密 → Opus 解码 → cpal 输出。

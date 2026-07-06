@@ -37,8 +37,10 @@ class DiscoveryPage extends StatelessWidget {
               else if (app.devices.isEmpty)
                 const Padding(
                   padding: EdgeInsets.all(24),
-                  child: Text('未发现设备，确认电脑端已开启接收模式，或手动输入 IP。',
-                      textAlign: TextAlign.center),
+                  child: Text(
+                    '未发现设备，确认电脑端已开启接收模式，或手动输入 IP。',
+                    textAlign: TextAlign.center,
+                  ),
                 )
               else
                 ...app.devices.map((d) => _deviceTile(d)),
@@ -125,12 +127,16 @@ class DiscoveryPage extends StatelessWidget {
         content: TextField(
           controller: ipCtrl,
           decoration: const InputDecoration(
-              hintText: '192.168.1.10', labelText: '桌面端 IP'),
+            hintText: '192.168.1.10',
+            labelText: '桌面端 IP',
+          ),
           keyboardType: TextInputType.number,
         ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(context), child: const Text('取消')),
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
           FilledButton(
             onPressed: () {
               final ip = ipCtrl.text.trim();
@@ -147,11 +153,11 @@ class DiscoveryPage extends StatelessWidget {
   }
 
   Widget _banner(String text, Color bg) => Container(
-        width: double.infinity,
-        color: bg,
-        padding: const EdgeInsets.all(8),
-        child: Text(text, style: const TextStyle(fontSize: 13)),
-      );
+    width: double.infinity,
+    color: bg,
+    padding: const EdgeInsets.all(8),
+    child: Text(text, style: const TextStyle(fontSize: 13)),
+  );
 }
 
 class _SectionHeader extends StatelessWidget {
@@ -159,11 +165,11 @@ class _SectionHeader extends StatelessWidget {
   const _SectionHeader(this.text);
   @override
   Widget build(BuildContext context) => ListTile(
-        title: Text(text, style: Theme.of(context).textTheme.titleSmall),
-      );
+    title: Text(text, style: Theme.of(context).textTheme.titleSmall),
+  );
 }
 
-/// 调试：采集 PCM 转储开关。启用后下次采集会把原始 PCM + Opus 帧写到 app 私有目录。
+/// 调试：采集 PCM 转储开关。启用后下次采集会把原始 PCM + Opus 帧写到平台调试目录。
 ///
 /// 初始值跟随 [DUMP_ENABLE]（即 [DEBUG]）；运行时仍可手动切换。
 class _DumpPcmTile extends StatefulWidget {
@@ -181,7 +187,9 @@ class _DumpPcmTileState extends State<_DumpPcmTile> {
       secondary: const Icon(Icons.bug_report, size: 20),
       title: const Text('调试：保存采集 PCM', style: TextStyle(fontSize: 13)),
       subtitle: Text(
-        _enabled ? '已启用，文件在 app 私有目录 soundlink_dump/' : '关闭',
+        _enabled
+            ? '已启用：iOS 在 App Group，Android 在 Download/soundlink_dump/（失败回退私有目录）'
+            : '关闭',
         style: const TextStyle(fontSize: 11),
       ),
       value: _enabled,
