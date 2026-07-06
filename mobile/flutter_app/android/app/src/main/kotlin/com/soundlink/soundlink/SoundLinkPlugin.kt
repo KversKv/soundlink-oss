@@ -18,7 +18,7 @@ import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import com.soundlink.soundlink.capture.AudioCaptureService
 
-class SoundLinkPlugin private constructor(
+class SoundLinkPlugin(
     private val activity: ComponentActivity,
 ) : MethodChannel.MethodCallHandler {
 

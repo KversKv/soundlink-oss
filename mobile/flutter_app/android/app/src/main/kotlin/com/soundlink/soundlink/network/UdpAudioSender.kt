@@ -6,8 +6,7 @@
 
 package com.soundlink.soundlink.network
 
-import org.bouncycastle.crypto.engines.ChaCha20Poly1305
-import org.bouncycastle.crypto.macs.AEADMac
+import org.bouncycastle.crypto.modes.ChaCha20Poly1305
 import org.bouncycastle.crypto.params.AEADParameters
 import org.bouncycastle.crypto.params.KeyParameter
 import java.net.DatagramPacket

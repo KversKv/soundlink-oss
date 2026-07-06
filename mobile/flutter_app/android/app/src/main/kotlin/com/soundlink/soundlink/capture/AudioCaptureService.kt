@@ -92,8 +92,10 @@ class AudioCaptureService : Service() {
         val channels = 2
         val frameSize = sampleRate / 1000 * 10 // 480 样本/声道
 
-        val captureConfig = AudioPlaybackCaptureConfiguration(projection)
-            .apply { captureAudioOutput(true) }
+        // SDK 36 起旧构造函数 AudioPlaybackCaptureConfiguration(MediaProjection) 与
+        // captureAudioOutput() 被隐藏，统一改用 Builder（API 29+ 公开 API）。
+        // 不指定 usage 即匹配所有可捕获播放（USAGE_MEDIA/USAGE_GAME/USAGE_UNKNOWN）。
+        val captureConfig = AudioPlaybackCaptureConfiguration.Builder(projection).build()
 
         val audioFormat = AudioFormat.Builder()
             .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
@@ -104,11 +106,12 @@ class AudioCaptureService : Service() {
         val minBuf = AudioRecord.getMinBufferSize(sampleRate, AudioFormat.CHANNEL_IN_STEREO, AudioFormat.ENCODING_PCM_16BIT)
         val bufferSize = maxOf(minBuf * 2, frameSize * channels * 2 * 4)
 
+        // SDK 36 起 AudioRecord.Builder 不再暴露 setPerformanceMode（PERFORMANCE_MODE_LOW_LATENCY
+        // 常量亦被移除），用 bufferSize 与 AudioAttributes 控制延迟即可。
         val record = AudioRecord.Builder()
             .setAudioPlaybackCaptureConfig(captureConfig)
             .setAudioFormat(audioFormat)
             .setBufferSizeInBytes(bufferSize)
-            .setPerformanceMode(AudioRecord.PERFORMANCE_MODE_LOW_LATENCY)
             .build()
 
         if (record.state != AudioRecord.STATE_INITIALIZED) {

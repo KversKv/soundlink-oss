@@ -6,7 +6,8 @@
 #include <jni.h>
 #include <stdlib.h>
 #include <string.h>
-#include <opus/opus.h>
+// opus 1.5.2 源码树中 opus.h 直接位于 include/ 下（非 include/opus/opus.h）。
+#include <opus.h>
 
 #define ENC_APPLICATION OPUS_APPLICATION_AUDIO
 
