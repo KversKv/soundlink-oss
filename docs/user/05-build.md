@@ -38,50 +38,57 @@ cargo tauri build
 
 ## 2. iOS
 
-iOS 通过 **Xcode** 构建，需 macOS。
+iOS 主 App 由 **Flutter** 构建，原生 Broadcast Extension 随之一起打包，需 macOS + Xcode。
 
-### Xcode 内构建
-
-- 选择 `MainApp` scheme + 真机 → **Product → Build / Run**。
-- Broadcast Extension 随主 App 一起打包（同一 App Group）。
-
-### 命令行构建（CI）
+### Flutter 构建
 
 ```bash
-xcodebuild -workspace mobile/ios/SoundLink.xcworkspace \
-  -scheme MainApp -configuration Release \
-  -destination 'generic/platform=iOS' build
+cd mobile/flutter_app
+flutter build ios --release        # 产出 Runner.app（含 Extension）
 ```
+
+### Xcode 内构建 / 调试
+
+```bash
+open mobile/flutter_app/ios/Runner.xcworkspace
+```
+
+- 选择 `Runner` scheme + 真机 → **Product → Build / Run**。
+- Broadcast Extension（原生 Swift）随主 App 一起打包（同一 App Group）。
 
 ### 归档 / 分发
 
-- **Product → Archive** 生成 `.xcarchive`，通过 Organizer 导出 IPA 或上传 App Store Connect。
+```bash
+cd mobile/flutter_app
+flutter build ipa --release        # 产出 .ipa 供上传
+```
+
+- 或在 Xcode **Product → Archive** 生成 `.xcarchive`，经 Organizer 导出 IPA / 上传 App Store Connect。
 - 需有效的开发者签名与描述文件。
 
 ## 3. Android
 
-Android 使用 **Gradle Wrapper**（无需本地装 Gradle）。
+Android 主 App 由 **Flutter** 构建（底层走 Gradle Wrapper，无需本地装 Gradle），原生采集 Service 一并打包。
 
 ```bash
-cd mobile/android
+cd mobile/flutter_app
 
 # Debug APK
-./gradlew assembleDebug        # Windows: .\gradlew.bat assembleDebug
+flutter build apk --debug
 
 # Release APK
-./gradlew assembleRelease
+flutter build apk --release
 
 # Play 上架用 AAB
-./gradlew bundleRelease
+flutter build appbundle --release
 ```
 
 产物：
 
-| 类型 | 路径 |
+| 类型 | 路径（相对 `mobile/flutter_app`） |
 |---|---|
-| Debug APK | `app/build/outputs/apk/debug/` |
-| Release APK | `app/build/outputs/apk/release/` |
-| AAB | `app/build/outputs/bundle/release/` |
+| APK | `build/app/outputs/flutter-apk/` |
+| AAB | `build/app/outputs/bundle/release/` |
 
 > Release 构建需配置签名（`keystore`），请勿将 keystore / 密码提交到仓库。
 

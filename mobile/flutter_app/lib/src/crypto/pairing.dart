@@ -149,6 +149,13 @@ class SenderHandshake {
     return SenderHandshake(kp, secret);
   }
 
+  /// 已信任路径：跳过配对码，pairing_secret 用全 0（与桌面端对齐）。
+  static Future<SenderHandshake> beginTrusted(String receiverDeviceId) async {
+    final kp = await X25519KeyPair.generate();
+    final secret = Uint8List(32); // 全 0 占位
+    return SenderHandshake(kp, secret);
+  }
+
   /// 计算 Sender 证明（随 pair_request 发送）。
   Future<Uint8List> computeProof(String receiverDeviceId) =>
       senderProof(pairingSecret, keyPair.publicKey, receiverDeviceId);

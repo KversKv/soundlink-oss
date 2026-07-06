@@ -31,36 +31,39 @@ RUST_LOG=debug cargo tauri dev
 
 ## 2. iOS
 
-### 主 App 调试
+### 主 App 调试（Flutter）
 
-- Xcode 直接 Run 到真机，断点 + LLDB。
-- 日志用 `os_log` / `Logger`（Unified Logging），在 Xcode Console 或 **Console.app** 查看。
+- `flutter run -d <ios-device-id>` 运行到真机，支持热重载（r）/ 热重启（R）。
+- Dart 侧断点与日志用 VS Code / Android Studio 的 Flutter 调试器，或 `flutter logs`。
+- 需要原生宿主层断点时，用 Xcode 打开 `Runner.xcworkspace`，日志用 `os_log` / `Logger`（Unified Logging），在 Xcode Console 或 **Console.app** 查看。
 
-### Broadcast Extension 调试（重点）
+### Broadcast Extension 调试（原生 Swift，重点）
 
-Extension 是独立进程，调试方式：
+Extension 是独立进程且**不含 Flutter 引擎**，调试方式：
 
-1. 先 Run 主 App。
-2. **Debug → Attach to Process by PID or Name**，选择 Broadcast Extension 进程；或在 scheme 中设置 Extension 为可调试。
+1. 先运行主 App（`flutter run` 或 Xcode Run `Runner`）。
+2. 在 Xcode **Debug → Attach to Process by PID or Name**，选择 Broadcast Extension 进程；或在 scheme 中设置 Extension 为可调试。
 3. 通过控制中心开启广播后，Extension 进程启动，断点生效。
-4. Extension 有**内存 / 生命周期限制**，避免在其中放重逻辑，崩溃多为内存超限，优先查缓存与依赖。
+4. Extension 有**内存 / 生命周期限制**，避免在其中放重逻辑（禁嵌 Flutter 引擎），崩溃多为内存超限，优先查缓存与依赖。
 
-- Extension 与主 App 通过 App Group 共享状态，配对状态异常时查 `PairingStateReader.swift`。
+- Extension 与主 App 通过 App Group 共享配置/状态；配对状态异常时查共享容器读取逻辑。
 
 ## 3. Android
 
-### 应用调试
+### 主 App 调试（Flutter）
 
-- Android Studio Run/Debug 到真机，断点 + 变量观察。
-- 日志用 `Logcat`：
+- `flutter run -d <android-device-id>` 运行到真机，支持热重载。
+- Dart 侧断点用 IDE Flutter 调试器；原生宿主层断点用 Android Studio。
+- 日志用 `flutter logs` 或 `Logcat`：
 
 ```bash
 adb logcat -s SoundLink:V
 ```
 
-### 前台采集 Service
+### 前台采集 Service（原生 Kotlin）
 
-- 采集 Service 为独立组件，确认通知栏出现采集通知代表 Service 存活。
+- 采集 Service 为独立组件（不含 Flutter），确认通知栏出现采集通知代表 Service 存活。
+- 主 App 经 Platform Channel 调起 Service；调起失败查 channel 名称与原生注册。
 - MediaProjection 授权失败 / 无声：查 `capture/AudioCaptureService.kt` 日志与授权弹窗结果。
 - 采集不到目标应用音频：多为目标应用禁止被捕获，属预期限制，见 [`docs/First/08-platform-notes.md`](../First/08-platform-notes.md)。
 

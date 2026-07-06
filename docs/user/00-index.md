@@ -10,8 +10,8 @@
 |---|---|
 | [01-dev-env-common.md](./01-dev-env-common.md) | 通用前置：仓库结构、通用工具链、共享层 |
 | [02-dev-env-desktop.md](./02-dev-env-desktop.md) | 桌面端（Tauri 2 + Rust）环境搭建（Windows / macOS / Linux） |
-| [03-dev-env-ios.md](./03-dev-env-ios.md) | iOS 端环境搭建（macOS + Xcode） |
-| [04-dev-env-android.md](./04-dev-env-android.md) | Android 端环境搭建（Windows / macOS / Linux） |
+| [03-dev-env-ios.md](./03-dev-env-ios.md) | iOS 端环境搭建（macOS + Flutter + Xcode） |
+| [04-dev-env-android.md](./04-dev-env-android.md) | Android 端环境搭建（Flutter + Android Studio） |
 | [05-build.md](./05-build.md) | 各平台编译 / 打包方式 |
 | [06-debug.md](./06-debug.md) | 各平台调试方式与日志 |
 | [07-usage.md](./07-usage.md) | 使用操作手册（配对、连接、播放） |
@@ -22,5 +22,5 @@
 | 端 | 开发平台 | 主要工具 |
 |---|---|---|
 | 桌面（Receiver/Sender） | Windows / macOS / Linux | Rust、Node.js、Tauri CLI |
-| iOS 发送端 | 仅 macOS | Xcode、Swift |
-| Android 发送端 | Windows / macOS / Linux | Android Studio、JDK、Kotlin |
+| iOS 发送端 | 仅 macOS | Flutter（Dart）主 App、Xcode、Swift（采集 Extension） |
+| Android 发送端 | Windows / macOS / Linux | Flutter（Dart）主 App、Android Studio、JDK、Kotlin（采集 Service） |

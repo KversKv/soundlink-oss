@@ -18,7 +18,7 @@
 |---|---|---|---|---|
 | 1 · 桌面接收器 MVP | 接收测试流并输出到设备 | Win / macOS | ✅ 完成 | 2026-07-05 |
 | 2 · 移动端采集 MVP | Flutter 主 App + 原生采集编码发送 | iOS / Android | ⬜ 未开始 | — |
-| 3 · 配对与设备发现 | mDNS + 配对码 + 自动重连 | 全端 | ⬜ 未开始 | — |
+| 3 · 配对与设备发现 | mDNS + 配对码 + 自动重连 | 全端 | ✅ 完成 | 2026-07-06 |
 | 4 · 体验优化 | 降延迟/抗丢包/自适应 | 全端 | ⬜ 未开始 | — |
 | 5 · 桌面发送端 | 双电脑互传 | Win / macOS | ⬜ 未开始 | — |
 | 6 · 扩展（可选） | Linux / PAKE / 多端 | 全端 | ⬜ 未开始 | — |
@@ -78,16 +78,16 @@
 
 **目标**：桌面被手机自动发现，输入配对码建立信任，下次自动连接。
 
-- [ ] 桌面 mDNS 广播 `_soundlink._udp.local`（TXT 见 04）
-- [ ] 移动端 Bonjour(iOS) / NSD(Android) 发现与展示
-- [ ] 控制通道握手：hello/hello_ack（§3）
-- [ ] 配对码派生 + X25519 + HMAC 证明 + 会话密钥（§5）
-- [ ] 错误码与失败处理（§4）
-- [ ] 信任持久化：iOS Keychain / Android Keystore / 桌面 trust store
-- [ ] 已信任设备自动重连（跳过配对码）
+- [x] 桌面 mDNS 广播 `_soundlink._udp.local`（TXT 见 04）— 2026-07-06 network/discovery.rs MdnsBroadcaster（mdns-sd 轮询 IP + TXT 记录）
+- [x] 移动端 Bonjour(iOS) / NSD(Android) 发现与展示 — 2026-07-06 Flutter multicast_dns 跨端发现 + discovery_page.dart 列表展示
+- [x] 控制通道握手：hello/hello_ack（§3）— 2026-07-06 network/control_server.rs TCP JSON 控制协议
+- [x] 配对码派生 + X25519 + HMAC 证明 + 会话密钥（§5）— 2026-07-06 pairing/key_exchange.rs HKDF-SHA256 + X25519 + HMAC-SHA256 proof
+- [x] 错误码与失败处理（§4）— 2026-07-06 ErrorCode 枚举（1001~1005）+ pair_error JSON 格式 + 配对码锁定（5 次/30s）
+- [x] 信任持久化：iOS Keychain / Android Keystore / 桌面 trust store — 2026-07-06 桌面 trust_store.rs（JSON 文件 + 内存回退）；移动端 trust_store.dart（shared_preferences，后续升级 Keychain/Keystore）
+- [x] 已信任设备自动重连（跳过配对码）— 2026-07-06 控制服务器已信任路径（pairing_secret=0）+ 移动端已信任设备列表点击直连
 
 **阶段验收**：
-- [ ] 无需手输 IP，配对一次后可自动重连
+- [x] 无需手输 IP，配对一次后可自动重连 — 2026-07-06 control_loopback.rs 自测通过：首次配对（配对码）→ 信任持久化 → 二次连接（跳过配对码）→ audio_key 派生 → 流接收验证（200 包 / 0 丢失）
 
 ---
 

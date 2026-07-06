@@ -16,7 +16,7 @@ cd SoundLink
 
 ```text
 SoundLink/
-├── mobile/{ios,android}   # 移动发送端
+├── mobile/flutter_app     # 移动发送端：Flutter 主 App + 原生采集(ios/android)
 ├── desktop/               # src-tauri (Rust 核心) + ui (前端)
 ├── shared/                # 跨端协议与常量（单一事实来源）
 ├── docs/                  # 设计文档 (First/) + 用户文档 (user/)

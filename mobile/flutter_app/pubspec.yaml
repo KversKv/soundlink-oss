@@ -11,11 +11,13 @@ dependencies:
   flutter:
     sdk: flutter
   cupertino_icons: ^1.0.8
-  # 跨平台纯 Dart 密码学：ChaCha20-Poly1305 / X25519 / HKDF-SHA256 / HMAC-SHA256。
-  # 与桌面端 Rust (chacha20poly1305 / x25519-dalek / hkdf) 字节级对齐。
+  # 跨平台纯 Dart 密码学：ChaCha20-Poly1305 / X25519 / Ed25519 / HKDF-SHA256 / HMAC-SHA256。
+  # 与桌面端 Rust (chacha20poly1305 / x25519-dalek / ed25519-dalek / hkdf) 字节级对齐。
   cryptography: ^2.7.0
   # mDNS / Bonjour / NSD 设备发现（跨端）。
   multicast_dns: ^0.3.3+1
+  # 持久化信任存储与设备身份（阶段 3）。
+  shared_preferences: ^2.3.2
 
 dev_dependencies:
   flutter_test:

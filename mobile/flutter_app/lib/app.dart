@@ -13,6 +13,7 @@ import 'src/services/control_client.dart';
 import 'src/services/discovery_service.dart';
 import 'src/services/pairing_service.dart';
 import 'src/services/platform_service.dart';
+import 'src/services/trust_store.dart';
 import 'src/pages/home_page.dart';
 
 class SoundLinkApp extends StatelessWidget {
@@ -44,7 +45,9 @@ class AppState extends ChangeNotifier {
   List<DiscoveredDevice> _devices = [];
   bool _scanning = false;
   String _deviceId = '';
+  String _identityPubB64 = '';
   int _jitterMs = defaultJitterMs;
+  List<TrustedReceiver> _trusted = [];
 
   LinkState get conn => _conn;
   DiscoveredDevice? get selectedDevice => _selectedDevice;
@@ -52,7 +55,9 @@ class AppState extends ChangeNotifier {
   List<DiscoveredDevice> get devices => _devices;
   bool get scanning => _scanning;
   String get deviceId => _deviceId;
+  String get identityPubB64 => _identityPubB64;
   int get jitterMs => _jitterMs;
+  List<TrustedReceiver> get trustedReceivers => _trusted;
 
   AppState() {
     _init();
@@ -64,6 +69,20 @@ class AppState extends ChangeNotifier {
     } catch (_) {
       _deviceId = 'mobile-${DateTime.now().millisecondsSinceEpoch % 0x10000}';
     }
+    try {
+      final identity = await MobileIdentity.loadOrCreate();
+      _deviceId = identity.deviceId;
+      _identityPubB64 = identity.identityPubB64;
+    } catch (e) {
+      // 身份生成失败不阻塞，配对时 sender_identity_pub 留空。
+      debugPrint('身份加载失败：$e');
+    }
+    await refreshTrusted();
+    notifyListeners();
+  }
+
+  Future<void> refreshTrusted() async {
+    _trusted = await TrustStore.loadAll();
     notifyListeners();
   }
 
@@ -93,6 +112,7 @@ class AppState extends ChangeNotifier {
   }
 
   /// 用配对码连接并启动采集。
+  /// [pairingCode] 为 null 时走已信任路径（跳过配对码）。
   Future<void> connectAndStart({String? pairingCode}) async {
     final device = _selectedDevice;
     if (device == null) {
@@ -111,6 +131,7 @@ class AppState extends ChangeNotifier {
       deviceId: _deviceId,
       deviceName: 'SoundLink Mobile',
       platformName: _platformName(),
+      identityPubB64: _identityPubB64,
     );
     try {
       await _pairing!.connectAndStart(
@@ -121,11 +142,18 @@ class AppState extends ChangeNotifier {
           notifyListeners();
         },
       );
+      await refreshTrusted();
     } catch (e) {
       _lastError = '$e';
       _conn = LinkState.error;
       notifyListeners();
     }
+  }
+
+  /// 移除已信任接收端。
+  Future<void> removeTrusted(String deviceId) async {
+    await TrustStore.remove(deviceId);
+    await refreshTrusted();
   }
 
   /// 手动输入 IP 连接（兜底，无 mDNS 时）。

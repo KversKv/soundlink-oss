@@ -1,8 +1,11 @@
 // 设备发现页：扫描局域网桌面 Receiver，列表选择；支持手动输入 IP。
+// 已信任设备可直接快速重连（跳过配对码）。
 
 import 'package:flutter/material.dart';
 
 import '../../app.dart';
+import '../models/device.dart';
+import '../services/trust_store.dart';
 
 class DiscoveryPage extends StatelessWidget {
   final AppState app;
@@ -15,37 +18,29 @@ class DiscoveryPage extends StatelessWidget {
       body: ListenableBuilder(
         listenable: app,
         builder: (context, _) {
-          if (app.scanning && app.devices.isEmpty) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          return Column(
+          return ListView(
             children: [
               if (app.lastError != null)
                 _banner(app.lastError!, Colors.red.shade50),
-              if (app.devices.isEmpty)
+              if (app.trustedReceivers.isNotEmpty) ...[
+                const _SectionHeader('已信任设备（点击直接连接）'),
+                ...app.trustedReceivers.map((t) => _trustedTile(context, t)),
+                const Divider(),
+              ],
+              const _SectionHeader('发现的设备'),
+              if (app.scanning && app.devices.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.all(24),
+                  child: Center(child: CircularProgressIndicator()),
+                )
+              else if (app.devices.isEmpty)
                 const Padding(
                   padding: EdgeInsets.all(24),
                   child: Text('未发现设备，确认电脑端已开启接收模式，或手动输入 IP。',
                       textAlign: TextAlign.center),
-                ),
-              Expanded(
-                child: ListView.builder(
-                  itemCount: app.devices.length,
-                  itemBuilder: (_, i) {
-                    final d = app.devices[i];
-                    final selected = d == app.selectedDevice;
-                    return ListTile(
-                      leading: const Icon(Icons.speaker),
-                      title: Text(d.deviceName),
-                      subtitle: Text('${d.host}  ·  音频端口 ${d.audioPort}'),
-                      trailing: selected
-                          ? const Icon(Icons.check_circle, color: Colors.green)
-                          : null,
-                      onTap: () => app.selectDevice(d),
-                    );
-                  },
-                ),
-              ),
+                )
+              else
+                ...app.devices.map((d) => _deviceTile(d)),
               Padding(
                 padding: const EdgeInsets.all(12),
                 child: Row(
@@ -72,6 +67,48 @@ class DiscoveryPage extends StatelessWidget {
           );
         },
       ),
+    );
+  }
+
+  Widget _trustedTile(BuildContext context, TrustedReceiver t) {
+    return ListTile(
+      leading: const Icon(Icons.verified, color: Colors.green),
+      title: Text(t.deviceName),
+      subtitle: Text('${t.host}  ·  已信任'),
+      trailing: IconButton(
+        icon: const Icon(Icons.delete_outline, size: 20),
+        onPressed: () => app.removeTrusted(t.deviceId),
+      ),
+      onTap: () {
+        final device = DiscoveredDevice(
+          deviceId: t.deviceId,
+          deviceName: t.deviceName,
+          role: 'receiver',
+          protocolVersion: 1,
+          pairingRequired: true,
+          audioCodec: 'opus',
+          sampleRate: 48000,
+          controlPort: t.controlPort,
+          audioPort: t.audioPort,
+          host: t.host,
+        );
+        app.selectDevice(device);
+        // 已信任设备直接连接（无配对码）。
+        app.connectAndStart(pairingCode: null);
+      },
+    );
+  }
+
+  Widget _deviceTile(DiscoveredDevice d) {
+    final selected = d == app.selectedDevice;
+    return ListTile(
+      leading: const Icon(Icons.speaker),
+      title: Text(d.deviceName),
+      subtitle: Text('${d.host}  ·  音频端口 ${d.audioPort}'),
+      trailing: selected
+          ? const Icon(Icons.check_circle, color: Colors.green)
+          : null,
+      onTap: () => app.selectDevice(d),
     );
   }
 
@@ -110,5 +147,14 @@ class DiscoveryPage extends StatelessWidget {
         color: bg,
         padding: const EdgeInsets.all(8),
         child: Text(text, style: const TextStyle(fontSize: 13)),
+      );
+}
+
+class _SectionHeader extends StatelessWidget {
+  final String text;
+  const _SectionHeader(this.text);
+  @override
+  Widget build(BuildContext context) => ListTile(
+        title: Text(text, style: Theme.of(context).textTheme.titleSmall),
       );
 }

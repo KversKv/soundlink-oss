@@ -1,9 +1,28 @@
-//! 控制通道（TCP/WS）：配对/握手/心跳/统计。完整实现在阶段 3。
-//! 阶段 1：仅定义消息类型与错误码（供后续接入），不启动服务。
+//! 控制通道（TCP）：配对/握手/流控制/心跳。对齐 spec §3 §5 §6。
+//!
+//! 消息格式：每条 UTF-8 JSON + `\n`。所有消息含 `type`/`msg_id`/`ts`。
+//! 状态机（Receiver 视角）：IDLE → HANDSHAKING → PAIRED → RECEIVING → IDLE。
 
-pub use crate::constants::PROTOCOL_VERSION;
+use crate::constants::PROTOCOL_VERSION;
+use crate::device::device_identity::DeviceIdentity;
+use crate::pairing::{
+    derive_pairing_secret, derive_session_keys, diffie_hellman, receiver_proof,
+    verify_sender_proof, EphemeralKeyPair, PairingCodeManager, PairingCodeState, TrustStore,
+    TrustedDevice,
+};
+use crate::receiver::ReceiverEngine;
+use base64::{engine::general_purpose::STANDARD, Engine};
+use parking_lot::Mutex;
+use serde_json::{json, Value};
+use std::net::SocketAddr;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::net::{TcpListener, TcpStream};
+use tokio::task::JoinHandle;
 
-/// 控制消息类型字符串。
+/// 消息类型字符串。
 pub mod msg_type {
     pub const HELLO: &str = "hello";
     pub const HELLO_ACK: &str = "hello_ack";
@@ -31,4 +50,507 @@ pub enum ErrorCode {
     StreamRejected = 1007,
     DecryptFailed = 1008,
     Timeout = 1009,
+}
+
+impl ErrorCode {
+    pub fn as_i32(self) -> i32 {
+        self as i32
+    }
+}
+
+/// 当前配对会话（pair_response 成功后建立）。
+pub struct Session {
+    pub sender_device_id: String,
+    pub sender_identity_pub_b64: String,
+    pub sender_addr: SocketAddr,
+    pub audio_key: [u8; 32],
+    pub stream_id: u32,
+}
+
+/// 控制服务器共享状态。
+pub struct ControlState {
+    pub engine: Arc<ReceiverEngine>,
+    pub pairing: Arc<PairingCodeManager>,
+    pub identity: Arc<Mutex<DeviceIdentity>>,
+    pub trust: Arc<Mutex<TrustStore>>,
+    pub selected_device: Arc<Mutex<Option<usize>>>,
+    pub device_name: String,
+    pub audio_port: u16,
+    pub current_session: Mutex<Option<Session>>,
+    pub running: Arc<AtomicBool>,
+}
+
+/// 控制服务器。
+pub struct ControlServer {
+    pub state: Arc<ControlState>,
+    listener_task: Mutex<Option<JoinHandle<()>>>,
+}
+
+impl ControlServer {
+    pub fn new(
+        engine: Arc<ReceiverEngine>,
+        pairing: Arc<PairingCodeManager>,
+        identity: Arc<Mutex<DeviceIdentity>>,
+        trust: Arc<Mutex<TrustStore>>,
+        selected_device: Arc<Mutex<Option<usize>>>,
+        device_name: String,
+        audio_port: u16,
+    ) -> Self {
+        Self {
+            state: Arc::new(ControlState {
+                engine,
+                pairing,
+                identity,
+                trust,
+                selected_device,
+                device_name,
+                audio_port,
+                current_session: Mutex::new(None),
+                running: Arc::new(AtomicBool::new(false)),
+            }),
+            listener_task: Mutex::new(None),
+        }
+    }
+
+    pub async fn start(&self, bind_addr: &str) -> Result<(), String> {
+        if self.state.running.load(Ordering::SeqCst) {
+            return Err("控制服务器已在运行".into());
+        }
+        let listener = TcpListener::bind(bind_addr)
+            .await
+            .map_err(|e| format!("绑定控制端口 {} 失败：{}", bind_addr, e))?;
+        self.state.running.store(true, Ordering::SeqCst);
+        tracing::info!("控制服务器监听 {}", bind_addr);
+
+        let state = self.state.clone();
+        let handle = tokio::spawn(async move {
+            loop {
+                if !state.running.load(Ordering::SeqCst) {
+                    break;
+                }
+                match listener.accept().await {
+                    Ok((stream, addr)) => {
+                        let state = state.clone();
+                        tokio::spawn(async move {
+                            if let Err(e) = handle_connection(stream, addr, state).await {
+                                tracing::warn!("控制连接（{}）错误：{}", addr, e);
+                            }
+                        });
+                    }
+                    Err(e) => {
+                        if state.running.load(Ordering::SeqCst) {
+                            tracing::warn!("accept 错误：{}", e);
+                        }
+                        break;
+                    }
+                }
+            }
+        });
+        *self.listener_task.lock() = Some(handle);
+        Ok(())
+    }
+
+    pub fn stop(&self) {
+        self.state.running.store(false, Ordering::SeqCst);
+        if let Some(h) = self.listener_task.lock().take() {
+            h.abort();
+        }
+        self.state.engine.stop();
+        *self.state.current_session.lock() = None;
+    }
+
+    pub fn is_running(&self) -> bool {
+        self.state.running.load(Ordering::SeqCst)
+    }
+}
+
+/// 处理一条控制连接（直至断开）。
+async fn handle_connection(
+    stream: TcpStream,
+    addr: SocketAddr,
+    state: Arc<ControlState>,
+) -> Result<(), String> {
+    let (reader, mut writer) = stream.into_split();
+    let mut reader = BufReader::new(reader);
+    let mut line = String::new();
+    let mut last_hello_device: Option<String> = None;
+
+    loop {
+        line.clear();
+        let n = reader
+            .read_line(&mut line)
+            .await
+            .map_err(|e| format!("读控制消息失败：{}", e))?;
+        if n == 0 {
+            break; // 对端关闭
+        }
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let msg: Value = match serde_json::from_str(trimmed) {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::warn!("JSON 解析失败：{}", e);
+                continue;
+            }
+        };
+        let msg_type = msg.get("type").and_then(|v| v.as_str()).unwrap_or("");
+
+        let response: Option<Value> = match msg_type {
+            msg_type::HELLO => {
+                last_hello_device = msg
+                    .get("device_id")
+                    .and_then(|v| v.as_str())
+                    .map(String::from);
+                Some(handle_hello(&msg, &state))
+            }
+            msg_type::PAIR_REQUEST => Some(handle_pair_request(&msg, &state, addr).await),
+            msg_type::STREAM_START => Some(handle_stream_start(&msg, &state).await),
+            msg_type::STREAM_STOP => {
+                handle_stream_stop(&msg, &state);
+                None
+            }
+            msg_type::HEARTBEAT => {
+                tracing::debug!("heartbeat from {}", addr);
+                None
+            }
+            msg_type::STATS => {
+                tracing::debug!("stats from {}: {}", addr, msg);
+                None
+            }
+            _ => Some(error_msg(
+                &msg,
+                ErrorCode::Internal,
+                &format!("未知消息类型：{}", msg_type),
+            )),
+        };
+
+        if let Some(resp) = response {
+            let frame = format!(
+                "{}\n",
+                serde_json::to_string(&resp).map_err(|e| e.to_string())?
+            );
+            writer
+                .write_all(frame.as_bytes())
+                .await
+                .map_err(|e| format!("写控制消息失败：{}", e))?;
+        }
+    }
+
+    // 连接断开后清理会话（但不停止已信任关系）。
+    let _ = last_hello_device;
+    Ok(())
+}
+
+/// hello → hello_ack。
+fn handle_hello(msg: &Value, state: &ControlState) -> Value {
+    let protocol_version = msg
+        .get("protocol_version")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0) as u8;
+    if protocol_version != PROTOCOL_VERSION {
+        return error_msg(msg, ErrorCode::VersionMismatch, "协议版本不兼容");
+    }
+    let sender_device_id = msg
+        .get("device_id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let trusted = state.trust.lock().is_trusted(&sender_device_id);
+    let identity = state.identity.lock();
+    json!({
+        "type": msg_type::HELLO_ACK,
+        "msg_id": new_msg_id("s"),
+        "ts": now_ms(),
+        "protocol_version": PROTOCOL_VERSION,
+        "device_id": identity.device_id,
+        "device_name": state.device_name,
+        "pairing_required": true,
+        "trusted": trusted,
+    })
+}
+
+/// pair_request → pair_response。
+///
+/// - 已信任设备：校验 identity_pub 匹配 → X25519 协商会话密钥（跳过配对码）。
+/// - 未信任：校验配对码 proof → X25519 + 保存信任。
+async fn handle_pair_request(msg: &Value, state: &ControlState, addr: SocketAddr) -> Value {
+    let sender_device_id = msg
+        .get("device_id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let sender_pub_b64 = msg.get("sender_pub").and_then(|v| v.as_str()).unwrap_or("");
+    let sender_identity_pub_b64 = msg
+        .get("sender_identity_pub")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let proof_b64 = msg.get("proof").and_then(|v| v.as_str()).unwrap_or("");
+
+    // 解析 sender_pub（X25519, 32B）。
+    let sender_pub = match decode_x25519_pub(sender_pub_b64) {
+        Some(k) => k,
+        None => {
+            return pair_error(msg, ErrorCode::PairingFailed, "无效的 sender_pub");
+        }
+    };
+
+    let identity = state.identity.lock();
+    let receiver_device_id = identity.device_id.clone();
+    let receiver_identity_pub_b64 = identity.identity_pub_b64();
+    drop(identity);
+
+    let recv_kp = EphemeralKeyPair::generate();
+
+    // 是否已信任？
+    let trusted_match = {
+        let trust = state.trust.lock();
+        trust
+            .get(&sender_device_id)
+            .map(|td| td.identity_pub_b64 == sender_identity_pub_b64)
+            .unwrap_or(false)
+    };
+
+    // 同时产出会话密钥与 receiver 回证用的 pairing_secret。
+    let (session_keys, proof_secret) = if trusted_match {
+        // 已信任：跳过配对码，直接 X25519（pairing_secret 用全 0 占位）。
+        let shared = diffie_hellman(recv_kp.secret, &sender_pub);
+        let pairing_secret = [0u8; 32];
+        let keys = derive_session_keys(&shared, &pairing_secret);
+        (keys, pairing_secret)
+    } else {
+        // 未信任：校验配对码 proof。
+        let pairing_code = match state.pairing.current() {
+            Some(c) => c,
+            None => {
+                return pair_error(msg, ErrorCode::PairingExpired, "无有效配对码");
+            }
+        };
+        let pairing_secret = derive_pairing_secret(&pairing_code, &receiver_device_id);
+
+        let proof_bytes = match decode_32b(proof_b64) {
+            Some(b) => b,
+            None => {
+                return pair_error(msg, ErrorCode::PairingFailed, "无效的 proof");
+            }
+        };
+
+        if !verify_sender_proof(
+            &pairing_secret,
+            &sender_pub,
+            &receiver_device_id,
+            &proof_bytes,
+        ) {
+            // 校验失败：递增尝试计数。
+            match state.pairing.verify("__wrong__") {
+                PairingCodeState::Locked => {
+                    return pair_error(msg, ErrorCode::PairingLocked, "尝试次数超限");
+                }
+                PairingCodeState::Expired => {
+                    return pair_error(msg, ErrorCode::PairingExpired, "配对码过期");
+                }
+                _ => {
+                    return pair_error(msg, ErrorCode::PairingFailed, "配对码错误或证明校验失败");
+                }
+            }
+        }
+
+        // proof 校验通过：消费配对码。
+        let _ = state.pairing.verify(&pairing_code);
+
+        let shared = diffie_hellman(recv_kp.secret, &sender_pub);
+        let keys = derive_session_keys(&shared, &pairing_secret);
+
+        // 保存信任关系。
+        let trusted_device = TrustedDevice {
+            device_id: sender_device_id.clone(),
+            identity_pub_b64: sender_identity_pub_b64.clone(),
+            name: msg
+                .get("device_name")
+                .and_then(|v| v.as_str())
+                .map(String::from),
+            last_seen: now_secs(),
+        };
+        if let Err(e) = state.trust.lock().add(trusted_device) {
+            tracing::warn!("保存信任失败：{}", e);
+        }
+        (keys, pairing_secret)
+    };
+
+    // 计算 receiver 回证（已信任路径也可发送，sender 可选择校验）。
+    let rp = receiver_proof(
+        &proof_secret,
+        &recv_kp.public,
+        &sender_pub,
+        &receiver_device_id,
+    );
+
+    // 保存会话。
+    *state.current_session.lock() = Some(Session {
+        sender_device_id: sender_device_id.clone(),
+        sender_identity_pub_b64: sender_identity_pub_b64.clone(),
+        sender_addr: addr,
+        audio_key: session_keys.audio_key,
+        stream_id: 0,
+    });
+
+    json!({
+        "type": msg_type::PAIR_RESPONSE,
+        "msg_id": new_msg_id("s"),
+        "ts": now_ms(),
+        "result": "ok",
+        "receiver_pub": STANDARD.encode(recv_kp.public.as_bytes()),
+        "receiver_identity_pub": receiver_identity_pub_b64,
+        "proof": STANDARD.encode(rp),
+    })
+}
+
+/// stream_start → stream_start_ack（启动 UDP 接收）。
+async fn handle_stream_start(msg: &Value, state: &ControlState) -> Value {
+    let stream_id = msg.get("stream_id").and_then(|v| v.as_u64()).unwrap_or(1) as u32;
+    let audio_port = msg
+        .get("audio_port")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(state.audio_port as u64) as u16;
+
+    let audio_key = {
+        let session = state.current_session.lock();
+        match session.as_ref() {
+            Some(s) => s.audio_key,
+            None => {
+                return error_msg(msg, ErrorCode::NotTrusted, "未配对，无法启动流");
+            }
+        }
+    };
+
+    // 更新 session 的 stream_id。
+    if let Some(s) = state.current_session.lock().as_mut() {
+        s.stream_id = stream_id;
+    }
+
+    // 若引擎已运行，先停止。
+    if state.engine.is_running() {
+        state.engine.stop();
+    }
+
+    let bind = format!("0.0.0.0:{}", audio_port);
+    let device_index = *state.selected_device.lock();
+    if let Err(e) = state
+        .engine
+        .start(audio_key, stream_id, &bind, device_index)
+        .await
+    {
+        return error_msg(msg, ErrorCode::Internal, &format!("启动接收器失败：{}", e));
+    }
+
+    json!({
+        "type": msg_type::STREAM_START_ACK,
+        "msg_id": new_msg_id("s"),
+        "ts": now_ms(),
+        "stream_id": stream_id,
+        "result": "ok",
+        "receiver_audio_port": audio_port,
+    })
+}
+
+/// stream_stop：停止 UDP 接收（保留控制连接与信任）。
+fn handle_stream_stop(_msg: &Value, state: &ControlState) {
+    state.engine.stop();
+    if let Some(s) = state.current_session.lock().as_mut() {
+        s.stream_id = 0;
+    }
+}
+
+// --- 工具函数 ---
+
+fn error_msg(req: &Value, code: ErrorCode, message: &str) -> Value {
+    json!({
+        "type": msg_type::ERROR,
+        "msg_id": new_msg_id("s"),
+        "ts": now_ms(),
+        "reply_to": req.get("msg_id").and_then(|v| v.as_str()).unwrap_or(""),
+        "error": { "code": code.as_i32(), "message": message },
+    })
+}
+
+fn pair_error(_req: &Value, code: ErrorCode, message: &str) -> Value {
+    json!({
+        "type": msg_type::PAIR_RESPONSE,
+        "msg_id": new_msg_id("s"),
+        "ts": now_ms(),
+        "result": "error",
+        "error": { "code": code.as_i32(), "message": message },
+    })
+}
+
+fn decode_x25519_pub(b64: &str) -> Option<x25519_dalek::PublicKey> {
+    let bytes = STANDARD.decode(b64).ok()?;
+    if bytes.len() != 32 {
+        return None;
+    }
+    let mut arr = [0u8; 32];
+    arr.copy_from_slice(&bytes);
+    Some(x25519_dalek::PublicKey::from(arr))
+}
+
+fn decode_32b(b64: &str) -> Option<[u8; 32]> {
+    let bytes = STANDARD.decode(b64).ok()?;
+    if bytes.len() != 32 {
+        return None;
+    }
+    let mut arr = [0u8; 32];
+    arr.copy_from_slice(&bytes);
+    Some(arr)
+}
+
+fn now_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
+}
+
+fn now_secs() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+}
+
+fn new_msg_id(prefix: &str) -> String {
+    use std::sync::atomic::{AtomicU64, Ordering as AOrd};
+    static COUNTER: AtomicU64 = AtomicU64::new(1);
+    let n = COUNTER.fetch_add(1, AOrd::SeqCst);
+    format!("{}-{}", prefix, n)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn error_code_values() {
+        assert_eq!(ErrorCode::PairingFailed.as_i32(), 1002);
+        assert_eq!(ErrorCode::Timeout.as_i32(), 1009);
+    }
+
+    #[test]
+    fn decode_pub_invalid() {
+        assert!(decode_x25519_pub("short").is_none());
+        assert!(decode_x25519_pub(&STANDARD.encode([0u8; 16])).is_none());
+        // 有效 32B base64。
+        let valid = STANDARD.encode([0u8; 32]);
+        assert!(decode_x25519_pub(&valid).is_some());
+    }
+
+    #[test]
+    fn pair_error_json_format() {
+        let req = json!({"type": "pair_request", "msg_id": "c-1"});
+        let resp = pair_error(&req, ErrorCode::PairingFailed, "bad code");
+        assert_eq!(resp["type"], "pair_response");
+        assert_eq!(resp["result"], "error");
+        assert_eq!(resp["error"]["code"], 1002);
+    }
 }

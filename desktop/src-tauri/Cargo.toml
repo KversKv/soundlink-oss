@@ -39,6 +39,8 @@ sha2 = "0.10"
 subtle = "2"
 cpal = "0.15"
 base64 = "0.22"
+# mDNS 服务发现（阶段 3）：广播 _soundlink._udp.local.
+mdns-sd = "0.11"
 libopus_sys = { version = "0.3", optional = true }
 tauri = { version = "2", optional = true, features = [] }
 tauri-plugin-opener = { version = "2", optional = true }
@@ -52,6 +54,10 @@ tauri-build = { version = "2", optional = true , features = [] }
 [[example]]
 name = "loopback_sender"
 path = "examples/loopback_sender.rs"
+
+[[example]]
+name = "control_loopback"
+path = "examples/control_loopback.rs"
 
 [profile.release]
 opt-level = 3

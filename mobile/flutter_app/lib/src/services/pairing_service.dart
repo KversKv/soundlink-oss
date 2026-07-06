@@ -16,6 +16,7 @@ import '../models/device.dart';
 import '../protocol/control_message.dart';
 import 'control_client.dart';
 import 'platform_service.dart';
+import 'trust_store.dart';
 
 class PairingService {
   final ControlClient control;
@@ -23,6 +24,7 @@ class PairingService {
   final String deviceId;
   final String deviceName;
   final String platformName; // "ios" / "android"
+  final String identityPubB64; // 本机 Ed25519 公钥（base64）
 
   SessionKeys? _keys;
   final int _streamId = defaultStreamId;
@@ -34,6 +36,7 @@ class PairingService {
     required this.deviceId,
     required this.deviceName,
     required this.platformName,
+    required this.identityPubB64,
   });
 
   SessionKeys? get sessionKeys => _keys;
@@ -92,7 +95,7 @@ class PairingService {
         ts: nowMs(),
         deviceId: deviceId,
         senderPub: base64Encode(handshake.keyPair.publicKey),
-        senderIdentityPub: '', // 第一版可空，后续 Ed25519
+        senderIdentityPub: identityPubB64,
         proof: base64Encode(proof),
       ));
 
@@ -102,6 +105,8 @@ class PairingService {
         throw StateError('配对失败：${pairResp['error']}');
       }
       final receiverPub = base64Decode(pairResp['receiver_pub'] as String);
+      final receiverIdentityPubB64 =
+          pairResp['receiver_identity_pub'] as String? ?? '';
       final receiverProofB64 = pairResp['proof'] as String?;
       if (receiverProofB64 != null) {
         final ok = verifyReceiverProof(
@@ -117,19 +122,29 @@ class PairingService {
         }
       }
       _keys = await handshake.complete(receiverPub);
+
+      // 保存信任关系（移动端信任接收端）。
+      await TrustStore.add(TrustedReceiver(
+        deviceId: receiverDeviceId,
+        identityPubB64: receiverIdentityPubB64,
+        deviceName: (helloAck['device_name'] as String?) ?? device.deviceName,
+        host: device.host,
+        controlPort: device.controlPort,
+        audioPort: device.audioPort,
+        lastSeen: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      ));
       onState(LinkState.paired);
     } else {
-      // 已信任：仍需 X25519 协商会话密钥（第一版简化：复用配对码路径或单独协商）。
-      // 这里假定 receiver 在 trusted 时返回 receiver_pub 并跳过 proof。
+      // 已信任：跳过配对码，直接 X25519 协商（pairing_secret 用全 0 占位）。
       onState(LinkState.pairing);
       final handshake =
-          await SenderHandshake.begin('00000000', receiverDeviceId); // 占位
+          await SenderHandshake.beginTrusted(receiverDeviceId);
       control.send(PairRequestMsg(
         msgId: newMsgId('c'),
         ts: nowMs(),
         deviceId: deviceId,
         senderPub: base64Encode(handshake.keyPair.publicKey),
-        senderIdentityPub: '',
+        senderIdentityPub: identityPubB64,
         proof: '',
       ));
       final pairResp = await control.waitFor((m) => m['type'] == 'pair_response');
