@@ -3,7 +3,11 @@
 //! 消息格式：每条 UTF-8 JSON + `\n`。所有消息含 `type`/`msg_id`/`ts`。
 //! 状态机（Receiver 视角）：IDLE → HANDSHAKING → PAIRED → RECEIVING → IDLE。
 
-use crate::constants::{HEARTBEAT_TIMEOUT_SECS, PROTOCOL_VERSION};
+use crate::audio::jitter_buffer::JitterMode;
+use crate::config::{AppConfig, AudioParams};
+use crate::constants::{
+    FRAME_DURATION_MS, HEARTBEAT_TIMEOUT_SECS, OPUS_BITRATE, PROTOCOL_VERSION, SAMPLE_RATE,
+};
 use crate::device::device_identity::DeviceIdentity;
 use crate::pairing::{
     derive_pairing_secret, derive_session_keys, diffie_hellman, receiver_proof,
@@ -79,6 +83,8 @@ pub struct ControlState {
     pub selected_device: Arc<Mutex<Option<usize>>>,
     pub device_name: String,
     pub audio_port: u16,
+    pub config: Option<Arc<Mutex<AppConfig>>>,
+    pub config_dir: Option<std::path::PathBuf>,
     pub current_session: Mutex<Option<Session>>,
     pub running: Arc<AtomicBool>,
     pub stop_notify: Arc<Notify>,
@@ -100,6 +106,31 @@ impl ControlServer {
         device_name: String,
         audio_port: u16,
     ) -> Self {
+        Self::with_config(
+            engine,
+            pairing,
+            identity,
+            trust,
+            selected_device,
+            device_name,
+            audio_port,
+            None,
+            None,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn with_config(
+        engine: Arc<ReceiverEngine>,
+        pairing: Arc<PairingCodeManager>,
+        identity: Arc<Mutex<DeviceIdentity>>,
+        trust: Arc<Mutex<TrustStore>>,
+        selected_device: Arc<Mutex<Option<usize>>>,
+        device_name: String,
+        audio_port: u16,
+        config: Option<Arc<Mutex<AppConfig>>>,
+        config_dir: Option<std::path::PathBuf>,
+    ) -> Self {
         Self {
             state: Arc::new(ControlState {
                 engine,
@@ -109,6 +140,8 @@ impl ControlServer {
                 selected_device,
                 device_name,
                 audio_port,
+                config,
+                config_dir,
                 current_session: Mutex::new(None),
                 running: Arc::new(AtomicBool::new(false)),
                 stop_notify: Arc::new(Notify::new()),
@@ -271,7 +304,7 @@ async fn handle_connection(
                 // 阶段 4：回传 receiver stats（spec §3.8）。
                 Some(handle_stats(&msg, &state))
             }
-            msg_type::CONTROL_ACTION => Some(handle_control_action(&msg)),
+            msg_type::CONTROL_ACTION => Some(handle_control_action(&msg, &state)),
             _ => Some(error_msg(
                 &msg,
                 ErrorCode::Internal,
@@ -564,20 +597,131 @@ fn handle_stats(msg: &Value, state: &ControlState) -> Value {
     })
 }
 
-fn handle_control_action(msg: &Value) -> Value {
+fn handle_control_action(msg: &Value, state: &ControlState) -> Value {
     let action = msg.get("action").and_then(|v| v.as_str()).unwrap_or("");
-    let supported = matches!(
-        action,
-        "media.play_pause" | "media.previous" | "media.next" | "shortcut.set" | "shortcut.trigger"
-    );
+    match action {
+        "audio.params.update" => handle_audio_params_update(msg, state),
+        "media.play_pause"
+        | "media.previous"
+        | "media.next"
+        | "shortcut.set"
+        | "shortcut.trigger"
+        | "audio.params.probe_request"
+        | "audio.params.probe_result" => control_action_ack(msg, action, "accepted", Value::Null),
+        _ => control_action_ack(
+            msg,
+            action,
+            "unsupported",
+            json!({ "code": ErrorCode::Internal.as_i32(), "message": format!("不支持的控制动作：{}", action) }),
+        ),
+    }
+}
+
+fn handle_audio_params_update(msg: &Value, state: &ControlState) -> Value {
+    let Some(payload) = msg.get("payload") else {
+        return control_action_ack(
+            msg,
+            "audio.params.update",
+            "rejected",
+            json!({ "code": ErrorCode::StreamRejected.as_i32(), "message": "缺少音频参数 payload" }),
+        );
+    };
+    let params = audio_params_from_payload(payload).normalized();
+    if let Some(mode) = parse_jitter_mode(&params.jitter_mode) {
+        state.engine.set_jitter_mode(mode);
+    }
+    if let (Some(config), Some(dir)) = (&state.config, &state.config_dir) {
+        let mut cfg = config.lock();
+        cfg.jitter_mode = params.jitter_mode.clone();
+        cfg.audio_params = params.clone();
+        if let Err(e) = cfg.save(dir) {
+            tracing::warn!("保存音频参数失败：{}", e);
+        }
+    }
+    let restart_required = params.sample_rate != SAMPLE_RATE
+        || params.channels != 2
+        || params.frame_duration_ms != FRAME_DURATION_MS;
+    let message = if restart_required {
+        "已保存音频参数并切换 Jitter；采样率/声道/帧长需下次开始流时生效"
+    } else {
+        "已保存音频参数并切换 Jitter；码率由发送端在后续编码中应用"
+    };
+    control_action_ack(
+        msg,
+        "audio.params.update",
+        "accepted",
+        json!({
+            "code": ErrorCode::Ok.as_i32(),
+            "message": message,
+            "restart_required": restart_required,
+            "applied": {
+                "jitter_mode": params.jitter_mode,
+                "bitrate": params.bitrate
+            }
+        }),
+    )
+}
+
+fn audio_params_from_payload(payload: &Value) -> AudioParams {
+    let sample_rate = payload
+        .get("sample_rate")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(SAMPLE_RATE as u64) as u32;
+    let channels = payload
+        .get("channels")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(2) as u8;
+    let frame_duration_ms = payload
+        .get("frame_duration_ms")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(FRAME_DURATION_MS as u64) as u8;
+    let bitrate = payload
+        .get("bitrate")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(OPUS_BITRATE as u64) as u32;
+    let jitter_mode = payload
+        .get("jitter_mode")
+        .and_then(|v| v.as_str())
+        .map(String::from)
+        .or_else(|| jitter_mode_from_ms(payload.get("jitter_ms").and_then(|v| v.as_u64())))
+        .unwrap_or_else(|| "balanced".into());
+    AudioParams {
+        sample_rate,
+        channels,
+        frame_duration_ms,
+        bitrate,
+        jitter_mode,
+    }
+}
+
+fn jitter_mode_from_ms(ms: Option<u64>) -> Option<String> {
+    match ms {
+        Some(40) => Some("low".into()),
+        Some(80) => Some("balanced".into()),
+        Some(150) => Some("stable".into()),
+        _ => None,
+    }
+}
+
+fn parse_jitter_mode(mode: &str) -> Option<JitterMode> {
+    match mode {
+        "low" => Some(JitterMode::Low),
+        "balanced" => Some(JitterMode::Balanced),
+        "stable" => Some(JitterMode::Stable),
+        "auto" => Some(JitterMode::Auto),
+        _ => None,
+    }
+}
+
+fn control_action_ack(msg: &Value, action: &str, result: &str, error: Value) -> Value {
     json!({
         "type": msg_type::CONTROL_ACTION_ACK,
         "msg_id": new_msg_id("s"),
         "ts": now_ms(),
         "reply_to": msg.get("msg_id").and_then(|v| v.as_str()).unwrap_or(""),
         "action": action,
-        "result": if supported { "accepted" } else { "unsupported" },
-        "error": if supported { Value::Null } else { json!({ "code": ErrorCode::Internal.as_i32(), "message": format!("不支持的控制动作：{}", action) }) },
+        "result": result,
+        "error": error,
     })
 }
 

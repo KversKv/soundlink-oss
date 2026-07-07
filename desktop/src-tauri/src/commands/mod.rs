@@ -16,6 +16,7 @@
 use crate::audio::capture::{self, CaptureSource};
 use crate::audio::jitter_buffer::JitterMode;
 use crate::audio::output::OutputDeviceInfo;
+use crate::config::{AppConfig, AudioParams};
 use crate::constants::{DEFAULT_AUDIO_PORT, DEFAULT_CONTROL_PORT};
 use crate::device::device_identity::DeviceIdentity;
 use crate::network::control_server::ControlServer;
@@ -54,6 +55,8 @@ pub struct AppState {
     pub mdns: Mutex<Option<MdnsBroadcaster>>,
     pub device_name: Mutex<String>,
     pub role: Mutex<Role>,
+    pub config: Arc<Mutex<AppConfig>>,
+    pub config_dir: PathBuf,
     /// 调试：是否开启音频 RAW Data 转储（来自 main.rs 的 DUMP_ENABLE）。
     pub dump_enable: bool,
 }
@@ -77,17 +80,31 @@ impl AppState {
             tracing::warn!("信任存储加载失败：{}；用内存存储。", e);
             TrustStore::in_memory()
         });
+        let config = AppConfig::load_or_default(&dir);
+        let pairing = Arc::new(PairingCodeManager::with_debug(debug));
+        if config.pairing_code_mode == "fixed" {
+            if let Err(e) = pairing.set_fixed_code(config.fixed_pairing_code.clone()) {
+                tracing::warn!("固定配对码配置无效：{}", e);
+            }
+        }
+        let jitter_mode = parse_jitter_mode(&config.jitter_mode).unwrap_or(JitterMode::Balanced);
+        let engine = Arc::new(ReceiverEngine::with_dump(dump_enable));
+        engine.set_jitter_mode(jitter_mode);
+        engine.set_volume(config.volume);
+        let role = parse_role(&config.role).unwrap_or_default();
         Self {
-            engine: Arc::new(ReceiverEngine::with_dump(dump_enable)),
+            engine,
             sender: Arc::new(SenderEngine::with_dump(dump_enable)),
-            pairing: Arc::new(PairingCodeManager::with_debug(debug)),
+            pairing,
             identity: Arc::new(Mutex::new(identity)),
             trust: Arc::new(Mutex::new(trust)),
-            selected_device: Arc::new(Mutex::new(None)),
+            selected_device: Arc::new(Mutex::new(config.default_output_device)),
             control: Mutex::new(None),
             mdns: Mutex::new(None),
-            device_name: Mutex::new("SoundLink Receiver".to_string()),
-            role: Mutex::new(Role::default()),
+            device_name: Mutex::new(config.device_name.clone()),
+            role: Mutex::new(role),
+            config: Arc::new(Mutex::new(config)),
+            config_dir: dir,
             dump_enable,
         }
     }
@@ -99,12 +116,60 @@ fn config_dir() -> PathBuf {
     p
 }
 
+fn parse_role(role: &str) -> Option<Role> {
+    match role {
+        "receiver" => Some(Role::Receiver),
+        "sender" => Some(Role::Sender),
+        _ => None,
+    }
+}
+
+fn role_as_str(role: Role) -> &'static str {
+    match role {
+        Role::Receiver => "receiver",
+        Role::Sender => "sender",
+    }
+}
+
+fn parse_jitter_mode(mode: &str) -> Option<JitterMode> {
+    match mode {
+        "low" => Some(JitterMode::Low),
+        "balanced" => Some(JitterMode::Balanced),
+        "stable" => Some(JitterMode::Stable),
+        "auto" => Some(JitterMode::Auto),
+        _ => None,
+    }
+}
+
+fn save_config(state: &AppState) -> Result<(), String> {
+    state.config.lock().save(&state.config_dir)
+}
+
 #[derive(Debug, Serialize)]
 pub struct StartResult {
     pub pairing_code: String,
     pub control_port: u16,
     pub audio_port: u16,
     pub device_id: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PairingSettings {
+    pub mode: String,
+    pub fixed_code: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DesktopSettings {
+    pub device_name: String,
+    pub role: String,
+    pub selected_device: Option<usize>,
+    pub jitter_mode: String,
+    pub volume: f32,
+    pub pairing: PairingSettings,
+    pub audio_params: AudioParams,
+    pub last_receiver_addr: String,
+    pub selected_capture_source: String,
 }
 
 /// 启动接收器：生成配对码、启动 mDNS 广播 + 控制服务器。
@@ -132,7 +197,7 @@ pub async fn start_receiver(state: State<'_, AppState>) -> Result<StartResult, S
 
     // 启动控制服务器。
     {
-        let control = ControlServer::new(
+        let control = ControlServer::with_config(
             s.engine.clone(),
             s.pairing.clone(),
             s.identity.clone(),
@@ -140,6 +205,8 @@ pub async fn start_receiver(state: State<'_, AppState>) -> Result<StartResult, S
             s.selected_device.clone(),
             s.device_name.lock().clone(),
             DEFAULT_AUDIO_PORT,
+            Some(s.config.clone()),
+            Some(s.config_dir.clone()),
         );
         let bind = format!("0.0.0.0:{}", DEFAULT_CONTROL_PORT);
         control.start(&bind).await?;
@@ -174,6 +241,68 @@ pub fn get_pairing_code(state: State<'_, AppState>) -> Result<String, String> {
     Ok(state.inner().pairing.issue())
 }
 
+#[tauri::command]
+pub fn get_desktop_settings(state: State<'_, AppState>) -> Result<DesktopSettings, String> {
+    let s = state.inner();
+    let cfg = s.config.lock().clone();
+    Ok(DesktopSettings {
+        device_name: s.device_name.lock().clone(),
+        role: role_as_str(*s.role.lock()).into(),
+        selected_device: *s.selected_device.lock(),
+        jitter_mode: s.engine.jitter_mode().as_str().into(),
+        volume: s.engine.volume(),
+        pairing: PairingSettings {
+            mode: cfg.pairing_code_mode,
+            fixed_code: s.pairing.fixed_code().unwrap_or_default(),
+        },
+        audio_params: cfg.audio_params,
+        last_receiver_addr: cfg.last_receiver_addr,
+        selected_capture_source: cfg.selected_capture_source,
+    })
+}
+
+#[tauri::command]
+pub fn set_pairing_settings(
+    state: State<'_, AppState>,
+    mode: String,
+    fixed_code: Option<String>,
+) -> Result<PairingSettings, String> {
+    let s = state.inner();
+    match mode.as_str() {
+        "random" => {
+            s.pairing.set_fixed_code(None)?;
+            {
+                let mut cfg = s.config.lock();
+                cfg.pairing_code_mode = "random".into();
+                cfg.fixed_pairing_code = None;
+            }
+            save_config(s)?;
+            Ok(PairingSettings {
+                mode: "random".into(),
+                fixed_code: String::new(),
+            })
+        }
+        "fixed" => {
+            let code = fixed_code.unwrap_or_default();
+            s.pairing.set_fixed_code(Some(code.clone()))?;
+            {
+                let mut cfg = s.config.lock();
+                cfg.pairing_code_mode = "fixed".into();
+                cfg.fixed_pairing_code = Some(code.clone());
+            }
+            save_config(s)?;
+            if s.pairing.current().is_some() {
+                s.pairing.issue();
+            }
+            Ok(PairingSettings {
+                mode: "fixed".into(),
+                fixed_code: code,
+            })
+        }
+        other => Err(format!("未知配对码模式：{}", other)),
+    }
+}
+
 /// 列举输出设备。
 #[tauri::command]
 pub fn list_output_devices(_state: State<'_, AppState>) -> Result<Vec<OutputDeviceInfo>, String> {
@@ -183,8 +312,11 @@ pub fn list_output_devices(_state: State<'_, AppState>) -> Result<Vec<OutputDevi
 /// 选择输出设备（索引，对应 list_output_devices 的顺序）。
 #[tauri::command]
 pub fn select_output_device(state: State<'_, AppState>, index: usize) -> Result<(), String> {
-    *state.inner().selected_device.lock() = Some(index);
-    if state.inner().engine.is_running() {
+    let s = state.inner();
+    *s.selected_device.lock() = Some(index);
+    s.config.lock().default_output_device = Some(index);
+    save_config(s)?;
+    if s.engine.is_running() {
         tracing::info!("输出设备切换：{}（下个流生效）", index);
     }
     Ok(())
@@ -219,22 +351,25 @@ pub fn remove_trusted_device(
 /// 设置设备显示名（用于 mDNS 广播）。
 #[tauri::command]
 pub fn set_device_name(state: State<'_, AppState>, name: String) -> Result<(), String> {
-    *state.inner().device_name.lock() = name;
-    Ok(())
+    let s = state.inner();
+    *s.device_name.lock() = name.clone();
+    s.config.lock().device_name = name;
+    save_config(s)
 }
 
 /// 切换 Jitter 模式（阶段 4）。
 /// mode: "low" | "balanced" | "stable" | "auto"
 #[tauri::command]
 pub fn set_jitter_mode(state: State<'_, AppState>, mode: String) -> Result<String, String> {
-    let m = match mode.as_str() {
-        "low" => JitterMode::Low,
-        "balanced" => JitterMode::Balanced,
-        "stable" => JitterMode::Stable,
-        "auto" => JitterMode::Auto,
-        other => return Err(format!("未知 jitter 模式：{}", other)),
-    };
-    state.inner().engine.set_jitter_mode(m);
+    let m = parse_jitter_mode(&mode).ok_or_else(|| format!("未知 jitter 模式：{}", mode))?;
+    let s = state.inner();
+    s.engine.set_jitter_mode(m);
+    {
+        let mut cfg = s.config.lock();
+        cfg.jitter_mode = m.as_str().into();
+        cfg.audio_params.jitter_mode = m.as_str().into();
+    }
+    save_config(s)?;
     Ok(m.as_str().to_string())
 }
 
@@ -247,8 +382,75 @@ pub fn get_jitter_mode(state: State<'_, AppState>) -> Result<String, String> {
 /// 设置输出音量（阶段 4+）。`volume ∈ [0.0, 1.0]`。
 #[tauri::command]
 pub fn set_volume(state: State<'_, AppState>, volume: f32) -> Result<f32, String> {
-    state.inner().engine.set_volume(volume);
-    Ok(state.inner().engine.volume())
+    let s = state.inner();
+    s.engine.set_volume(volume);
+    let v = s.engine.volume();
+    s.config.lock().volume = v;
+    save_config(s)?;
+    Ok(v)
+}
+
+#[tauri::command]
+pub fn get_audio_params(state: State<'_, AppState>) -> Result<AudioParams, String> {
+    Ok(state.inner().config.lock().audio_params.clone())
+}
+
+#[tauri::command]
+pub fn set_audio_params(
+    state: State<'_, AppState>,
+    params: AudioParams,
+) -> Result<AudioParams, String> {
+    let s = state.inner();
+    let params = params.normalized();
+    if let Some(mode) = parse_jitter_mode(&params.jitter_mode) {
+        s.engine.set_jitter_mode(mode);
+    }
+    {
+        let mut cfg = s.config.lock();
+        cfg.jitter_mode = params.jitter_mode.clone();
+        cfg.audio_params = params.clone();
+    }
+    save_config(s)?;
+    Ok(params)
+}
+
+#[tauri::command]
+pub fn auto_detect_audio_params(state: State<'_, AppState>) -> Result<AudioParams, String> {
+    let s = state.inner();
+    let receiver = s.engine.status();
+    let sender = s.sender.status();
+    let mut params = s.config.lock().audio_params.clone().normalized();
+    let loss_rate = receiver.loss_rate;
+    let jitter_ms = receiver.jitter_ms;
+    let recommended = if receiver.recommended_bitrate > 0 {
+        receiver.recommended_bitrate
+    } else {
+        sender.recommended_bitrate
+    };
+    params.bitrate = if recommended > 0 {
+        nearest_bitrate(recommended)
+    } else if loss_rate >= 0.05 || jitter_ms >= 35 {
+        96_000
+    } else if loss_rate <= 0.01 && jitter_ms <= 12 {
+        160_000
+    } else {
+        128_000
+    };
+    params.jitter_mode = if loss_rate >= 0.05 || jitter_ms >= 35 {
+        "stable".into()
+    } else if loss_rate <= 0.01 && jitter_ms <= 12 {
+        "low".into()
+    } else {
+        "balanced".into()
+    };
+    set_audio_params(state, params)
+}
+
+fn nearest_bitrate(value: u32) -> u32 {
+    [64_000u32, 96_000, 128_000, 160_000, 192_000]
+        .into_iter()
+        .min_by_key(|candidate| (*candidate).abs_diff(value))
+        .unwrap_or(128_000)
 }
 
 /// 获取当前输出音量 `∈ [0.0, 1.0]`。
@@ -335,6 +537,13 @@ pub async fn start_sender(
             id.signing_key.clone(),
         )
     };
+    let audio_params = s.config.lock().audio_params.clone().normalized();
+    {
+        let mut cfg = s.config.lock();
+        cfg.last_receiver_addr = receiver_addr.clone();
+        cfg.selected_capture_source = source_id;
+    }
+    save_config(s)?;
     s.sender
         .start(
             source,
@@ -344,6 +553,7 @@ pub async fn start_sender(
             &device_name,
             &signing_key,
             DEFAULT_AUDIO_PORT,
+            audio_params,
         )
         .await
 }
@@ -382,14 +592,10 @@ pub fn get_role(state: State<'_, AppState>) -> Result<String, String> {
 /// 切换角色。
 #[tauri::command]
 pub fn set_role(state: State<'_, AppState>, role: String) -> Result<String, String> {
-    let r = match role.as_str() {
-        "receiver" => Role::Receiver,
-        "sender" => Role::Sender,
-        other => return Err(format!("未知角色：{}", other)),
-    };
-    *state.inner().role.lock() = r;
-    Ok(match r {
-        Role::Receiver => "receiver".into(),
-        Role::Sender => "sender".into(),
-    })
+    let r = parse_role(&role).ok_or_else(|| format!("未知角色：{}", role))?;
+    let s = state.inner();
+    *s.role.lock() = r;
+    s.config.lock().role = role_as_str(r).into();
+    save_config(s)?;
+    Ok(role_as_str(r).into())
 }

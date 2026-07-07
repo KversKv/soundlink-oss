@@ -75,7 +75,28 @@ TXT 记录示例：
 }
 ```
 
-预留动作名：`media.play_pause` / `media.previous` / `media.next` / `shortcut.set` / `shortcut.trigger`。
+预留动作名：`media.play_pause` / `media.previous` / `media.next` / `shortcut.set` / `shortcut.trigger` / `audio.params.update` / `audio.params.probe_request` / `audio.params.probe_result`。
+
+音频参数同步走 `control_action`，用于运行中低频协商：
+
+```json
+{
+  "type": "control_action",
+  "msg_id": "c-audio-1",
+  "ts": 1730000006000,
+  "action": "audio.params.update",
+  "target": "receiver",
+  "payload": {
+    "sample_rate": 48000,
+    "channels": 2,
+    "frame_duration_ms": 10,
+    "bitrate": 128000,
+    "jitter_mode": "balanced"
+  }
+}
+```
+
+`jitter_mode` 可运行时立即生效；`bitrate` 由发送端后续编码应用；采样率、声道、帧长在第一版中允许持久化与下次流开始生效，运行中变更的回执应通过 `error.restart_required=true` 提示需重启流或下次开始流。
 
 > 具体字段与错误码在实现阶段落到 `shared/protocol` 定义（建议同源生成各端类型）。
 

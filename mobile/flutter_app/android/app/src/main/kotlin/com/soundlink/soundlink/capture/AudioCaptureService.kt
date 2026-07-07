@@ -78,8 +78,9 @@ class AudioCaptureService : Service() {
         }
 
         try {
-            encoder = OpusEncoder(cfg.sampleRate, cfg.channels, cfg.bitrate)
-            sender = UdpAudioSender(cfg)
+            val runtimeCfg = cfg.copy(sampleRate = 48000, channels = 2, frameDurationMs = 10)
+            encoder = OpusEncoder(runtimeCfg.sampleRate, runtimeCfg.channels, runtimeCfg.bitrate)
+            sender = UdpAudioSender(runtimeCfg)
         } catch (e: Exception) {
             Log.e(TAG, "编码器/发送器初始化失败", e)
             stopSelf()

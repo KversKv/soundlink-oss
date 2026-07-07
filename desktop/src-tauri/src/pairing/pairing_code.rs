@@ -49,6 +49,7 @@ pub enum PairingCodeState {
 /// 配对码管理器：生成、校验、过期/锁定。
 pub struct PairingCodeManager {
     current: Mutex<Option<PairingCode>>,
+    fixed_code: Mutex<Option<String>>,
     /// DEBUG 模式：[`issue`](Self::issue) 固定返回 `12345678`，便于开发期固定码连接。
     debug: bool,
 }
@@ -68,12 +69,36 @@ impl PairingCodeManager {
     pub fn with_debug(debug: bool) -> Self {
         Self {
             current: Mutex::new(None),
+            fixed_code: Mutex::new(None),
             debug,
         }
     }
 
+    pub fn set_fixed_code(&self, code: Option<String>) -> Result<(), String> {
+        if let Some(code) = code.as_deref() {
+            validate_pairing_code(code)?;
+        }
+        *self.fixed_code.lock() = code;
+        *self.current.lock() = None;
+        Ok(())
+    }
+
+    pub fn fixed_code(&self) -> Option<String> {
+        self.fixed_code.lock().clone()
+    }
+
     /// 生成新配对码（覆盖旧的）。
     pub fn issue(&self) -> String {
+        if let Some(code) = self.fixed_code.lock().clone() {
+            let pc = PairingCode {
+                code,
+                created_at: Instant::now(),
+                attempts: 0,
+            };
+            let code = pc.code.clone();
+            *self.current.lock() = Some(pc);
+            return code;
+        }
         if self.debug {
             let pc = PairingCode {
                 code: "12345678".into(),
@@ -125,6 +150,13 @@ impl PairingCodeManager {
     }
 }
 
+fn validate_pairing_code(code: &str) -> Result<(), String> {
+    if code.len() != PAIRING_CODE_DIGITS || !code.bytes().all(|b| b.is_ascii_digit()) {
+        return Err(format!("配对码必须是 {} 位数字", PAIRING_CODE_DIGITS));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -155,5 +187,21 @@ mod tests {
         assert_eq!(m.issue(), "12345678");
         // 固定码同样可被校验通过。
         assert_eq!(m.verify("12345678"), PairingCodeState::Ok);
+    }
+
+    #[test]
+    fn user_fixed_code_overrides_random_and_debug() {
+        let m = PairingCodeManager::with_debug(true);
+        m.set_fixed_code(Some("87654321".into())).unwrap();
+        assert_eq!(m.fixed_code().as_deref(), Some("87654321"));
+        assert_eq!(m.issue(), "87654321");
+        assert_eq!(m.verify("87654321"), PairingCodeState::Ok);
+    }
+
+    #[test]
+    fn user_fixed_code_must_be_eight_digits() {
+        let m = PairingCodeManager::new();
+        assert!(m.set_fixed_code(Some("1234".into())).is_err());
+        assert!(m.set_fixed_code(Some("abcdefgh".into())).is_err());
     }
 }

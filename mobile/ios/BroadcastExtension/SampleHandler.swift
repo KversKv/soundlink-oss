@@ -28,12 +28,13 @@ class SampleHandler: RPBroadcastSampleHandler {
 
     override func broadcastStarted(withSetupInfo setupInfo: [String: NSObject]?) {
         // 在 Extension 进程读取主 App 写入的会话配置。
-        guard let config = PairingStateReader.read() else {
+        guard let rawConfig = PairingStateReader.read() else {
             finishBroadcastWithError(NSError(
                 domain: "SoundLink", code: 1,
                 userInfo: [NSLocalizedDescriptionKey: "未找到会话配置，请先在主 App 配对并连接"]))
             return
         }
+        let config = rawConfig.runtimeBaseline
         guard let s = UdpAudioSender(config: config) else {
             finishBroadcastWithError(NSError(
                 domain: "SoundLink", code: 2,

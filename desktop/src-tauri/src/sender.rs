@@ -10,10 +10,12 @@
 //! 同时被 Tauri commands（应用）与 `examples/phase5_loopback.rs`（自测）使用。
 
 use crate::audio::capture::CaptureSource;
-use crate::audio::opus_codec::default_codec;
+use crate::audio::opus_codec::codec_with_bitrate;
+use crate::config::AudioParams;
 use crate::constants::{
-    DEFAULT_STREAM_ID, ENCODE_MS_EWMA_ALPHA, FRAME_SAMPLES_TOTAL, PROTOCOL_VERSION, SAMPLE_RATE,
-    SENDER_CONNECT_TIMEOUT_SECS, SENDER_HEARTBEAT_INTERVAL_SECS, SENDER_STATS_INTERVAL_SECS,
+    CHANNELS, DEFAULT_STREAM_ID, ENCODE_MS_EWMA_ALPHA, FRAME_DURATION_MS, FRAME_SAMPLES_TOTAL,
+    PROTOCOL_VERSION, SAMPLE_RATE, SENDER_CONNECT_TIMEOUT_SECS, SENDER_HEARTBEAT_INTERVAL_SECS,
+    SENDER_STATS_INTERVAL_SECS,
 };
 use crate::network::control_server::msg_type;
 use crate::network::packet::{encode_packet, AudioPacketHeader};
@@ -118,6 +120,7 @@ impl SenderEngine {
         sender_device_name: &str,
         sender_signing: &SigningKey,
         audio_port: u16,
+        audio_params: AudioParams,
     ) -> Result<(), String> {
         if self.running.load(Ordering::SeqCst) {
             return Err("发送端已在运行".into());
@@ -141,6 +144,7 @@ impl SenderEngine {
                 sender_device_name,
                 sender_signing,
                 audio_port,
+                audio_params.clone(),
             )
             .await;
 
@@ -214,6 +218,7 @@ impl SenderEngine {
                 status,
                 running,
                 dump_enable,
+                audio_params.normalized(),
             )
             .await;
         });
@@ -286,6 +291,7 @@ impl SenderEngine {
         sender_device_name: &str,
         sender_signing: &SigningKey,
         audio_port: u16,
+        audio_params: AudioParams,
     ) -> Result<
         (
             [u8; 32],
@@ -432,10 +438,10 @@ impl SenderEngine {
             "stream_id": stream_id,
             "audio_port": audio_port,
             "codec": "opus",
-            "sample_rate": SAMPLE_RATE,
-            "channels": 2,
-            "frame_duration_ms": 10,
-            "bitrate": 128000,
+            "sample_rate": audio_params.sample_rate,
+            "channels": audio_params.channels,
+            "frame_duration_ms": audio_params.frame_duration_ms,
+            "bitrate": audio_params.bitrate,
         });
         send_msg(&mut writer, &stream_start)
             .await
@@ -495,8 +501,16 @@ async fn send_loop(
     status: Arc<Mutex<SenderStatus>>,
     running: Arc<AtomicBool>,
     dump_enable: bool,
+    audio_params: AudioParams,
 ) {
-    let mut codec = default_codec();
+    let mut codec = codec_with_bitrate(audio_params.bitrate);
+    tracing::info!(
+        "发送端音频参数生效：{}Hz {}ch {}ms {}kbps",
+        audio_params.sample_rate,
+        audio_params.channels,
+        audio_params.frame_duration_ms,
+        audio_params.bitrate / 1000
+    );
     let mut seq: u32 = 0;
     let mut total_samples: u64 = 0;
     let mut encode_ms_ewma: f64 = 0.0;
@@ -568,7 +582,14 @@ async fn send_loop(
         }
 
         // 打包加密 + 发送。
-        let mut header = AudioPacketHeader::new(stream_id, seq, total_samples);
+        let mut header = AudioPacketHeader::with_audio_params(
+            stream_id,
+            seq,
+            total_samples,
+            SAMPLE_RATE,
+            CHANNELS,
+            FRAME_DURATION_MS,
+        );
         let packet = match encode_packet(&audio_key, &mut header, &frame_bytes) {
             Ok(p) => p,
             Err(e) => {

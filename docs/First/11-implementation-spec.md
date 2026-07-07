@@ -201,6 +201,11 @@ packet = header ‖ cipher ‖ tag
 | `media.next` | `{}` | 下一曲 |
 | `shortcut.set` | `{ "id":"...", "binding":"...", "action":"..." }` | 设置快捷指令 |
 | `shortcut.trigger` | `{ "id":"..." }` | 触发快捷指令 |
+| `audio.params.update` | `{ "sample_rate":48000, "channels":2, "frame_duration_ms":10, "bitrate":128000, "jitter_mode":"balanced" }` | 同步音频参数变更 |
+| `audio.params.probe_request` | `{}` | 请求对端回传当前音频能力/质量建议 |
+| `audio.params.probe_result` | `{ "recommended_bitrate":128000, "jitter_mode":"balanced", "loss_rate":0.0, "jitter_ms":0 }` | 回传探测或统计推荐结果 |
+
+音频参数可选值：`sample_rate=44100|48000`，`channels=1|2`，`frame_duration_ms=10|20`，`bitrate=64000|96000|128000|160000|192000`，`jitter_mode=low|balanced|stable|auto`。第一版运行中仅要求 `jitter_mode` 立即应用；`bitrate` 由发送端后续编码应用；采样率、声道、帧长允许持久化和协议声明，但若当前流无法动态重建采集/编码/解码链路，接收方必须在回执中标记 `restart_required=true`，并在下一次 `stream_start` 完全生效。
 
 ### 3.10 control_action_ack  (双向)
 ```json
@@ -214,7 +219,7 @@ packet = header ‖ cipher ‖ tag
 }
 ```
 
-`result` 取值：`accepted` / `rejected` / `unsupported` / `failed`。失败时附加 `error`。
+`result` 取值：`accepted` / `rejected` / `unsupported` / `failed`。失败时附加 `error`。对 `audio.params.update`，若参数已保存但需重启流才完整生效，`result="accepted"` 且 `error.restart_required=true`。
 
 ### 3.11 error  (双向)
 ```json

@@ -37,6 +37,11 @@ const int samplesPerFramePerChannel = 480;
 /// Opus 起始码率。
 const int opusBitrate = 128000;
 
+const List<int> audioSampleRateOptions = [48000];
+const List<int> audioChannelOptions = [2];
+const List<int> audioFrameDurationOptions = [10];
+const List<int> audioBitrateOptions = [64000, 96000, 128000, 160000, 192000];
+
 /// 编码类型：Opus。
 const int codecOpus = 1;
 

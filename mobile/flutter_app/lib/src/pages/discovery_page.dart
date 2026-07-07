@@ -23,6 +23,11 @@ class DiscoveryPage extends StatelessWidget {
             children: [
               if (app.lastError != null)
                 _banner(app.lastError!, Colors.red.shade50),
+              if (app.lastReceiver != null) ...[
+                const _SectionHeader('上次连接'),
+                _lastReceiverTile(context, app.lastReceiver!),
+                const Divider(),
+              ],
               if (app.trustedReceivers.isNotEmpty) ...[
                 const _SectionHeader('已信任设备（点击直接连接）'),
                 ...app.trustedReceivers.map((t) => _trustedTile(context, t)),
@@ -72,6 +77,19 @@ class DiscoveryPage extends StatelessWidget {
           );
         },
       ),
+    );
+  }
+
+  Widget _lastReceiverTile(BuildContext context, DiscoveredDevice d) {
+    return ListTile(
+      leading: const Icon(Icons.history, color: Colors.blue),
+      title: Text(d.deviceName),
+      subtitle: Text('${d.host}  ·  上次连接设备'),
+      trailing: const Icon(Icons.play_arrow),
+      onTap: () {
+        app.selectDevice(d);
+        app.connectAndStart(pairingCode: null);
+      },
     );
   }
 

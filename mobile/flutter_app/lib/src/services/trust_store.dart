@@ -11,6 +11,74 @@ import 'dart:typed_data';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../constants.dart' as k;
+import '../models/device.dart';
+
+class AudioSettings {
+  final int sampleRate;
+  final int channels;
+  final int frameDurationMs;
+  final int bitrate;
+  final int jitterMs;
+
+  const AudioSettings({
+    required this.sampleRate,
+    required this.channels,
+    required this.frameDurationMs,
+    required this.bitrate,
+    required this.jitterMs,
+  });
+
+  factory AudioSettings.defaults() => const AudioSettings(
+    sampleRate: k.sampleRate,
+    channels: k.channels,
+    frameDurationMs: k.frameDurationMs,
+    bitrate: k.opusBitrate,
+    jitterMs: k.defaultJitterMs,
+  );
+
+  AudioSettings copyWith({
+    int? sampleRate,
+    int? channels,
+    int? frameDurationMs,
+    int? bitrate,
+    int? jitterMs,
+  }) => AudioSettings(
+    sampleRate: sampleRate ?? this.sampleRate,
+    channels: channels ?? this.channels,
+    frameDurationMs: frameDurationMs ?? this.frameDurationMs,
+    bitrate: bitrate ?? this.bitrate,
+    jitterMs: jitterMs ?? this.jitterMs,
+  );
+
+  AudioSettings normalized() => AudioSettings(
+    sampleRate: k.sampleRate,
+    channels: k.channels,
+    frameDurationMs: k.frameDurationMs,
+    bitrate: k.audioBitrateOptions.contains(bitrate) ? bitrate : k.opusBitrate,
+    jitterMs:
+        [k.jitterLowMs, k.jitterBalancedMs, k.jitterStableMs].contains(jitterMs)
+        ? jitterMs
+        : k.defaultJitterMs,
+  );
+
+  Map<String, dynamic> toJson() => {
+    'sample_rate': sampleRate,
+    'channels': channels,
+    'frame_duration_ms': frameDurationMs,
+    'bitrate': bitrate,
+    'jitter_ms': jitterMs,
+  };
+
+  factory AudioSettings.fromJson(Map<String, dynamic> json) => AudioSettings(
+    sampleRate: json['sample_rate'] as int? ?? k.sampleRate,
+    channels: json['channels'] as int? ?? k.channels,
+    frameDurationMs: json['frame_duration_ms'] as int? ?? k.frameDurationMs,
+    bitrate: json['bitrate'] as int? ?? k.opusBitrate,
+    jitterMs: json['jitter_ms'] as int? ?? k.defaultJitterMs,
+  ).normalized();
+}
+
 /// 已信任的桌面接收端。
 class TrustedReceiver {
   final String deviceId;
@@ -55,6 +123,8 @@ class TrustedReceiver {
 /// 信任存储管理器。
 class TrustStore {
   static const _key = 'soundlink.trusted_receivers';
+  static const _lastReceiverKey = 'soundlink.last_receiver';
+  static const _audioSettingsKey = 'soundlink.audio_settings';
 
   /// 加载所有已信任接收端。
   static Future<List<TrustedReceiver>> loadAll() async {
@@ -101,6 +171,45 @@ class TrustStore {
       return true;
     }
     return false;
+  }
+
+  static Future<DiscoveredDevice?> loadLastReceiver() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_lastReceiverKey);
+    if (raw == null || raw.isEmpty) return null;
+    try {
+      return DiscoveredDevice.fromJson(
+        Map<String, dynamic>.from(json.decode(raw) as Map),
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<void> saveLastReceiver(DiscoveredDevice device) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_lastReceiverKey, json.encode(device.toJson()));
+  }
+
+  static Future<AudioSettings> loadAudioSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_audioSettingsKey);
+    if (raw == null || raw.isEmpty) return AudioSettings.defaults();
+    try {
+      return AudioSettings.fromJson(
+        Map<String, dynamic>.from(json.decode(raw) as Map),
+      );
+    } catch (_) {
+      return AudioSettings.defaults();
+    }
+  }
+
+  static Future<void> saveAudioSettings(AudioSettings settings) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      _audioSettingsKey,
+      json.encode(settings.normalized().toJson()),
+    );
   }
 
   /// 清空。

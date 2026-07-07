@@ -51,15 +51,33 @@ pub struct AudioPacketHeader {
 impl AudioPacketHeader {
     /// 默认基线头部（48kHz/Stereo/Opus/10ms）。
     pub fn new(stream_id: u32, sequence: u32, timestamp: u64) -> Self {
+        Self::with_audio_params(
+            stream_id,
+            sequence,
+            timestamp,
+            SAMPLE_RATE,
+            CHANNELS,
+            FRAME_DURATION_MS,
+        )
+    }
+
+    pub fn with_audio_params(
+        stream_id: u32,
+        sequence: u32,
+        timestamp: u64,
+        sample_rate: u32,
+        channels: u8,
+        frame_duration_ms: u8,
+    ) -> Self {
         Self {
             stream_id,
             sequence,
             timestamp,
             codec: CODEC_OPUS,
-            channels: CHANNELS,
-            frame_duration_ms: FRAME_DURATION_MS,
+            channels,
+            frame_duration_ms,
             flags: 0,
-            sample_rate: SAMPLE_RATE,
+            sample_rate,
             payload_len: 0,
         }
     }

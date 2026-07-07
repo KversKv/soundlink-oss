@@ -85,6 +85,8 @@
 - [x] 错误码与失败处理（§4）— 2026-07-06 ErrorCode 枚举（1001~1005）+ pair_error JSON 格式 + 配对码锁定（5 次/30s）
 - [x] 信任持久化：iOS Keychain / Android Keystore / 桌面 trust store — 2026-07-06 桌面 trust_store.rs（JSON 文件 + 内存回退）；移动端 trust_store.dart（shared_preferences，后续升级 Keychain/Keystore）
 - [x] 已信任设备自动重连（跳过配对码）— 2026-07-06 控制服务器已信任路径（pairing_secret=0）+ 移动端已信任设备列表点击直连
+- [x] 移动端记忆上次设备与信任设备 — 2026-07-07 shared_preferences 持久化可信 Receiver、上次 Receiver 与音频设置；热重启/覆盖安装通常保留，卸载/清除数据/包名变更会丢失
+- [x] 桌面端固定/随机配对码设置 — 2026-07-07 桌面 UI 可切换随机/固定 8 位配对码；固定码持久化到本机配置，仍遵守 TTL 与尝试次数
 
 **阶段验收**：
 - [x] 无需手输 IP，配对一次后可自动重连 — 2026-07-06 control_loopback.rs 自测通过：首次配对（配对码）→ 信任持久化 → 二次连接（跳过配对码）→ audio_key 派生 → 流接收验证（200 包 / 0 丢失）
@@ -103,6 +105,7 @@
 - [x] 桌面输出 buffer 调优 — 2026-07-06 output/mod.rs BufferSize::Fixed(OUTPUT_BUFFER_SAMPLES=1920) 低延迟，失败回退 Default
 - [x] 延迟估算与 UI 展示 — 2026-07-06 est_latency_ms 基于 sender timestamp 与本地时钟差；App.tsx 展示抖动/延迟/码率/漂移/Jitter 模式选择
 - [x] 双端连接事件管理与自动停流 — 2026-07-07 控制通道 EOF/心跳超时触发桌面 Receiver 停止接收；手动停止 Receiver 会向 Sender 下发 `stream_stop` 并关闭控制连接；桌面 Sender 手动停止改为 graceful stop，先发送 `stream_stop` 再关闭；Flutter 端订阅 `stream_stop`/`error`/控制断开并停止原生采集，手动停止时 flush `stream_stop`；新增通用 `control_action`/`control_action_ack` envelope，预留媒体键与快捷指令动作解析；iOS Extension 通过 App Group stop flag 响应主 App 停止请求；`flutter analyze`、`cargo check --no-default-features`、`cargo check --features tauri_app` 通过
+- [x] 音频参数手动配置、同步与自动推荐 — 2026-07-07 桌面/Flutter 暴露参数配置并持久化；已明确当前运行时实际支持边界为 Opus 码率、Jitter、音量，采样率/声道/帧长固定 48kHz/Stereo/10ms；桌面 Sender 码率进入 Opus 编码器；移动端自动探测会暂停当前广播、探测控制端口延迟并弹窗展示推荐结果
 
 **阶段验收**：
 - [x] 弱网下无明显卡顿；UI 显示端到端延迟估算 — 2026-07-06 phase4_loopback.rs 弱网自测（10% 丢包 + 抖动）：recv=894 lost=106 loss=10.6% jitter=5ms latency>0 drift≈0.997 rec_bitrate=96kbps，exit 0
@@ -117,6 +120,7 @@
 - [ ] macOS ScreenCaptureKit 采集 — 2026-07-07 当前仅 `audio/capture/macos_screencapturekit.rs` 占位，未在 macOS/SCStream 环境实现与验证
 - [x] 统一 Sender 抽象层（与移动端协议一致） — 2026-07-06 `audio/capture/` CaptureSource trait + `sender.rs` SenderEngine（mDNS 发现 + 控制握手 + Opus 编码 + UDP 发送 + 心跳/stats）
 - [x] 桌面端角色切换 UI（Receiver / Sender） — 2026-07-06 commands 新增 start/stop_sender、discover_receivers、get/set_role、list_capture_sources；App.tsx 角色切换 + 发送端面板（采集源/发现/配对/状态）；2026-07-07 `cargo check --features tauri_app` 与 `desktop/ui npm run build` 通过；2026-07-07 按参考图完成桌面端卡片式 UI 改版，后续移除最外层嵌入式外壳并调整默认窗口 510×760，`desktop/ui npm run build` 与浏览器预览通过
+- [x] 桌面基础设置持久化 — 2026-07-07 `app_config.json` 保存设备名、角色、输出设备、Jitter、音量、配对码模式、音频参数、上次 Receiver 地址与采集源
 
 **阶段验收**：
 - [ ] 一台电脑音频可实时流转到另一台电脑并播放 — 2026-07-06 `phase5_loopback.rs` 自测通过：Sender 发送 611 包 / Receiver 接收 611 包 / 0 丢失；2026-07-07 Windows WASAPI feature 构建通过；macOS ScreenCaptureKit 未实现且双电脑真机未验收

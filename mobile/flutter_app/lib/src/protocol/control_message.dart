@@ -357,6 +357,9 @@ abstract final class ControlActions {
   static const mediaNext = 'media.next';
   static const shortcutSet = 'shortcut.set';
   static const shortcutTrigger = 'shortcut.trigger';
+  static const audioParamsUpdate = 'audio.params.update';
+  static const audioParamsProbeRequest = 'audio.params.probe_request';
+  static const audioParamsProbeResult = 'audio.params.probe_result';
 }
 
 /// error (双向)

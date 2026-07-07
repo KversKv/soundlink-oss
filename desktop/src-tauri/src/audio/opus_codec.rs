@@ -6,7 +6,7 @@
 //!   仅用于无法编译 libopus 时验证 UDP/加密/Jitter/输出链路（非 spec 合规，
 //!   仅供开发自测）。生产须启用 `opus`。
 
-use crate::constants::{CHANNELS, SAMPLES_PER_FRAME_PER_CHANNEL};
+use crate::constants::{CHANNELS, OPUS_BITRATE, SAMPLES_PER_FRAME_PER_CHANNEL};
 
 /// 音频编解码接口（单帧 10ms）。
 pub trait AudioCodec: Send {
@@ -16,6 +16,8 @@ pub trait AudioCodec: Send {
     fn decode(&mut self, frame: &[u8]) -> Vec<i16>;
     /// 丢包补偿（PLC）：生成一帧舒适帧。
     fn decode_plc(&mut self) -> Vec<i16>;
+    /// 设置编码码率。解码-only 或回退 codec 可忽略。
+    fn set_bitrate(&mut self, _bitrate: u32) {}
 }
 
 /// 单帧 PCM 样本数（交错）。
@@ -183,6 +185,12 @@ pub mod libopus {
             }
             out
         }
+
+        fn set_bitrate(&mut self, bitrate: u32) {
+            unsafe {
+                opusffi::opus_encoder_ctl(self.encoder, OPUS_SET_BITRATE_REQUEST, bitrate as c_int);
+            }
+        }
     }
 
     #[cfg(test)]
@@ -204,10 +212,20 @@ pub mod libopus {
 
 /// 构造默认编解码器：优先 libopus，回退 passthrough。
 pub fn default_codec() -> Box<dyn AudioCodec> {
+    codec_with_bitrate(OPUS_BITRATE)
+}
+
+pub fn codec_with_bitrate(bitrate: u32) -> Box<dyn AudioCodec> {
+    #[cfg(not(feature = "opus"))]
+    let _ = bitrate;
+
     #[cfg(feature = "opus")]
     {
         match libopus::LibopusCodec::new() {
-            Ok(c) => return Box::new(c),
+            Ok(mut c) => {
+                c.set_bitrate(bitrate);
+                return Box::new(c);
+            }
             Err(e) => {
                 tracing::warn!("libopus 初始化失败，回退 passthrough：{:?}", e);
             }

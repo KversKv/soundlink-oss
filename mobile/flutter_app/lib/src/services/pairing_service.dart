@@ -52,6 +52,7 @@ class PairingService {
   Future<void> connectAndStart(
     DiscoveredDevice device, {
     String? pairingCode,
+    required AudioSettings audioSettings,
     required void Function(LinkState) onState,
   }) async {
     onState(LinkState.connecting);
@@ -80,8 +81,8 @@ class PairingService {
       platform: platformName,
       capabilities: Capabilities(
         codec: ['opus'],
-        sampleRate: sampleRate,
-        channels: channels,
+        sampleRate: audioSettings.sampleRate,
+        channels: audioSettings.channels,
       ),
     );
     control.send(hello);
@@ -189,10 +190,10 @@ class PairingService {
         streamId: _streamId,
         audioPort: _audioPort,
         codec: 'opus',
-        sampleRate: sampleRate,
-        channels: channels,
-        frameDurationMs: frameDurationMs,
-        bitrate: opusBitrate,
+        sampleRate: audioSettings.sampleRate,
+        channels: audioSettings.channels,
+        frameDurationMs: audioSettings.frameDurationMs,
+        bitrate: audioSettings.bitrate,
       ),
     );
     final ack = await control.waitFor((m) => m['type'] == 'stream_start_ack');
@@ -207,16 +208,29 @@ class PairingService {
       audioPort: _audioPort,
       streamId: _streamId,
       audioKey: _keys!.audioKey,
-      sampleRate: sampleRate,
-      channels: channels,
-      frameDurationMs: frameDurationMs,
-      bitrate: opusBitrate,
+      sampleRate: audioSettings.sampleRate,
+      channels: audioSettings.channels,
+      frameDurationMs: audioSettings.frameDurationMs,
+      bitrate: audioSettings.bitrate,
     );
     await platform.writeSessionConfig(config);
     await platform.startCapture();
     _startEventLoops();
 
     onState(LinkState.streaming);
+  }
+
+  void sendAudioParamsUpdate(AudioSettings settings) {
+    if (!control.isConnected) return;
+    control.send(
+      ControlActionMsg(
+        msgId: newMsgId('c-audio'),
+        ts: nowMs(),
+        action: ControlActions.audioParamsUpdate,
+        target: 'receiver',
+        payload: settings.normalized().toJson(),
+      ),
+    );
   }
 
   void _startEventLoops() {

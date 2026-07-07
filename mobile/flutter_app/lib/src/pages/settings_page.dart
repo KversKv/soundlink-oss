@@ -16,6 +16,7 @@ class SettingsPage extends StatelessWidget {
       body: ListenableBuilder(
         listenable: app,
         builder: (context, _) {
+          final audio = app.audioSettings;
           return ListView(
             children: [
               const _SectionHeader('Jitter 缓冲（影响延迟/稳定性）'),
@@ -42,18 +43,77 @@ class SettingsPage extends StatelessWidget {
                 ),
               ),
               const _SectionHeader('音频参数'),
-              ListTile(
-                title: const Text('采样率'),
-                trailing: Text('$sampleRate Hz'),
+              _OptionTile(
+                title: '采样率（当前版本固定）',
+                value: audio.sampleRate,
+                values: audioSampleRateOptions,
+                label: (v) => '$v Hz',
+                onChanged: (v) =>
+                    app.setAudioSettings(audio.copyWith(sampleRate: v)),
               ),
-              ListTile(
-                title: const Text('声道'),
-                trailing: Text('$channels 立体声'),
+              _OptionTile(
+                title: '声道（当前版本固定）',
+                value: audio.channels,
+                values: audioChannelOptions,
+                label: (v) => v == 1 ? 'Mono' : 'Stereo',
+                onChanged: (v) =>
+                    app.setAudioSettings(audio.copyWith(channels: v)),
               ),
-              ListTile(
-                title: const Text('编码'),
-                trailing: Text(
-                  'Opus ${frameDurationMs}ms / ${opusBitrate ~/ 1000}kbps',
+              _OptionTile(
+                title: '帧长（当前版本固定）',
+                value: audio.frameDurationMs,
+                values: audioFrameDurationOptions,
+                label: (v) => '$v ms',
+                onChanged: (v) =>
+                    app.setAudioSettings(audio.copyWith(frameDurationMs: v)),
+              ),
+              _OptionTile(
+                title: 'Opus 码率',
+                value: audio.bitrate,
+                values: audioBitrateOptions,
+                label: (v) => '${v ~/ 1000} kbps',
+                onChanged: (v) =>
+                    app.setAudioSettings(audio.copyWith(bitrate: v)),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
+                child: FilledButton.icon(
+                  onPressed: () async {
+                    final messenger = ScaffoldMessenger.of(context);
+                    final result = await app.autoDetectAudioSettings();
+                    if (!context.mounted) return;
+                    await showDialog<void>(
+                      context: context,
+                      builder: (context) => AlertDialog(
+                        title: const Text('自动探测结果'),
+                        content: Text(_recommendationText(result)),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.of(context).pop(),
+                            child: const Text('知道了'),
+                          ),
+                        ],
+                      ),
+                    );
+                    if (!context.mounted) return;
+                    if (result.pausedStream) {
+                      messenger.showSnackBar(
+                        const SnackBar(content: Text('探测时已暂停音频流，请返回首页重新开始广播。')),
+                      );
+                    }
+                  },
+                  icon: const Icon(Icons.network_check),
+                  label: const Text('自动探测并推荐参数'),
+                ),
+              ),
+              const Padding(
+                padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
+                child: Text(
+                  '设置会保存到本 App 数据中；覆盖安装、热重启通常保留，卸载或清除数据会删除。当前版本真正生效：Opus 码率、Jitter；采样率/声道/帧长固定为 48kHz/Stereo/10ms。',
+                  style: TextStyle(fontSize: 12, color: Colors.black54),
                 ),
               ),
               const _SectionHeader('设备'),
@@ -61,6 +121,13 @@ class SettingsPage extends StatelessWidget {
                 title: const Text('本机 Device ID'),
                 subtitle: Text(app.deviceId.isEmpty ? '获取中…' : app.deviceId),
               ),
+              if (app.lastReceiver != null)
+                ListTile(
+                  title: const Text('上次设备'),
+                  subtitle: Text(
+                    '${app.lastReceiver!.deviceName} · ${app.lastReceiver!.host}',
+                  ),
+                ),
               const _SectionHeader('关于'),
               const ListTile(
                 title: Text('SoundLink'),
@@ -72,6 +139,52 @@ class SettingsPage extends StatelessWidget {
               ),
             ],
           );
+        },
+      ),
+    );
+  }
+}
+
+String _recommendationText(AudioRecommendation result) {
+  final latency = result.avgLatencyMs == null
+      ? '未获得有效样本'
+      : '平均 ${result.avgLatencyMs!.toStringAsFixed(1)} ms，最高 ${result.maxLatencyMs!.toStringAsFixed(1)} ms';
+  final s = result.settings;
+  return [
+    result.reason,
+    '',
+    '探测样本：${result.sampleCount} 次（$latency）',
+    '推荐参数：${s.sampleRate} Hz / ${s.channels == 1 ? 'Mono' : 'Stereo'} / ${s.frameDurationMs} ms / ${s.bitrate ~/ 1000} kbps / Jitter ${s.jitterMs} ms',
+    result.pausedStream ? '为避免当前音频流干扰探测，已先停止广播；需要手动重新开始。' : '当前未在广播，无需暂停音频流。',
+  ].join('\n');
+}
+
+class _OptionTile extends StatelessWidget {
+  final String title;
+  final int value;
+  final List<int> values;
+  final String Function(int) label;
+  final ValueChanged<int> onChanged;
+
+  const _OptionTile({
+    required this.title,
+    required this.value,
+    required this.values,
+    required this.label,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      title: Text(title),
+      trailing: DropdownButton<int>(
+        value: value,
+        items: values
+            .map((v) => DropdownMenuItem<int>(value: v, child: Text(label(v))))
+            .toList(),
+        onChanged: (v) {
+          if (v != null) onChanged(v);
         },
       ),
     );

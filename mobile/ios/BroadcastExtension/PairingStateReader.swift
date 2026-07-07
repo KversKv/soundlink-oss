@@ -15,6 +15,18 @@ struct SessionConfig: Codable {
     let frameDurationMs: Int
     let bitrate: Int
 
+    var runtimeBaseline: SessionConfig {
+        SessionConfig(
+            targetHost: targetHost,
+            audioPort: audioPort,
+            streamId: streamId,
+            audioKey: audioKey,
+            sampleRate: 48000,
+            channels: 2,
+            frameDurationMs: 10,
+            bitrate: bitrate)
+    }
+
     /// 解码 audio_key 为原始 32 字节。
     func audioKeyBytes() -> Data {
         Data(base64Encoded: audioKey) ?? Data()

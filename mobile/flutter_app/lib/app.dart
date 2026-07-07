@@ -3,6 +3,9 @@
 // 架构：Flutter 主 App（配对/发现/设置/广播引导）+ 原生采集组件（不嵌入 Flutter）。
 // 详见 docs/First/07-tech-stack.md §6、08-platform-notes.md §1b。
 
+import 'dart:async';
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
@@ -16,6 +19,24 @@ import 'src/services/pairing_service.dart';
 import 'src/services/platform_service.dart';
 import 'src/services/trust_store.dart';
 import 'src/pages/home_page.dart';
+
+class AudioRecommendation {
+  final AudioSettings settings;
+  final bool pausedStream;
+  final int sampleCount;
+  final double? avgLatencyMs;
+  final double? maxLatencyMs;
+  final String reason;
+
+  const AudioRecommendation({
+    required this.settings,
+    required this.pausedStream,
+    required this.sampleCount,
+    required this.avgLatencyMs,
+    required this.maxLatencyMs,
+    required this.reason,
+  });
+}
 
 class SoundLinkApp extends StatelessWidget {
   const SoundLinkApp({super.key});
@@ -48,6 +69,8 @@ class AppState extends ChangeNotifier {
   String _deviceId = '';
   String _identityPubB64 = '';
   int _jitterMs = defaultJitterMs;
+  AudioSettings _audioSettings = AudioSettings.defaults();
+  DiscoveredDevice? _lastReceiver;
   List<TrustedReceiver> _trusted = [];
 
   LinkState get conn => _conn;
@@ -58,6 +81,8 @@ class AppState extends ChangeNotifier {
   String get deviceId => _deviceId;
   String get identityPubB64 => _identityPubB64;
   int get jitterMs => _jitterMs;
+  AudioSettings get audioSettings => _audioSettings;
+  DiscoveredDevice? get lastReceiver => _lastReceiver;
   List<TrustedReceiver> get trustedReceivers => _trusted;
 
   AppState() {
@@ -87,6 +112,14 @@ class AppState extends ChangeNotifier {
       }
     }
     try {
+      _audioSettings = await TrustStore.loadAudioSettings();
+      _jitterMs = _audioSettings.jitterMs;
+      _lastReceiver = await TrustStore.loadLastReceiver();
+      _selectedDevice = _lastReceiver;
+    } catch (e) {
+      debugPrint('初始化本地设置失败：$e');
+    }
+    try {
       await refreshTrusted();
     } catch (e) {
       debugPrint('初始化信任存储失败：$e');
@@ -105,9 +138,106 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  void setJitterMs(int v) {
-    _jitterMs = v;
+  Future<void> setJitterMs(int v) async {
+    await setAudioSettings(_audioSettings.copyWith(jitterMs: v));
+  }
+
+  Future<void> setAudioSettings(AudioSettings settings) async {
+    _audioSettings = settings.normalized();
+    _jitterMs = _audioSettings.jitterMs;
+    await TrustStore.saveAudioSettings(_audioSettings);
+    _pairing?.sendAudioParamsUpdate(_audioSettings);
     notifyListeners();
+  }
+
+  Future<AudioRecommendation> autoDetectAudioSettings() async {
+    final wasStreaming = _conn == LinkState.streaming;
+    final device = _selectedDevice ?? _lastReceiver;
+    if (wasStreaming) {
+      await stop();
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+    }
+
+    final samples = device == null
+        ? <Duration>[]
+        : await _probeControlLatency(device.host, device.controlPort);
+    final avgMs = samples.isEmpty
+        ? null
+        : samples.map((d) => d.inMilliseconds).reduce((a, b) => a + b) /
+              samples.length;
+    final maxMs = samples.isEmpty
+        ? null
+        : samples
+              .map((d) => d.inMilliseconds.toDouble())
+              .reduce((a, b) => a > b ? a : b);
+    final spreadMs = avgMs == null || maxMs == null ? null : maxMs - avgMs;
+
+    final current = _audioSettings.normalized();
+    final recommended = _recommendAudioSettings(current, avgMs, spreadMs);
+    await setAudioSettings(recommended);
+    return AudioRecommendation(
+      settings: recommended,
+      pausedStream: wasStreaming,
+      sampleCount: samples.length,
+      avgLatencyMs: avgMs,
+      maxLatencyMs: maxMs,
+      reason: _recommendationReason(avgMs, spreadMs, samples.length),
+    );
+  }
+
+  AudioSettings _recommendAudioSettings(
+    AudioSettings current,
+    double? avgMs,
+    double? spreadMs,
+  ) {
+    if (avgMs == null || spreadMs == null) {
+      return current.copyWith(bitrate: opusBitrate, jitterMs: defaultJitterMs);
+    }
+    if (avgMs >= 80 || spreadMs >= 35) {
+      return current.copyWith(bitrate: 96000, jitterMs: jitterStableMs);
+    }
+    if (avgMs <= 25 && spreadMs <= 10) {
+      return current.copyWith(bitrate: 160000, jitterMs: jitterLowMs);
+    }
+    return current.copyWith(bitrate: 128000, jitterMs: jitterBalancedMs);
+  }
+
+  String _recommendationReason(
+    double? avgMs,
+    double? spreadMs,
+    int sampleCount,
+  ) {
+    if (sampleCount == 0 || avgMs == null || spreadMs == null) {
+      return '未连接到可探测的接收端，已使用默认稳定参数。';
+    }
+    if (avgMs >= 80 || spreadMs >= 35) {
+      return '控制链路延迟或波动较高，推荐降低码率并提高 Jitter 稳定性。';
+    }
+    if (avgMs <= 25 && spreadMs <= 10) {
+      return '控制链路延迟低且波动小，推荐更高码率和低延迟 Jitter。';
+    }
+    return '控制链路质量中等，推荐平衡参数。';
+  }
+
+  Future<List<Duration>> _probeControlLatency(String host, int port) async {
+    final samples = <Duration>[];
+    for (var i = 0; i < 5; i++) {
+      final sw = Stopwatch()..start();
+      try {
+        final socket = await Socket.connect(
+          host,
+          port,
+          timeout: const Duration(milliseconds: 800),
+        );
+        sw.stop();
+        samples.add(sw.elapsed);
+        socket.destroy();
+      } catch (_) {
+        sw.stop();
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 80));
+    }
+    return samples;
   }
 
   /// 扫描局域网设备。
@@ -156,6 +286,7 @@ class AppState extends ChangeNotifier {
       await _pairing!.connectAndStart(
         device,
         pairingCode: pairingCode,
+        audioSettings: _audioSettings,
         onState: (s) {
           if (s == LinkState.reconnecting) {
             _conn = LinkState.disconnected;
@@ -167,6 +298,8 @@ class AppState extends ChangeNotifier {
           notifyListeners();
         },
       );
+      _lastReceiver = device;
+      await TrustStore.saveLastReceiver(device);
       await refreshTrusted();
     } catch (e) {
       try {

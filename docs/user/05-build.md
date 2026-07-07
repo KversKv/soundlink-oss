@@ -26,18 +26,27 @@ cargo build --release  # release
 
 ### 打包安装包
 
+<br />
+
+<br />
+
 ```bash
+cd D:\CodeProject\TRAE_Projects\SoundLink\desktop\ui
+npm install
+npm run tauri:build:exe
+
+
 cd desktop/src-tauri
 cargo tauri build
 ```
 
 产物位置（`target/release/bundle/` 下）按平台不同：
 
-| 平台 | 产物 |
-|---|---|
-| Windows | `.msi` / `.exe`（NSIS） |
-| macOS | `.app` / `.dmg`（需签名 / 公证以分发） |
-| Linux | `.deb` / `.AppImage`（后续阶段） |
+| 平台      | 产物                           |
+| ------- | ---------------------------- |
+| Windows | `.msi` / `.exe`（NSIS）        |
+| macOS   | `.app` / `.dmg`（需签名 / 公证以分发） |
+| Linux   | `.deb` / `.AppImage`（后续阶段）   |
 
 ### Windows 11 打包为可直接运行的 exe（非安装包）
 
@@ -115,9 +124,9 @@ flutter build appbundle --release
 
 产物：
 
-| 类型 | 路径（相对 `mobile/flutter_app`） |
-|---|---|
-| APK | `build/app/outputs/flutter-apk/` |
+| 类型  | 路径（相对 `mobile/flutter_app`）         |
+| --- | ----------------------------------- |
+| APK | `build/app/outputs/flutter-apk/`    |
 | AAB | `build/app/outputs/bundle/release/` |
 
 > Release 构建需配置签名（`keystore`），请勿将 keystore / 密码提交到仓库。
