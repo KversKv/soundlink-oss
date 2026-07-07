@@ -9,11 +9,22 @@ struct SessionConfig: Codable {
     let targetHost: String
     let audioPort: Int
     let streamId: Int
-    let audioKey: String      // base64(32B)
+    let audioKey: String
     let sampleRate: Int
     let channels: Int
     let frameDurationMs: Int
     let bitrate: Int
+
+    enum CodingKeys: String, CodingKey {
+        case targetHost = "target_host"
+        case audioPort = "audio_port"
+        case streamId = "stream_id"
+        case audioKey = "audio_key"
+        case sampleRate = "sample_rate"
+        case channels
+        case frameDurationMs = "frame_duration_ms"
+        case bitrate
+    }
 
     var runtimeBaseline: SessionConfig {
         SessionConfig(

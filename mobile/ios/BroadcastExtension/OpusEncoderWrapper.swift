@@ -7,6 +7,7 @@
 // ctl 请求码与 libopus 一致（见 opus_defines.h）。
 
 import Foundation
+import Opus
 
 // libopus 请求码（opus_defines.h 节选）。
 private let OPUS_SET_BITRATE_REQUEST: Int32 = 4002
@@ -32,7 +33,7 @@ final class OpusEncoderWrapper {
         self.frameSize = Int32(sampleRate / 1000 * 10) // 10ms
 
         var err: Int32 = 0
-        guard let st = opus_encoder_create(sampleRate, self.channels, OPUS_APPLICATION_AUDIO, &err),
+        guard let st = opus_encoder_create(self.sampleRate, self.channels, OPUS_APPLICATION_AUDIO, &err),
               err == 0 else {
             return
         }

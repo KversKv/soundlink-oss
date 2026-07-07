@@ -26,6 +26,12 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_soundlink._udp</string>
+	</array>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>SoundLink 需要访问本地网络，用于发现并连接局域网内的桌面接收端。</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

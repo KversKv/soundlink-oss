@@ -38,9 +38,12 @@ class SoundLinkPlugin: NSObject, FlutterPlugin {
                 result(FlutterError(code: "ARG", message: "缺少 config", details: nil))
                 return
             }
-            let defaults = UserDefaults(suiteName: Self.appGroupId)
-            defaults?.set(config, forKey: Self.configKey)
-            defaults?.set(false, forKey: Self.stopRequestedKey)
+            guard let defaults = UserDefaults(suiteName: Self.appGroupId) else {
+                result(FlutterError(code: "APP_GROUP", message: "无法访问 App Group，请检查 Runner 与 BroadcastExtension 的 App Groups 配置", details: nil))
+                return
+            }
+            defaults.set(config, forKey: Self.configKey)
+            defaults.set(false, forKey: Self.stopRequestedKey)
             result(true)
 
         case "startCapture":
