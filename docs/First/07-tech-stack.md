@@ -11,11 +11,11 @@
 | 系统音频采集 | ReplayKit Broadcast Upload Extension（**原生 Swift**，不含 Flutter 引擎） |
 | 音频样本处理 | CoreMedia / AVFoundation / AudioToolbox |
 | 编码 | libopus |
-| 网络 | Network.framework / BSD UDP Socket |
-| 发现 | Bonjour / mDNS |
+| 网络 | Broadcast Extension：BSD UDP Socket；主 App 控制通道：Dart `Socket` TCP JSON Lines |
+| 发现 | Dart `multicast_dns` 查询 Bonjour / mDNS 服务 |
 | 主 App ↔ Extension 共享 | App Groups（共享容器传递配置/状态；音频包在 Extension 内直接编码发送） |
-| 密钥存储 | Keychain |
-| 加密 | ChaCha20-Poly1305 / AES-GCM |
+| 信任存储 | 当前 `shared_preferences`；后续升级 Keychain |
+| 加密 | ChaCha20-Poly1305 |
 | 上架合规 | 高，基于官方 API |
 
 ## 2. Android
@@ -27,10 +27,10 @@
 | 系统音频采集 | MediaProjection + AudioPlaybackCapture（API 29+，**原生 Kotlin**） |
 | 采集载体 | 前台 Service（`mediaProjection` 类型，原生实现） |
 | PCM 读取 | AudioRecord |
-| 编码 | libopus（JNI）或成熟 Opus 封装 |
-| 网络 | UDP DatagramSocket + OkHttp/WebSocket 控制 |
-| 发现 | NSD (Network Service Discovery) / mDNS |
-| 密钥存储 | Android Keystore / EncryptedSharedPreferences |
+| 编码 | libopus（JNI，本地 CMake 接入 libopus 源码） |
+| 网络 | 采集 Service：UDP DatagramSocket；主 App 控制通道：Dart `Socket` TCP JSON Lines |
+| 发现 | Dart `multicast_dns` 查询 mDNS 服务 |
+| 信任存储 | 当前 `shared_preferences`；后续升级 Android Keystore / EncryptedSharedPreferences |
 | 加密 | ChaCha20-Poly1305 |
 | 合规 | 需前台通知 + 用户授权屏幕/音频捕获 |
 
@@ -44,16 +44,14 @@
 | 前端 | React + TypeScript |
 | 核心 | Rust |
 | 异步运行时 | tokio |
-| 网络 | tokio UDP + TCP/WebSocket |
-| 编解码 | libopus（`opus` / `audiopus` crate 或 FFI） |
-| 音频输出 Windows | WASAPI（`IAudioClient3` / `IAudioRenderClient`） |
-| 音频输出 macOS | CoreAudio / AudioUnit |
-| 音频输出 Linux | PipeWire（后续） |
-| 采集（Sender，后续） | WASAPI Loopback / ScreenCaptureKit |
-| 发现 | mdns 库 / Bonjour |
+| 网络 | tokio UDP + TCP JSON Lines（WebSocket 后续可选） |
+| 编解码 | libopus_sys FFI（`opus` feature）；无 feature 时仅用于测试/占位的 passthrough 回退 |
+| 音频输出 | `cpal` 跨平台输出抽象（底层映射 WASAPI/CoreAudio/ALSA 等） |
+| 采集（Sender） | Windows WASAPI Loopback 已实现；macOS ScreenCaptureKit 占位待实现 |
+| 发现 | mdns-sd / Bonjour |
 | 加密 | ChaCha20-Poly1305 |
-| 密钥交换 | X25519（后续 SPAKE2/SRP） |
-| 配置存储 | SQLite / 本地 JSON |
+| 密钥交换 | X25519 + HKDF/HMAC（SPAKE2/SRP 后续可选） |
+| 配置存储 | 本地 JSON |
 | 日志 | tracing |
 
 ## 4. 共享层（Shared）

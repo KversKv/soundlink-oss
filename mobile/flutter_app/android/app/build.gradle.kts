@@ -1,3 +1,5 @@
+import com.flutter.gradle.tasks.FlutterTask
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
@@ -62,4 +64,9 @@ dependencies {
 
 flutter {
     source = "../.."
+    target = "lib/main.dart"
+}
+
+tasks.withType<FlutterTask>().configureEach {
+    targetPath = "lib/main.dart"
 }

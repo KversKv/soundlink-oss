@@ -279,7 +279,8 @@ IDLE (mDNS 广播中, 显示配对码)
 - 当前入口：`mobile/flutter_app/android`；Gradle app module，`minSdk 29`（AudioPlaybackCapture）。
 - 前台服务 `AudioCaptureService`（`foregroundServiceType="mediaProjection"`）+ 通知；权限 `FOREGROUND_SERVICE`、`FOREGROUND_SERVICE_MEDIA_PROJECTION`、`INTERNET`。
 - Opus 依赖：JNI 封装 + `android/app/src/main/cpp/opus` 本地 libopus 源码；CMake 关闭 x86 SIMD intrinsic 分支以保证 debug APK 在 arm/x86 构建下稳定。
-- 构建验证基线：`mobile/flutter_app/android/gradlew clean :app:assembleDebug`。
+- 构建验证基线：`mobile/flutter_app/android/gradlew clean :app:assembleDebug`、`mobile/flutter_app/flutter build apk --debug`、`mobile/flutter_app/flutter run -d <deviceId> --no-resident`。
+- Windows/Flutter 3.44 实测：`android/app/build.gradle.kts` 必须显式设置 Flutter target 为 `lib/main.dart`，并覆盖 `FlutterTask.targetPath`，避免 Gradle/PowerShell 链路将入口误解析为 `lib/main`。
 
 ---
 

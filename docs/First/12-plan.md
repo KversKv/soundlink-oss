@@ -62,7 +62,7 @@
 - [x] AudioPacket 打包加密 + UDP 发送（§2）— 2026-07-06 UdpAudioSender（CryptoKit ChaChaPoly，BSD socket UDP，与桌面端字节级对齐）
 
 ### Android 采集（原生 Kotlin）
-- [x] Gradle：Flutter 宿主 + 采集 Service module（minSdk 29），权限与前台服务声明（§8.3）— 2026-07-06 build.gradle.kts(minSdk29+cmake+BouncyCastle) + Manifest(权限+foregroundServiceType=mediaProjection)；2026-07-07 `gradlew clean :app:assembleDebug` 通过
+- [x] Gradle：Flutter 宿主 + 采集 Service module（minSdk 29），权限与前台服务声明（§8.3）— 2026-07-06 build.gradle.kts(minSdk29+cmake+BouncyCastle) + Manifest(权限+foregroundServiceType=mediaProjection)；2026-07-07 `gradlew clean :app:assembleDebug` 通过；2026-07-07 修正 Windows Flutter Gradle targetPath 后 `flutter run -d 41091JEKB06514 --no-resident` 真机安装启动通过
 - [x] MediaProjection + AudioPlaybackCapture，AudioRecord → PCM — 2026-07-06 AudioCaptureService（AudioPlaybackCaptureConfiguration + AudioRecord 48k/Stereo/Int16）
 - [x] Opus 编码 — 2026-07-06 OpusEncoder(JNI) + opus_jni.c；2026-07-07 CMakeLists 接入本地 libopus 源码并关闭 x86 SIMD 构建分支，`buildCMakeDebug`/`assembleDebug` 通过
 - [x] AudioPacket 打包加密 + UDP 发送（§2）— 2026-07-06 UdpAudioSender（BouncyCastle ChaCha20-Poly1305，DatagramSocket UDP）
@@ -70,7 +70,7 @@
 
 **阶段验收**：
 - [ ] iOS 播放音乐，桌面端能听到，端到端可用 — 2026-07-07 工程 target/App Group/ReplayKit 引导已补齐；仍待 macOS/Xcode + 真机签名 + libopus xcframework 实机验收
-- [ ] Android 播放音乐，桌面端能听到，端到端可用 — 2026-07-07 Gradle/CMake/libopus APK 构建闭环已通过；仍待 Android 真机 MediaProjection 授权与端到端播放验收
+- [x] Android 播放音乐，桌面端能听到，端到端可用 — 2026-07-07 Gradle/CMake/libopus APK 构建闭环已通过，Pixel 8a 真机安装启动已通过；2026-07-07 用户实测 Android + 电脑端可正常出声，MediaProjection 授权、采集发送与桌面播放闭环通过
 
 ---
 

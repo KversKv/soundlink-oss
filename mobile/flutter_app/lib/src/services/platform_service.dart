@@ -2,7 +2,7 @@
 //
 // 职责：
 //   - writeSessionConfig：将配对派生的 audio_key / 目标地址写入 App Group（iOS）/
-//     EncryptedSharedPreferences（Android），供采集组件读取。
+//     SharedPreferences（Android），供采集组件读取。
 //   - startCapture / stopCapture：触发原生采集（iOS 跳转控制中心引导广播；
 //     Android 启动前台 Service + MediaProjection）。
 //   - getCaptureState：查询采集状态（EventChannel 流式上报）。
