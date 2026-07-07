@@ -263,19 +263,23 @@ IDLE (mDNS 广播中, 显示配对码)
 ## 8. 各端脚手架约定（最小可编译目标）
 
 ### 8.1 桌面（阶段 1 起点）
-- 初始化：`npm create tauri-app@latest`（React+TS 模板）到 `desktop/`，Rust 源整理进 `src-tauri/src/` 现有模块结构。
-- `src-tauri/Cargo.toml` 关键依赖：`tokio`(rt-multi-thread,net,sync,time)、`tracing`+`tracing-subscriber`、`serde`+`serde_json`、`mdns-sd`、`chacha20poly1305`、`x25519-dalek`、`ed25519-dalek`、`hkdf`+`sha2`+`hmac`、`opus`(或 `audiopus`)、`cpal`（跨平台输出，先统一用 cpal 起步，WASAPI/CoreAudio 专用后端后续替换）、`rubato`（重采样，后续）。
-- Tauri commands（`commands/mod.rs`）最小集：`start_receiver()`、`stop_receiver()`、`get_pairing_code()`、`list_output_devices()`、`select_output_device(id)`、`get_status()`。
+- 当前入口：`desktop/src-tauri`（Rust 核心）+ `desktop/ui`（React+TS/Vite）。
+- `src-tauri/Cargo.toml` 关键依赖：`tokio`(rt-multi-thread,net,sync,time)、`tracing`+`tracing-subscriber`、`serde`+`serde_json`、`mdns-sd`、`chacha20poly1305`、`x25519-dalek`、`hkdf`+`sha2`+`hmac`、`cpal`、`libopus_sys`（`opus` feature）、`windows`（`wasapi` feature）。
+- Tauri commands（`commands/mod.rs`）最小集：`start_receiver()`、`stop_receiver()`、`get_pairing_code()`、`list_output_devices()`、`select_output_device(id)`、`get_status()`；阶段 5 已扩展 `start_sender()`、`stop_sender()`、`discover_receivers()`、`list_capture_sources()`、角色切换等命令。
 - 事件推送：Rust → 前端 emit `status`、`stats`、`pairing`。
+- 构建验证基线：`cargo test --no-default-features`、`cargo test --features opus`、`cargo test --features wasapi`、`cargo check --features tauri_app`、`desktop/ui npm run build`。
 
 ### 8.2 iOS（阶段 2）
-- Xcode workspace：`MainApp` target + `BroadcastExtension`(Broadcast Upload Extension) target + `Shared` framework；启用 App Group `group.com.soundlink`。
-- 依赖：libopus（SwiftPM/xcframework）；加密用 CryptoKit（ChaCha20-Poly1305/HKDF/Curve25519）。
+- 当前入口：`mobile/flutter_app/ios`，`Runner.xcodeproj` 包含 Flutter Runner 与 `BroadcastExtension`(Broadcast Upload Extension) target，BroadcastExtension 源码引用 `mobile/ios/BroadcastExtension`。
+- App Group：主 App 与 BroadcastExtension 使用 `group.com.soundlink` 共享会话配置。
+- 依赖：libopus（xcframework/头文件集成仍需 macOS/Xcode 环境确认）；加密用 CryptoKit（ChaCha20-Poly1305/HKDF/Curve25519）。
+- 真机验收前置：Apple Team/签名、App Group provisioning、BroadcastExtension embed、ReplayKit 广播选择器授权流程、libopus 链接。
 
 ### 8.3 Android（阶段 2）
-- Gradle 单 module `app`；`minSdk 29`（AudioPlaybackCapture）。
+- 当前入口：`mobile/flutter_app/android`；Gradle app module，`minSdk 29`（AudioPlaybackCapture）。
 - 前台服务 `AudioCaptureService`（`foregroundServiceType="mediaProjection"`）+ 通知；权限 `FOREGROUND_SERVICE`、`FOREGROUND_SERVICE_MEDIA_PROJECTION`、`INTERNET`。
-- 依赖：Opus（`io.github.jaredmdobson` 或 JNI 封装）；加密用 Tink 或 BouncyCastle。
+- Opus 依赖：JNI 封装 + `android/app/src/main/cpp/opus` 本地 libopus 源码；CMake 关闭 x86 SIMD intrinsic 分支以保证 debug APK 在 arm/x86 构建下稳定。
+- 构建验证基线：`mobile/flutter_app/android/gradlew clean :app:assembleDebug`。
 
 ---
 

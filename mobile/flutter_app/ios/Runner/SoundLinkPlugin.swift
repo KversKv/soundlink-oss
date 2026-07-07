@@ -19,7 +19,7 @@ class SoundLinkPlugin: NSObject, FlutterPlugin {
     /// App Group 共享键名：是否转储采集 PCM/Opus（供 Extension 读取）。
     static let dumpPcmKey = "soundlink.dump_pcm"
     /// Broadcast Extension 的 Bundle Identifier（在 Xcode 中配置）。
-    static let preferredExtension = "com.soundlink.BroadcastExtension"
+    static let preferredExtension = "com.soundlink.soundlink.BroadcastExtension"
 
     /// 当前呈现的广播选择器（强引用以保持存活）。
     private var presentedNav: UINavigationController?

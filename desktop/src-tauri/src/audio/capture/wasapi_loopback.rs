@@ -284,8 +284,12 @@ fn floats_to_i16(floats: &[f32]) -> Vec<i16> {
     floats
         .iter()
         .map(|&f| {
-            let v = (f * 32767.0).clamp(-32768.0, 32767.0);
-            v as i16
+            let sample = f.clamp(-1.0, 1.0);
+            if sample < 0.0 {
+                (sample * 32768.0) as i16
+            } else {
+                (sample * 32767.0) as i16
+            }
         })
         .collect()
 }

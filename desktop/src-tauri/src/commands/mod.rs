@@ -270,6 +270,7 @@ pub struct CaptureSourceInfo {
 /// 列举可用采集源。
 #[tauri::command]
 pub fn list_capture_sources() -> Result<Vec<CaptureSourceInfo>, String> {
+    #[allow(unused_mut)]
     let mut sources = vec![CaptureSourceInfo {
         id: "sine".into(),
         name: "440Hz 正弦测试源".into(),

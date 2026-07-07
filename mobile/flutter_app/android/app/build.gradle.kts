@@ -22,8 +22,9 @@ android {
         versionCode = flutter.versionCode
         versionName = flutter.versionName
 
-        // libopus JNI 桥接（见 src/main/cpp/CMakeLists.txt）。
-        // 需将 libopus 源码放入 src/main/cpp/opus/ 并在 CMakeLists 中取消 add_subdirectory 注释。
+        ndk {
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+        }
         externalNativeBuild {
             cmake {
                 arguments("-DANDROID_STL=c++_static")
@@ -54,17 +55,11 @@ kotlin {
 }
 
 dependencies {
-    // ChaCha20-Poly1305 AEAD（允许自定义 12B nonce，与桌面端字节级互通）。
     implementation("org.bouncycastle:bcprov-jdk18on:1.78.1")
-    // ActivityResultLauncher（MediaProjection 授权）。
-    implementation("androidx.activity:activity-ktx:1.9.3")
+    implementation("androidx.activity:activity-ktx:1.10.1")
+    implementation("androidx.fragment:fragment-ktx:1.8.9")
 }
 
 flutter {
     source = "../.."
-}
-
-dependencies {
-    implementation("androidx.activity:activity-ktx:1.10.1")
-    implementation("androidx.fragment:fragment-ktx:1.8.9")
 }

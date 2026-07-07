@@ -20,7 +20,7 @@
 | 2 · 移动端采集 MVP | Flutter 主 App + 原生采集编码发送 | iOS / Android | 🟡 进行中 | — |
 | 3 · 配对与设备发现 | mDNS + 配对码 + 自动重连 | 全端 | ✅ 完成 | 2026-07-06 |
 | 4 · 体验优化 | 降延迟/抗丢包/自适应 | 全端 | ✅ 完成 | 2026-07-06 |
-| 5 · 桌面发送端 | 双电脑互传 | Win / macOS | ✅ 完成 | 2026-07-06 |
+| 5 · 桌面发送端 | 双电脑互传 | Win / macOS | 🟡 进行中 | — |
 | 6 · 扩展（可选） | Linux / PAKE / 多端 | 全端 | ⬜ 未开始 | — |
 
 ---
@@ -34,7 +34,7 @@
 - [x] `shared/constants` 常量落地（魔数/端口/音频基线，§1）— 2026-07-05
 - [x] AudioPacket 编解码实现（32B 头 + AEAD，§2）— 2026-07-05 ChaCha20-Poly1305
 - [x] Rust UDP Server 收包 → 校验 → 解密 — 2026-07-05
-- [x] Opus 解码 — 2026-07-05 libopus_sys FFI + passthrough 回退；loopback 用 passthrough 验证链路，真实 Opus 待 CMake 构建
+- [x] Opus 解码 — 2026-07-05 libopus_sys FFI + passthrough 回退；2026-07-07 `cargo test --features opus` 通过（46 passed，真实 libopus roundtrip）
 - [x] 简单 Jitter Buffer（默认 80ms / PLC 补帧，§7）— 2026-07-05
 - [x] 音频输出（cpal 起步；设备枚举/选择）— 2026-07-05 cpal 0.15
 - [x] Tauri commands：start/stop_receiver、get_pairing_code、list/select_output_device、get_status（§8.1）— 2026-07-05 commands/mod.rs
@@ -56,21 +56,21 @@
 - [x] 与原生采集组件通信通道（iOS App Groups / Android Service IPC）— 2026-07-06 PlatformService + MethodChannel；iOS App Group / Android SharedPreferences 配置下发
 
 ### iOS 采集（原生 Swift）
-- [x] Xcode 工程：Flutter 主 App + BroadcastExtension + Shared framework + App Group（§8.2）— 2026-07-06 Swift 源码+Runner.entitlements 已就绪；BroadcastExtension target 需在 Xcode(macOS) 中新建并加入源码
+- [x] Xcode 工程：Flutter 主 App + BroadcastExtension + Shared framework + App Group（§8.2）— 2026-07-06 Swift 源码+Runner.entitlements 已就绪；2026-07-07 Runner.xcodeproj 已加入 BroadcastExtension target、Info.plist、entitlements 与 Embed App Extensions
 - [x] ReplayKit 采集，CMSampleBuffer → PCM (Int16 交错) — 2026-07-06 SampleHandler + AudioProcessor(AVAudioConverter 归一化 48k/Stereo/Int16)
 - [x] Opus 编码（libopus）— 2026-07-06 OpusEncoderWrapper（libopus C API，需 Bridging Header 导入 opus.h + xcframework）
 - [x] AudioPacket 打包加密 + UDP 发送（§2）— 2026-07-06 UdpAudioSender（CryptoKit ChaChaPoly，BSD socket UDP，与桌面端字节级对齐）
 
 ### Android 采集（原生 Kotlin）
-- [x] Gradle：Flutter 宿主 + 采集 Service module（minSdk 29），权限与前台服务声明（§8.3）— 2026-07-06 build.gradle.kts(minSdk29+cmake+BouncyCastle) + Manifest(权限+foregroundServiceType=mediaProjection)
+- [x] Gradle：Flutter 宿主 + 采集 Service module（minSdk 29），权限与前台服务声明（§8.3）— 2026-07-06 build.gradle.kts(minSdk29+cmake+BouncyCastle) + Manifest(权限+foregroundServiceType=mediaProjection)；2026-07-07 `gradlew clean :app:assembleDebug` 通过
 - [x] MediaProjection + AudioPlaybackCapture，AudioRecord → PCM — 2026-07-06 AudioCaptureService（AudioPlaybackCaptureConfiguration + AudioRecord 48k/Stereo/Int16）
-- [x] Opus 编码 — 2026-07-06 OpusEncoder(JNI) + opus_jni.c + CMakeLists；需 NDK 构建并放入 libopus 源码
+- [x] Opus 编码 — 2026-07-06 OpusEncoder(JNI) + opus_jni.c；2026-07-07 CMakeLists 接入本地 libopus 源码并关闭 x86 SIMD 构建分支，`buildCMakeDebug`/`assembleDebug` 通过
 - [x] AudioPacket 打包加密 + UDP 发送（§2）— 2026-07-06 UdpAudioSender（BouncyCastle ChaCha20-Poly1305，DatagramSocket UDP）
 - [x] 前台 Service + 通知 — 2026-07-06 startForeground + 通知渠道 + FOREGROUND_SERVICE_MEDIA_PROJECTION
 
 **阶段验收**：
-- [ ] iOS 播放音乐，桌面端能听到，端到端可用 — 待真机（需 macOS/Xcode 构建 BroadcastExtension target + libopus）
-- [ ] Android 播放音乐，桌面端能听到，端到端可用 — 待真机（需 Android SDK/NDK + libopus 源码构建）
+- [ ] iOS 播放音乐，桌面端能听到，端到端可用 — 2026-07-07 工程 target/App Group/ReplayKit 引导已补齐；仍待 macOS/Xcode + 真机签名 + libopus xcframework 实机验收
+- [ ] Android 播放音乐，桌面端能听到，端到端可用 — 2026-07-07 Gradle/CMake/libopus APK 构建闭环已通过；仍待 Android 真机 MediaProjection 授权与端到端播放验收
 
 ---
 
@@ -112,13 +112,13 @@
 
 **目标**：Windows/macOS 电脑作为 Sender，支持电脑到电脑流转。
 
-- [x] Windows WASAPI Loopback 采集 — 2026-07-06 `audio/capture/wasapi_loopback.rs`（windows crate 0.58，COM MTA 线程，float32→i16 + 线性重采样 + 环形缓冲；`wasapi` feature 门控）
-- [x] macOS ScreenCaptureKit 采集 — 2026-07-06 `audio/capture/macos_screencapturekit.rs` 占位（需 macOS 环境 + SCStream API 实现）
+- [x] Windows WASAPI Loopback 采集 — 2026-07-06 `audio/capture/wasapi_loopback.rs`（windows crate 0.58，COM MTA 线程，float32→i16 + 线性重采样 + 环形缓冲；`wasapi` feature 门控）；2026-07-07 修正 f32→i16 负满幅映射，`cargo test --features wasapi` 通过（50 passed）
+- [ ] macOS ScreenCaptureKit 采集 — 2026-07-07 当前仅 `audio/capture/macos_screencapturekit.rs` 占位，未在 macOS/SCStream 环境实现与验证
 - [x] 统一 Sender 抽象层（与移动端协议一致） — 2026-07-06 `audio/capture/` CaptureSource trait + `sender.rs` SenderEngine（mDNS 发现 + 控制握手 + Opus 编码 + UDP 发送 + 心跳/stats）
-- [x] 桌面端角色切换 UI（Receiver / Sender） — 2026-07-06 commands 新增 start/stop_sender、discover_receivers、get/set_role、list_capture_sources；App.tsx 角色切换 + 发送端面板（采集源/发现/配对/状态）
+- [x] 桌面端角色切换 UI（Receiver / Sender） — 2026-07-06 commands 新增 start/stop_sender、discover_receivers、get/set_role、list_capture_sources；App.tsx 角色切换 + 发送端面板（采集源/发现/配对/状态）；2026-07-07 `cargo check --features tauri_app` 与 `desktop/ui npm run build` 通过
 
 **阶段验收**：
-- [x] 一台电脑音频可实时流转到另一台电脑并播放 — 2026-07-06 `phase5_loopback.rs` 自测通过：Sender 发送 611 包 / Receiver 接收 611 包 / 0 丢失，state=STREAMING & RECEIVING，exit 0
+- [ ] 一台电脑音频可实时流转到另一台电脑并播放 — 2026-07-06 `phase5_loopback.rs` 自测通过：Sender 发送 611 包 / Receiver 接收 611 包 / 0 丢失；2026-07-07 Windows WASAPI feature 构建通过；macOS ScreenCaptureKit 未实现且双电脑真机未验收
 
 ---
 
