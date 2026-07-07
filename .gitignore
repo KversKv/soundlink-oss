@@ -29,6 +29,7 @@ $RECYCLE.BIN/
 .env
 .env.*
 !.env.example
+**/.third_party/
 *.pem
 *.key
 *.keystore

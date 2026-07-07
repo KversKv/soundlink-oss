@@ -63,9 +63,11 @@ pod --version
 cd /你的仓库路径/SoundLink/mobile/flutter_app
 flutter pub get
 cd ios
-pod install
 /bin/sh scripts/build_opus_xcframework.sh
+pod install
 ```
+
+`build_opus_xcframework.sh` 会在缺少源码时自动下载 Opus 1.5.2，并把源码放到 `mobile/flutter_app/android/app/src/main/cpp/opus`。如果你的内网 Mac 不能访问外网，请在能联网的机器下载 `https://downloads.xiph.org/releases/opus/opus-1.5.2.tar.gz`，解压后把 `opus-1.5.2` 目录重命名为 `opus`，放到上述路径。
 
 完成后确认存在：
 
@@ -186,7 +188,30 @@ ReplayKit Broadcast Extension 不是直接点扩展图标启动，它由系统�
 
 必须打开 `Runner.xcworkspace`。CocoaPods 依赖只会正确挂到 workspace，直接打开 xcodeproj 经常出现 Pods 或 Flutter 依赖找不到。
 
-### 8.2 `No such module 'Opus'`
+### 8.2 `pod install` 报 `got PBXTargetDependency for attribute buildPhases`
+
+这是 Xcode 工程文件里的 UUID 冲突导致的：同一个 UUID 不能同时表示 `PBXShellScriptBuildPhase` 和 `PBXTargetDependency`。当前仓库已修复；同步最新代码后在 `mobile/flutter_app/ios` 重新执行：
+
+```bash
+pod install
+```
+
+### 8.3 `build_opus_xcframework.sh` 报找不到 libopus 源码
+
+当前脚本会自动下载 Opus 1.5.2。如果内网 Mac 无法访问外网，请在能联网的机器下载 `https://downloads.xiph.org/releases/opus/opus-1.5.2.tar.gz`，解压并重命名为 `opus`，放到：
+
+```bash
+mobile/flutter_app/android/app/src/main/cpp/opus
+```
+
+然后重新执行：
+
+```bash
+cd /你的仓库路径/SoundLink/mobile/flutter_app/ios
+/bin/sh scripts/build_opus_xcframework.sh
+```
+
+### 8.4 `No such module 'Opus'`
 
 执行：
 
@@ -197,27 +222,27 @@ cd /你的仓库路径/SoundLink/mobile/flutter_app/ios
 
 然后回到 Xcode，顶部菜单点击 **Product → Clean Build Folder**，再点 **▶ Run**。
 
-### 8.3 `Signing for Runner requires a development team`
+### 8.5 `Signing for Runner requires a development team`
 
 进入 **Runner 项目 → TARGETS → Runner → Signing & Capabilities**，选择 Team；再进入 **BroadcastExtension** target 选择同一个 Team。
 
-### 8.4 `Bundle identifier is not available`
+### 8.6 `Bundle identifier is not available`
 
 Bundle ID 被别人占用。把 Runner 改成你自己的唯一 ID，例如 `com.<你的英文名>.soundlink`，BroadcastExtension 改成同前缀加 `.BroadcastExtension`。
 
-### 8.5 `App Groups` 报错或 App Group 无法创建
+### 8.7 `App Groups` 报错或 App Group 无法创建
 
 确认 Runner 和 BroadcastExtension 的 Team 一样；App Group 字符串完全一样；如果免费 Apple ID 无法创建 App Group，需要使用可用的 Apple Developer 账号或改用团队允许创建的 App Group。
 
-### 8.6 iPhone 看不到 BroadcastExtension
+### 8.8 iPhone 看不到 BroadcastExtension
 
 确认你运行的是真机 Debug 包，不是模拟器；确认 BroadcastExtension target 已随 Runner 安装；重新运行 App 后再打开控制中心长按屏幕录制按钮。
 
-### 8.7 本地网络发现不到电脑
+### 8.9 本地网络发现不到电脑
 
 首次启动 App 时 iOS 会弹出本地网络权限，必须点 **允许**。如果误点拒绝，打开 iPhone **设置 → 隐私与安全性 → 本地网络**，找到 SoundLink 并打开开关。
 
-### 8.8 广播启动但桌面没声音
+### 8.10 广播启动但桌面没声音
 
 检查桌面 Receiver 是否已启动；手机和电脑是否同一 Wi-Fi；是否已完成配对；是否播放的是 DRM/受保护内容。受保护内容、系统通话和部分 App 音频可能无法被 ReplayKit 采集。
 

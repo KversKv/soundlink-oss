@@ -22,11 +22,13 @@
 | `mobile/flutter_app/ios/Podfile` | post_install 统一 iOS deployment target 到 13.0 |
 | `docs/user/03-dev-env-ios.md` | 重写为 macOS 初学者可执行指南：环境安装、Xcode 按钮路径、签名、App Group、构建、真机调试、ReplayKit 启动和故障排查 |
 | `docs/First/12-plan.md` | 同步 iOS 阶段验收进展，标明仍待 macOS/Xcode 真机端到端验收 |
+| `mobile/flutter_app/ios/Runner.xcodeproj/project.pbxproj` | 追加修复 Build Opus 脚本阶段与 PBXTargetDependency 使用同一 UUID 导致 CocoaPods 无法解析的问题 |
+| `mobile/flutter_app/ios/scripts/build_opus_xcframework.sh` | 追加支持缺少 libopus 源码时自动下载 Opus 1.5.2，并提示内网手动放置路径 |
 
 ## 关键决策
 
 - 不引入 WebRTC 或重型依赖，继续沿用 ReplayKit + Opus + UDP + ChaCha20-Poly1305。
-- libopus 复用仓库内 Android 已引入的源码，通过 macOS/Xcode/CMake 生成 iOS XCFramework，避免额外网络依赖。
+- libopus 优先复用仓库内 Android 目录的源码；若目录不存在，脚本自动下载 Opus 1.5.2，内网环境可手动放置源码到同一路径。
 - iOS 验收项未勾选完成，因为当前环境是 Windows，无法在本机执行 Xcode 真机编译和 ReplayKit 端到端验证。
 
 ## 验证结果

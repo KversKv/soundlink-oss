@@ -230,7 +230,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 0BE900000000000000000001 /* Build configuration list for PBXNativeTarget "BroadcastExtension" */;
 			buildPhases = (
-				0BE700000000000000000001 /* Build Opus XCFramework */,
+				0BE700000000000000000002 /* Build Opus XCFramework */,
 				0BE800000000000000000001 /* Sources */,
 				0BE800000000000000000002 /* Frameworks */,
 				0BE800000000000000000003 /* Resources */,
@@ -364,7 +364,7 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
-		0BE700000000000000000001 /* Build Opus XCFramework */ = {
+		0BE700000000000000000002 /* Build Opus XCFramework */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
 			buildActionMask = 2147483647;

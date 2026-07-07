@@ -69,7 +69,7 @@
 - [x] 前台 Service + 通知 — 2026-07-06 startForeground + 通知渠道 + FOREGROUND_SERVICE_MEDIA_PROJECTION
 
 **阶段验收**：
-- [ ] iOS 播放音乐，桌面端能听到，端到端可用 — 2026-07-07 工程 target/App Group/ReplayKit 引导已补齐；2026-07-07 补齐 Runner entitlements、本地网络权限、SessionConfig snake_case 解码、Opus XCFramework 生成脚本与 Xcode 链接；仍待 macOS/Xcode + 真机签名 + 端到端实机验收
+- [ ] iOS 播放音乐，桌面端能听到，端到端可用 — 2026-07-07 工程 target/App Group/ReplayKit 引导已补齐；2026-07-07 补齐 Runner entitlements、本地网络权限、SessionConfig snake_case 解码、Opus XCFramework 生成脚本与 Xcode 链接；2026-07-07 修复 Xcode UUID 冲突导致的 pod install 失败，并让 Opus 脚本在缺源码时自动下载/支持内网手动放置；仍待 macOS/Xcode + 真机签名 + 端到端实机验收
 - [x] Android 播放音乐，桌面端能听到，端到端可用 — 2026-07-07 Gradle/CMake/libopus APK 构建闭环已通过，Pixel 8a 真机安装启动已通过；2026-07-07 用户实测 Android + 电脑端可正常出声，MediaProjection 授权、采集发送与桌面播放闭环通过
 
 ---

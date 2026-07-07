@@ -3,14 +3,45 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 IOS_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-PROJECT_ROOT="$(cd "$IOS_DIR/../../.." && pwd)"
-OPUS_SRC="$PROJECT_ROOT/mobile/flutter_app/android/app/src/main/cpp/opus"
+FLUTTER_APP_DIR="$(cd "$IOS_DIR/.." && pwd)"
+OPUS_VERSION="1.5.2"
+OPUS_ARCHIVE="opus-$OPUS_VERSION.tar.gz"
+OPUS_URL="https://downloads.xiph.org/releases/opus/$OPUS_ARCHIVE"
+OPUS_SRC="$FLUTTER_APP_DIR/android/app/src/main/cpp/opus"
+OPUS_CACHE_DIR="$FLUTTER_APP_DIR/.third_party"
+OPUS_CACHE_ARCHIVE="$OPUS_CACHE_DIR/$OPUS_ARCHIVE"
+OPUS_CACHE_SRC="$OPUS_CACHE_DIR/opus-$OPUS_VERSION"
 BUILD_ROOT="$IOS_DIR/build/opus"
 OUTPUT_DIR="$IOS_DIR/Frameworks"
 OUTPUT_XCFRAMEWORK="$OUTPUT_DIR/Opus.xcframework"
 
+prepare_opus_source() {
+  if [ -f "$OPUS_SRC/CMakeLists.txt" ]; then
+    return
+  fi
+
+  mkdir -p "$(dirname "$OPUS_SRC")" "$OPUS_CACHE_DIR"
+
+  if [ ! -f "$OPUS_CACHE_ARCHIVE" ]; then
+    if command -v curl >/dev/null 2>&1; then
+      curl -L "$OPUS_URL" -o "$OPUS_CACHE_ARCHIVE"
+    else
+      echo "找不到 curl，无法下载 libopus：$OPUS_URL" >&2
+      exit 1
+    fi
+  fi
+
+  rm -rf "$OPUS_CACHE_SRC"
+  tar -xzf "$OPUS_CACHE_ARCHIVE" -C "$OPUS_CACHE_DIR"
+  rm -rf "$OPUS_SRC"
+  mv "$OPUS_CACHE_SRC" "$OPUS_SRC"
+}
+
+prepare_opus_source
+
 if [ ! -f "$OPUS_SRC/CMakeLists.txt" ]; then
   echo "找不到 libopus 源码：$OPUS_SRC" >&2
+  echo "请确认网络可访问 $OPUS_URL，或手动解压 opus-$OPUS_VERSION 到上述目录。" >&2
   exit 1
 fi
 
