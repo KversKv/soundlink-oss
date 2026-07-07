@@ -93,6 +93,13 @@ class ControlClient {
     _socket?.add(utf8.encode(frame));
   }
 
+  Future<void> sendAndFlush(ControlMessage msg) async {
+    final socket = _socket;
+    if (socket == null) return;
+    socket.add(utf8.encode(msg.toFrame()));
+    await socket.flush();
+  }
+
   /// 发送原始 JSON 行。
   void sendRaw(Map<String, dynamic> obj) {
     _socket?.add(utf8.encode('${json.encode(obj)}\n'));

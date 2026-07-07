@@ -90,8 +90,7 @@ class _PairingPageState extends State<PairingPage> {
                 label: const Text('已信任设备直接连接'),
               ),
               const SizedBox(height: 24),
-              if (app.conn == LinkState.streaming ||
-                  app.conn == LinkState.reconnecting)
+              if (app.conn == LinkState.streaming)
                 FilledButton.tonalIcon(
                   onPressed: _busy ? null : () => app.stop(),
                   icon: const Icon(Icons.stop),

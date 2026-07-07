@@ -20,6 +20,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::Notify;
 use tokio::task::JoinHandle;
 
 /// 消息类型字符串。
@@ -33,6 +34,8 @@ pub mod msg_type {
     pub const STREAM_STOP: &str = "stream_stop";
     pub const HEARTBEAT: &str = "heartbeat";
     pub const STATS: &str = "stats";
+    pub const CONTROL_ACTION: &str = "control_action";
+    pub const CONTROL_ACTION_ACK: &str = "control_action_ack";
     pub const ERROR: &str = "error";
 }
 
@@ -78,6 +81,7 @@ pub struct ControlState {
     pub audio_port: u16,
     pub current_session: Mutex<Option<Session>>,
     pub running: Arc<AtomicBool>,
+    pub stop_notify: Arc<Notify>,
 }
 
 /// 控制服务器。
@@ -107,6 +111,7 @@ impl ControlServer {
                 audio_port,
                 current_session: Mutex::new(None),
                 running: Arc::new(AtomicBool::new(false)),
+                stop_notify: Arc::new(Notify::new()),
             }),
             listener_task: Mutex::new(None),
         }
@@ -152,6 +157,7 @@ impl ControlServer {
 
     pub fn stop(&self) {
         self.state.running.store(false, Ordering::SeqCst);
+        self.state.stop_notify.notify_waiters();
         if let Some(h) = self.listener_task.lock().take() {
             h.abort();
         }
@@ -180,7 +186,27 @@ async fn handle_connection(
 
     loop {
         line.clear();
-        let read_result = tokio::time::timeout(timeout_duration, reader.read_line(&mut line)).await;
+        let read_result = tokio::select! {
+            _ = state.stop_notify.notified() => {
+                if stream_active {
+                    let stop_msg = json!({
+                        "type": msg_type::STREAM_STOP,
+                        "msg_id": "s-stop",
+                        "ts": now_ms(),
+                        "stream_id": state
+                            .current_session
+                            .lock()
+                            .as_ref()
+                            .map(|s| s.stream_id)
+                            .unwrap_or(0),
+                    });
+                    let _ = write_msg(&mut writer, &stop_msg).await;
+                }
+                let _ = writer.shutdown().await;
+                break;
+            }
+            read_result = tokio::time::timeout(timeout_duration, reader.read_line(&mut line)) => read_result,
+        };
         let n = match read_result {
             Ok(Ok(n)) => n,
             Ok(Err(e)) => return Err(format!("读控制消息失败：{}", e)),
@@ -245,6 +271,7 @@ async fn handle_connection(
                 // 阶段 4：回传 receiver stats（spec §3.8）。
                 Some(handle_stats(&msg, &state))
             }
+            msg_type::CONTROL_ACTION => Some(handle_control_action(&msg)),
             _ => Some(error_msg(
                 &msg,
                 ErrorCode::Internal,
@@ -253,20 +280,27 @@ async fn handle_connection(
         };
 
         if let Some(resp) = response {
-            let frame = format!(
-                "{}\n",
-                serde_json::to_string(&resp).map_err(|e| e.to_string())?
-            );
-            writer
-                .write_all(frame.as_bytes())
-                .await
-                .map_err(|e| format!("写控制消息失败：{}", e))?;
+            write_msg(&mut writer, &resp).await?;
         }
     }
 
     // 连接断开后清理会话（但不停止已信任关系）。
     let _ = last_hello_device;
     Ok(())
+}
+
+async fn write_msg(
+    writer: &mut tokio::net::tcp::OwnedWriteHalf,
+    msg: &Value,
+) -> Result<(), String> {
+    let frame = format!(
+        "{}\n",
+        serde_json::to_string(msg).map_err(|e| e.to_string())?
+    );
+    writer
+        .write_all(frame.as_bytes())
+        .await
+        .map_err(|e| format!("写控制消息失败：{}", e))
 }
 
 /// hello → hello_ack。
@@ -527,6 +561,23 @@ fn handle_stats(msg: &Value, state: &ControlState) -> Value {
         "bitrate": st.bitrate,
         "recommended_bitrate": st.recommended_bitrate,
         "jitter_mode": st.jitter_mode,
+    })
+}
+
+fn handle_control_action(msg: &Value) -> Value {
+    let action = msg.get("action").and_then(|v| v.as_str()).unwrap_or("");
+    let supported = matches!(
+        action,
+        "media.play_pause" | "media.previous" | "media.next" | "shortcut.set" | "shortcut.trigger"
+    );
+    json!({
+        "type": msg_type::CONTROL_ACTION_ACK,
+        "msg_id": new_msg_id("s"),
+        "ts": now_ms(),
+        "reply_to": msg.get("msg_id").and_then(|v| v.as_str()).unwrap_or(""),
+        "action": action,
+        "result": if supported { "accepted" } else { "unsupported" },
+        "error": if supported { Value::Null } else { json!({ "code": ErrorCode::Internal.as_i32(), "message": format!("不支持的控制动作：{}", action) }) },
     })
 }
 

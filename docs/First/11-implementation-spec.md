@@ -168,7 +168,55 @@ packet = header ‖ cipher ‖ tag
 ```
 接收端也可回传 `stats`：`packets_recv / packets_lost / jitter_ms / buffer_ms / est_latency_ms`。
 
-### 3.9 error  (双向)
+### 3.9 control_action  (双向)
+通用低频控制动作。音频流生命周期继续使用 `stream_start` / `stream_stop`；媒体键、快捷指令设置/触发等扩展能力统一走 `control_action`。
+
+```json
+{
+  "type": "control_action",
+  "msg_id": "c-action-1",
+  "ts": 1730000005000,
+  "action": "media.play_pause",
+  "target": "receiver",
+  "correlation_id": "optional-id",
+  "payload": {}
+}
+```
+
+字段约定：
+
+| 字段 | 必填 | 说明 |
+|---|---|---|
+| `action` | 是 | 点分命名动作，如 `media.play_pause`、`shortcut.trigger` |
+| `target` | 否 | 目标端或目标模块，如 `sender` / `receiver` / `system_media` |
+| `correlation_id` | 否 | 调用链跟踪 ID；无则用 `msg_id` 关联 |
+| `payload` | 是 | 动作参数对象；无参数时传 `{}` |
+
+预留动作名：
+
+| action | payload | 说明 |
+|---|---|---|
+| `media.play_pause` | `{}` | 播放/暂停 |
+| `media.previous` | `{}` | 上一曲 |
+| `media.next` | `{}` | 下一曲 |
+| `shortcut.set` | `{ "id":"...", "binding":"...", "action":"..." }` | 设置快捷指令 |
+| `shortcut.trigger` | `{ "id":"..." }` | 触发快捷指令 |
+
+### 3.10 control_action_ack  (双向)
+```json
+{
+  "type": "control_action_ack",
+  "msg_id": "s-action-1",
+  "ts": 1730000005010,
+  "reply_to": "c-action-1",
+  "action": "media.play_pause",
+  "result": "accepted"
+}
+```
+
+`result` 取值：`accepted` / `rejected` / `unsupported` / `failed`。失败时附加 `error`。
+
+### 3.11 error  (双向)
 ```json
 { "type": "error", "msg_id": "x-1", "ts": 1730000004000,
   "error": { "code": 1003, "message": "protocol version mismatch" } }

@@ -16,6 +16,7 @@ flowchart LR
         UI["前端 UI (React)"]
         Core["Rust Core"]
         subgraph Core
+            CTRL["控制编排: Session/Action Router"]
             NET["网络: UDP/TCP/mDNS"]
             PAIR["配对/信任"]
             AUD["音频: JitterBuffer/解码/输出"]
@@ -23,9 +24,12 @@ flowchart LR
         UI <--> Core
     end
 
+    FlutterApp <-->|控制会话: handshake/stream/control_action| CTRL
+    CTRL <--> NET
+    CTRL -->|授权/启动/停止/状态| AUD
+    PAIR <--> CTRL
     iOSExt -->|UDP 音频| NET
     AndSvc -->|UDP 音频| NET
-    FlutterApp <-->|控制 TCP JSON Lines| NET
     AUD --> OUT["音频设备 (cpal 抽象)"]
 ```
 
@@ -54,6 +58,7 @@ flowchart LR
 |---|---|---|
 | Discovery | mDNS/Bonjour 发现与广播 | 全端 |
 | Pairing | 配对码、密钥协商、信任存储 | 全端 |
+| Session/Action Router | 同一控制会话下编排音频流生命周期、连接事件、通用控制动作与回执 | Flutter 主 App + 桌面 Rust Core |
 | Capture | 系统音频采集 | 移动端 + 桌面 Sender |
 | Codec | Opus 编解码 | 全端 |
 | Transport | UDP 音频 + TCP JSON Lines 控制 + 加密 | 全端 |
@@ -64,8 +69,41 @@ flowchart LR
 
 ## 4. 控制面 / 数据面分离
 
-- **控制面（Control Plane）**：当前实现为 TCP + UTF-8 JSON Lines（每条消息以 `\n` 结尾）；承载配对握手、能力协商、开始/停止流、心跳、统计上报。WebSocket 仅作为后续可选扩展。
+- **控制面（Control Plane）**：当前实现为 TCP + UTF-8 JSON Lines（每条消息以 `\n` 结尾）；承载配对握手、能力协商、开始/停止流、心跳、统计上报、通用控制动作（`control_action`）与回执（`control_action_ack`）。WebSocket 仅作为后续可选扩展。
 - **数据面（Data Plane）**：UDP 单播。承载 Opus 音频包，低延迟、可丢弃过期包。
+- **统一受控原则**：控制面是唯一的会话编排入口。音频流生命周期（`stream_start` / `stream_stop`）、连接事件（EOF / heartbeat timeout / error）、媒体控制（上一曲、播放/暂停、下一曲）与快捷指令设置/触发都必须归属于同一个已配对控制会话；UDP 音频包只在该会话授权并启动后发送和接收。
+
+### 4.1 同一控制会话下的互通框架
+
+```mermaid
+sequenceDiagram
+    participant App as Flutter/桌面 UI
+    participant Ctrl as Session/Action Router
+    participant Capture as Capture/Service/Extension
+    participant Net as UDP Audio Plane
+    participant Peer as 对端 Session/Action Router
+
+    App->>Ctrl: 选择设备 / 输入配对码 / 点击快捷指令
+    Ctrl->>Peer: hello / pair_request / stream_start
+    Peer-->>Ctrl: hello_ack / pair_response / stream_start_ack
+    Ctrl->>Capture: 写入会话配置并启动采集
+    Capture->>Net: 发送加密 Opus UDP 包
+    Net->>Peer: UDP 音频包
+    App->>Ctrl: control_action(media.play_pause / shortcut.trigger)
+    Ctrl->>Peer: control_action + payload
+    Peer-->>Ctrl: control_action_ack
+    App->>Ctrl: 停止接收或停止广播
+    Ctrl->>Peer: stream_stop 或关闭控制连接
+    Ctrl->>Capture: 停止采集 / 清理会话
+```
+
+### 4.2 职责边界
+
+- **Session/Action Router**：维护已配对会话、当前 `stream_id`、控制连接状态、心跳超时、动作路由和回执关联；所有会影响音频流或对端状态的操作都先进入该层。
+- **音频流生命周期**：使用 `stream_start` / `stream_start_ack` / `stream_stop`；它们只表达流的开始、确认和停止，不承载媒体键或快捷指令语义。
+- **通用控制动作**：使用 `control_action` / `control_action_ack`；`action` 使用点分命名，例如 `media.play_pause`、`media.previous`、`media.next`、`shortcut.set`、`shortcut.trigger`，参数统一放入 `payload`。
+- **移动原生采集组件**：iOS Broadcast Extension 与 Android 前台 Service 不直接参与完整控制握手；它们由 Flutter 主 App 通过 App Group / SharedPreferences 下发会话配置和停止信号，仍受同一控制会话约束。
+- **桌面双角色**：桌面 Receiver 与 Sender 都应复用相同控制会话模型；差异只在音频端是 UDP 接收输出还是采集发送。
 
 详见 [04-protocol](./04-protocol.md)。
 

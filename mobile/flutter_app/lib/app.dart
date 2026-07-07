@@ -157,10 +157,12 @@ class AppState extends ChangeNotifier {
         device,
         pairingCode: pairingCode,
         onState: (s) {
-          _conn = s;
           if (s == LinkState.reconnecting) {
+            _conn = LinkState.disconnected;
             _pairing = null;
-            _lastError = '控制连接已断开，已自动停止采集';
+            _lastError = '对端已停止或控制连接已断开，已自动停止采集';
+          } else {
+            _conn = s;
           }
           notifyListeners();
         },

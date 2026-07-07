@@ -102,7 +102,7 @@
 - [x] 时钟漂移校正（±0.5% 重采样，§7）— 2026-07-06 resampler.rs DriftResampler 线性插值 ±0.5%，按缓冲水位偏差调整 ratio
 - [x] 桌面输出 buffer 调优 — 2026-07-06 output/mod.rs BufferSize::Fixed(OUTPUT_BUFFER_SAMPLES=1920) 低延迟，失败回退 Default
 - [x] 延迟估算与 UI 展示 — 2026-07-06 est_latency_ms 基于 sender timestamp 与本地时钟差；App.tsx 展示抖动/延迟/码率/漂移/Jitter 模式选择
-- [x] 双端连接事件管理与自动停流 — 2026-07-07 控制通道 EOF/心跳超时触发桌面 Receiver 停止接收；桌面 Sender 监听接收端断开/error；Flutter 端订阅控制断开并停止原生采集，周期发送 heartbeat/stats；iOS Extension 通过 App Group stop flag 响应主 App 停止请求；`flutter analyze`、`cargo check --no-default-features`、`cargo check --features tauri_app` 通过
+- [x] 双端连接事件管理与自动停流 — 2026-07-07 控制通道 EOF/心跳超时触发桌面 Receiver 停止接收；手动停止 Receiver 会向 Sender 下发 `stream_stop` 并关闭控制连接；桌面 Sender 手动停止改为 graceful stop，先发送 `stream_stop` 再关闭；Flutter 端订阅 `stream_stop`/`error`/控制断开并停止原生采集，手动停止时 flush `stream_stop`；新增通用 `control_action`/`control_action_ack` envelope，预留媒体键与快捷指令动作解析；iOS Extension 通过 App Group stop flag 响应主 App 停止请求；`flutter analyze`、`cargo check --no-default-features`、`cargo check --features tauri_app` 通过
 
 **阶段验收**：
 - [x] 弱网下无明显卡顿；UI 显示端到端延迟估算 — 2026-07-06 phase4_loopback.rs 弱网自测（10% 丢包 + 抖动）：recv=894 lost=106 loss=10.6% jitter=5ms latency>0 drift≈0.997 rec_bitrate=96kbps，exit 0

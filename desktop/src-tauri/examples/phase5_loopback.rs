@@ -134,7 +134,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let final_sender = sender.status();
     let final_receiver = engine.status();
 
-    sender.stop();
+    sender.stop().await;
     control.stop();
     mdns.stop();
     engine.stop();

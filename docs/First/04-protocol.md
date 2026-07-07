@@ -43,8 +43,39 @@ TXT 记录示例：
 | `stream_start` | Sender→Receiver | 声明音频参数、UDP 端口 |
 | `stream_stop` | Sender→Receiver | 结束流 |
 | `heartbeat` | 双向 | 保活 |
-| `stats` | Sender→Receiver | 丢包/抖动/延迟统计 |
+| `stats` | 双向 | 丢包/抖动/延迟统计 |
+| `control_action` | 双向 | 通用低频控制动作，如媒体键、快捷指令设置/触发 |
+| `control_action_ack` | 双向 | 通用控制动作回执 |
 | `error` | 双向 | 错误码与描述 |
+
+`stream_start` / `stream_stop` 只表达音频流生命周期；媒体控制、快捷指令等扩展能力统一走 `control_action`：
+
+```json
+{
+  "type": "control_action",
+  "msg_id": "c-action-1",
+  "ts": 1730000005000,
+  "action": "media.play_pause",
+  "target": "receiver",
+  "correlation_id": "optional-id",
+  "payload": {}
+}
+```
+
+回执：
+
+```json
+{
+  "type": "control_action_ack",
+  "msg_id": "s-action-1",
+  "ts": 1730000005010,
+  "reply_to": "c-action-1",
+  "action": "media.play_pause",
+  "result": "accepted"
+}
+```
+
+预留动作名：`media.play_pause` / `media.previous` / `media.next` / `shortcut.set` / `shortcut.trigger`。
 
 > 具体字段与错误码在实现阶段落到 `shared/protocol` 定义（建议同源生成各端类型）。
 

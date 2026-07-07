@@ -4,7 +4,38 @@
 
 ## 控制消息（JSON over TCP/WS）
 hello / pair_request / pair_response / stream_start / stream_stop /
-heartbeat / stats / error
+heartbeat / stats / control_action / control_action_ack / error
+
+### 通用控制动作
+
+`control_action` 用于非音频生命周期的低频指令，例如媒体键、快捷指令设置与触发。
+
+```json
+{
+  "type": "control_action",
+  "msg_id": "c-action-1",
+  "ts": 1730000005000,
+  "action": "media.play_pause",
+  "target": "receiver",
+  "correlation_id": "optional-id",
+  "payload": {}
+}
+```
+
+回执：
+
+```json
+{
+  "type": "control_action_ack",
+  "msg_id": "s-action-1",
+  "ts": 1730000005010,
+  "reply_to": "c-action-1",
+  "action": "media.play_pause",
+  "result": "accepted"
+}
+```
+
+预留动作名：`media.play_pause` / `media.previous` / `media.next` / `shortcut.set` / `shortcut.trigger`。
 
 ## 音频包（AudioPacket，二进制）
 magic, version, header_len, stream_id, sequence, timestamp, codec,

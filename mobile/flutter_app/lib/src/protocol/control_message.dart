@@ -295,6 +295,70 @@ class StatsMsg extends ControlMessage {
   };
 }
 
+/// control_action (双向通用动作消息)
+class ControlActionMsg extends ControlMessage {
+  final String action;
+  final Map<String, dynamic> payload;
+  final String? target;
+  final String? correlationId;
+
+  ControlActionMsg({
+    required String msgId,
+    required int ts,
+    required this.action,
+    this.payload = const {},
+    this.target,
+    this.correlationId,
+  }) : super('control_action', msgId, ts);
+
+  @override
+  Map<String, dynamic> toJson() => {
+    'type': type,
+    'msg_id': msgId,
+    'ts': ts,
+    'action': action,
+    'payload': payload,
+    if (target != null) 'target': target,
+    if (correlationId != null) 'correlation_id': correlationId,
+  };
+}
+
+/// control_action_ack (双向通用动作回执)
+class ControlActionAckMsg extends ControlMessage {
+  final String replyTo;
+  final String action;
+  final String result;
+  final ErrorDetail? error;
+
+  ControlActionAckMsg({
+    required String msgId,
+    required int ts,
+    required this.replyTo,
+    required this.action,
+    required this.result,
+    this.error,
+  }) : super('control_action_ack', msgId, ts);
+
+  @override
+  Map<String, dynamic> toJson() => {
+    'type': type,
+    'msg_id': msgId,
+    'ts': ts,
+    'reply_to': replyTo,
+    'action': action,
+    'result': result,
+    if (error != null) 'error': error!.toJson(),
+  };
+}
+
+abstract final class ControlActions {
+  static const mediaPlayPause = 'media.play_pause';
+  static const mediaPrevious = 'media.previous';
+  static const mediaNext = 'media.next';
+  static const shortcutSet = 'shortcut.set';
+  static const shortcutTrigger = 'shortcut.trigger';
+}
+
 /// error (双向)
 class ErrorMsg extends ControlMessage {
   final ErrorDetail error;

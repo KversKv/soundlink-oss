@@ -350,8 +350,8 @@ pub async fn start_sender(
 
 /// 停止发送端。
 #[tauri::command]
-pub fn stop_sender(state: State<'_, AppState>) -> Result<(), String> {
-    state.inner().sender.stop();
+pub async fn stop_sender(state: State<'_, AppState>) -> Result<(), String> {
+    state.inner().sender.stop().await;
     Ok(())
 }
 

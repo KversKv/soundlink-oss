@@ -28,6 +28,7 @@ class PairingService {
 
   SessionKeys? _keys;
   StreamSubscription<void>? _disconnectSub;
+  StreamSubscription<Map<String, dynamic>>? _messageSub;
   Timer? _heartbeatTimer;
   Timer? _statsTimer;
   final int _streamId = defaultStreamId;
@@ -59,6 +60,13 @@ class PairingService {
     _disconnectSub = control.onDisconnected.listen((_) async {
       await _stopLocalCapture();
       onState(LinkState.reconnecting);
+    });
+    await _messageSub?.cancel();
+    _messageSub = control.messages.listen((msg) async {
+      if (msg['type'] == 'stream_stop' || msg['type'] == 'error') {
+        await _stopLocalCapture(clearSession: true);
+        onState(LinkState.reconnecting);
+      }
     });
 
     // 1) hello
@@ -245,11 +253,13 @@ class PairingService {
     _heartbeatTimer = null;
     _statsTimer = null;
     if (control.isConnected) {
-      control.send(
+      await control.sendAndFlush(
         StreamStopMsg(msgId: newMsgId('c'), ts: nowMs(), streamId: _streamId),
       );
     }
     await _stopLocalCapture(clearSession: true);
+    await _messageSub?.cancel();
+    _messageSub = null;
     await _disconnectSub?.cancel();
     _disconnectSub = null;
     control.disconnect();

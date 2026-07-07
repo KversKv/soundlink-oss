@@ -31,6 +31,7 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{tcp::OwnedReadHalf, tcp::OwnedWriteHalf, TcpStream, UdpSocket};
+use tokio::sync::Notify;
 use tokio::task::JoinHandle;
 use tokio::time::{interval, timeout};
 
@@ -75,6 +76,7 @@ impl Default for SenderStatus {
 pub struct SenderEngine {
     status: Arc<Mutex<SenderStatus>>,
     running: Arc<AtomicBool>,
+    stop_notify: Arc<Notify>,
     send_task: Mutex<Option<JoinHandle<()>>>,
     control_task: Mutex<Option<JoinHandle<()>>>,
     /// 是否启用音频 RAW Data 转储（来自 main.rs 的 DUMP_ENABLE）。
@@ -91,6 +93,7 @@ impl SenderEngine {
         Self {
             status: Arc::new(Mutex::new(SenderStatus::default())),
             running: Arc::new(AtomicBool::new(false)),
+            stop_notify: Arc::new(Notify::new()),
             send_task: Mutex::new(None),
             control_task: Mutex::new(None),
             dump_enable,
@@ -219,8 +222,17 @@ impl SenderEngine {
         // 5) 控制通道任务（心跳 + stats）。
         let status = self.status.clone();
         let running = self.running.clone();
+        let stop_notify = self.stop_notify.clone();
         let control_handle = tokio::spawn(async move {
-            control_loop(tcp_reader, tcp_writer, stream_id, status, running).await;
+            control_loop(
+                tcp_reader,
+                tcp_writer,
+                stream_id,
+                status,
+                running,
+                stop_notify,
+            )
+            .await;
         });
         *self.control_task.lock() = Some(control_handle);
 
@@ -228,13 +240,18 @@ impl SenderEngine {
     }
 
     /// 停止发送端。
-    pub fn stop(&self) {
+    pub async fn stop(&self) {
         self.running.store(false, Ordering::SeqCst);
-        if let Some(h) = self.send_task.lock().take() {
+        self.stop_notify.notify_waiters();
+        let send_handle = self.send_task.lock().take();
+        let control_handle = self.control_task.lock().take();
+        if let Some(h) = send_handle {
             h.abort();
         }
-        if let Some(h) = self.control_task.lock().take() {
-            h.abort();
+        if let Some(h) = control_handle {
+            if timeout(std::time::Duration::from_secs(1), h).await.is_err() {
+                tracing::warn!("等待控制通道停止超时。");
+            }
         }
         let mut s = self.status.lock();
         if s.state != "DISCONNECTED" && s.state != "ERROR" {
@@ -458,7 +475,14 @@ impl Default for SenderEngine {
 
 impl Drop for SenderEngine {
     fn drop(&mut self) {
-        self.stop();
+        self.running.store(false, Ordering::SeqCst);
+        self.stop_notify.notify_waiters();
+        if let Some(h) = self.send_task.lock().take() {
+            h.abort();
+        }
+        if let Some(h) = self.control_task.lock().take() {
+            h.abort();
+        }
     }
 }
 
@@ -587,6 +611,7 @@ async fn control_loop(
     stream_id: u32,
     status: Arc<Mutex<SenderStatus>>,
     running: Arc<AtomicBool>,
+    stop_notify: Arc<Notify>,
 ) {
     let mut reader = BufReader::new(reader);
     let mut line = String::new();
@@ -597,6 +622,9 @@ async fn control_loop(
 
     while running.load(Ordering::SeqCst) {
         tokio::select! {
+            _ = stop_notify.notified() => {
+                break;
+            }
             read = reader.read_line(&mut line) => {
                 match read {
                     Ok(0) => {
@@ -691,6 +719,24 @@ fn handle_control_message(
             let mut s = status.lock();
             s.state = "ERROR".into();
             s.error = message.into();
+        }
+        msg_type::STREAM_STOP => {
+            running.store(false, Ordering::SeqCst);
+            let mut s = status.lock();
+            s.state = "DISCONNECTED".into();
+            s.error = "接收端已停止接收".into();
+        }
+        msg_type::CONTROL_ACTION => {
+            tracing::debug!(
+                "收到控制动作：{}",
+                msg.get("action").and_then(|v| v.as_str()).unwrap_or("")
+            );
+        }
+        msg_type::CONTROL_ACTION_ACK => {
+            tracing::debug!(
+                "收到控制动作回执：{}",
+                msg.get("action").and_then(|v| v.as_str()).unwrap_or("")
+            );
         }
         msg_type::STATS => {
             if let Some(recommended) = msg.get("recommended_bitrate").and_then(|v| v.as_u64()) {
