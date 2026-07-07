@@ -24,7 +24,7 @@
 		97C146FC1CF9000F007C117D /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FA1CF9000F007C117D /* Main.storyboard */; };
 		97C146FE1CF9000F007C117D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FD1CF9000F007C117D /* Assets.xcassets */; };
 		97C147011CF9000F007C117D /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FF1CF9000F007C117D /* LaunchScreen.storyboard */; };
-		B38F86C9F14811036869E4AB /* libPods-RunnerTests.a in Frameworks */ = {isa = PBXBuildFile; fileRef = D0C247531EF6DF1CDEEE6227 /* libPods-RunnerTests.a */; };
+		DA9C9BB2D16251A628D80302 /* libPods-RunnerTests.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 1BB851302938007E7464D69A /* libPods-RunnerTests.a */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -81,6 +81,7 @@
 		1498D2321E8E86230040F4C2 /* GeneratedPluginRegistrant.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = GeneratedPluginRegistrant.h; sourceTree = "<group>"; };
 		1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = GeneratedPluginRegistrant.m; sourceTree = "<group>"; };
 		15E4A687455A3A0876D38A9E /* SoundLinkPlugin.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = SoundLinkPlugin.swift; sourceTree = "<group>"; };
+		1BB851302938007E7464D69A /* libPods-RunnerTests.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-RunnerTests.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		331C807B294A618700263BE5 /* RunnerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunnerTests.swift; sourceTree = "<group>"; };
 		331C8081294A63A400263BE5 /* RunnerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RunnerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		3B3967151E833CAA004F5970 /* AppFrameworkInfo.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = AppFrameworkInfo.plist; path = Flutter/AppFrameworkInfo.plist; sourceTree = "<group>"; };
@@ -101,7 +102,6 @@
 		9CA616C94096CADBFA4E8100 /* Pods-RunnerTests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RunnerTests.debug.xcconfig"; path = "Target Support Files/Pods-RunnerTests/Pods-RunnerTests.debug.xcconfig"; sourceTree = "<group>"; };
 		A69601EDAE5C24BD3B743890 /* Pods-RunnerTests.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RunnerTests.release.xcconfig"; path = "Target Support Files/Pods-RunnerTests/Pods-RunnerTests.release.xcconfig"; sourceTree = "<group>"; };
 		AA32940AB50C853D049E69BC /* Pods-Runner.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.debug.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.debug.xcconfig"; sourceTree = "<group>"; };
-		D0C247531EF6DF1CDEEE6227 /* libPods-RunnerTests.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-RunnerTests.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		D5737CED7155DBD543A8FEAF /* Pods-RunnerTests.profile.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RunnerTests.profile.xcconfig"; path = "Target Support Files/Pods-RunnerTests/Pods-RunnerTests.profile.xcconfig"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -119,13 +119,27 @@
 			buildActionMask = 2147483647;
 			files = (
 				78A318202AECB46A00862997 /* FlutterGeneratedPluginSwiftPackage in Frameworks */,
-				B38F86C9F14811036869E4AB /* libPods-RunnerTests.a in Frameworks */,
+				DA9C9BB2D16251A628D80302 /* libPods-RunnerTests.a in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		0BE500000000000000000001 /* BroadcastExtension */ = {
+			isa = PBXGroup;
+			children = (
+				0BE200000000000000000006 /* Info.plist */,
+				0BE200000000000000000007 /* BroadcastExtension.entitlements */,
+				0BE200000000000000000001 /* SampleHandler.swift */,
+				0BE200000000000000000002 /* AudioProcessor.swift */,
+				0BE200000000000000000003 /* OpusEncoderWrapper.swift */,
+				0BE200000000000000000004 /* PairingStateReader.swift */,
+				0BE200000000000000000005 /* UdpAudioSender.swift */,
+			);
+			path = BroadcastExtension;
+			sourceTree = "<group>";
+		};
 		331C8082294A63A400263BE5 /* RunnerTests */ = {
 			isa = PBXGroup;
 			children = (
@@ -144,20 +158,6 @@
 				9740EEB31CF90195004384FC /* Generated.xcconfig */,
 			);
 			name = Flutter;
-			sourceTree = "<group>";
-		};
-		0BE500000000000000000001 /* BroadcastExtension */ = {
-			isa = PBXGroup;
-			children = (
-				0BE200000000000000000006 /* Info.plist */,
-				0BE200000000000000000007 /* BroadcastExtension.entitlements */,
-				0BE200000000000000000001 /* SampleHandler.swift */,
-				0BE200000000000000000002 /* AudioProcessor.swift */,
-				0BE200000000000000000003 /* OpusEncoderWrapper.swift */,
-				0BE200000000000000000004 /* PairingStateReader.swift */,
-				0BE200000000000000000005 /* UdpAudioSender.swift */,
-			);
-			path = BroadcastExtension;
 			sourceTree = "<group>";
 		};
 		97C146E51CF9000F007C117D = {
@@ -204,7 +204,7 @@
 			isa = PBXGroup;
 			children = (
 				0BE200000000000000000009 /* Opus.xcframework */,
-				D0C247531EF6DF1CDEEE6227 /* libPods-RunnerTests.a */,
+				1BB851302938007E7464D69A /* libPods-RunnerTests.a */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";

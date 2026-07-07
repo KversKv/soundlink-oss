@@ -214,6 +214,7 @@ mobile/ios/**/build/
 mobile/ios/**/DerivedData/
 mobile/ios/**/Pods/
 mobile/ios/**/.build/
+mobile/ios/**/opus-1.5.2/
 
 mobile/android/.gradle/
 mobile/android/build/
