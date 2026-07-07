@@ -116,7 +116,7 @@
 - [x] Windows WASAPI Loopback 采集 — 2026-07-06 `audio/capture/wasapi_loopback.rs`（windows crate 0.58，COM MTA 线程，float32→i16 + 线性重采样 + 环形缓冲；`wasapi` feature 门控）；2026-07-07 修正 f32→i16 负满幅映射，`cargo test --features wasapi` 通过（50 passed）
 - [ ] macOS ScreenCaptureKit 采集 — 2026-07-07 当前仅 `audio/capture/macos_screencapturekit.rs` 占位，未在 macOS/SCStream 环境实现与验证
 - [x] 统一 Sender 抽象层（与移动端协议一致） — 2026-07-06 `audio/capture/` CaptureSource trait + `sender.rs` SenderEngine（mDNS 发现 + 控制握手 + Opus 编码 + UDP 发送 + 心跳/stats）
-- [x] 桌面端角色切换 UI（Receiver / Sender） — 2026-07-06 commands 新增 start/stop_sender、discover_receivers、get/set_role、list_capture_sources；App.tsx 角色切换 + 发送端面板（采集源/发现/配对/状态）；2026-07-07 `cargo check --features tauri_app` 与 `desktop/ui npm run build` 通过
+- [x] 桌面端角色切换 UI（Receiver / Sender） — 2026-07-06 commands 新增 start/stop_sender、discover_receivers、get/set_role、list_capture_sources；App.tsx 角色切换 + 发送端面板（采集源/发现/配对/状态）；2026-07-07 `cargo check --features tauri_app` 与 `desktop/ui npm run build` 通过；2026-07-07 按参考图完成桌面端卡片式 UI 改版，后续移除最外层嵌入式外壳并调整默认窗口 510×760，`desktop/ui npm run build` 与浏览器预览通过
 
 **阶段验收**：
 - [ ] 一台电脑音频可实时流转到另一台电脑并播放 — 2026-07-06 `phase5_loopback.rs` 自测通过：Sender 发送 611 包 / Receiver 接收 611 包 / 0 丢失；2026-07-07 Windows WASAPI feature 构建通过；macOS ScreenCaptureKit 未实现且双电脑真机未验收

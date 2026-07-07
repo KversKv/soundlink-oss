@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import "./App.css";
 
 interface OutputDevice {
   id: string;
@@ -66,10 +67,22 @@ const JITTER_MODES: { value: JitterMode; label: string; desc: string }[] = [
   { value: "auto", label: "自适应", desc: "动态" },
 ];
 
+function formatPairingCode(code: string) {
+  return code || "────────";
+}
+
+function StatCard({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div className="stat-item">
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
 export default function App() {
   const [role, setRole] = useState<Role>("receiver");
 
-  // Receiver 状态
   const [running, setRunning] = useState(false);
   const [pairingCode, setPairingCode] = useState("");
   const [deviceId, setDeviceId] = useState("");
@@ -77,9 +90,8 @@ export default function App() {
   const [selectedDevice, setSelectedDevice] = useState<number | null>(null);
   const [status, setStatus] = useState<ReceiverStatus | null>(null);
   const [jitterMode, setJitterMode] = useState<JitterMode>("balanced");
-  const [volume, setVolume] = useState<number>(100); // 0-100
+  const [volume, setVolume] = useState<number>(100);
 
-  // Sender 状态
   const [senderRunning, setSenderRunning] = useState(false);
   const [senderStatus, setSenderStatus] = useState<SenderStatus | null>(null);
   const [receiverAddr, setReceiverAddr] = useState("");
@@ -91,7 +103,6 @@ export default function App() {
 
   const [error, setError] = useState<string>("");
 
-  // 列举设备 + 采集源 + 角色。
   useEffect(() => {
     invoke<OutputDevice[]>("list_output_devices")
       .then(setDevices)
@@ -117,7 +128,6 @@ export default function App() {
       .catch(() => {});
   }, []);
 
-  // Receiver 状态轮询。
   useEffect(() => {
     if (!running) return;
     const id = setInterval(() => {
@@ -128,7 +138,6 @@ export default function App() {
     return () => clearInterval(id);
   }, [running]);
 
-  // Sender 状态轮询。
   useEffect(() => {
     if (!senderRunning) return;
     const id = setInterval(() => {
@@ -144,7 +153,6 @@ export default function App() {
     await invoke("set_role", { role: r }).catch(() => {});
   }
 
-  // ─── Receiver 操作 ───
   async function start() {
     setError("");
     try {
@@ -204,7 +212,6 @@ export default function App() {
     }
   }
 
-  // ─── Sender 操作 ───
   async function discoverReceivers() {
     setError("");
     setDiscovering(true);
@@ -257,236 +264,228 @@ export default function App() {
   const recBitrateKbps = status ? Math.round(status.recommended_bitrate / 1000) : 0;
   const driftPct = status ? ((status.drift_ratio - 1) * 100).toFixed(2) : "0.00";
   const senderBitrateKbps = senderStatus ? Math.round(senderStatus.bitrate / 1000) : 0;
+  const activeReceiver = running || Boolean(status);
+  const activeSender = senderRunning || Boolean(senderStatus);
 
   return (
-    <div style={{ fontFamily: "system-ui, sans-serif", maxWidth: 560, margin: "40px auto", padding: 24 }}>
-      <h1 style={{ marginBottom: 4 }}>SoundLink</h1>
-      <p style={{ color: "#666", marginTop: 0 }}>局域网音频流转</p>
+    <main className="shell">
+      <section className="app-card" aria-label="SoundLink 桌面端">
+        <header className="brand-header">
+          <div className="brand-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" role="img">
+              <path d="M8.5 9.5a5 5 0 0 0 0 5M6 7a8.5 8.5 0 0 0 0 10M15.5 9.5a5 5 0 0 1 0 5M18 7a8.5 8.5 0 0 1 0 10" />
+              <circle cx="12" cy="12" r="1.7" />
+            </svg>
+          </div>
+          <h1>SoundLink</h1>
+          <p>局域网音频流转</p>
+        </header>
 
-      {/* 角色切换 */}
-      <section style={{ margin: "16px 0" }}>
-        <div style={{ display: "flex", gap: 8 }}>
+        <nav className="role-tabs" aria-label="模式切换">
           {(["receiver", "sender"] as Role[]).map((r) => (
             <button
               key={r}
+              className={role === r ? "active" : ""}
               onClick={() => switchRole(r)}
-              style={{
-                padding: "8px 16px",
-                fontSize: 14,
-                cursor: "pointer",
-                border: role === r ? "2px solid #3b82f6" : "1px solid #ccc",
-                background: role === r ? "#eff6ff" : "#fff",
-                borderRadius: 6,
-                fontWeight: role === r ? 600 : 400,
-              }}
+              type="button"
             >
               {r === "receiver" ? "接收模式" : "发送模式"}
             </button>
           ))}
-        </div>
-      </section>
+        </nav>
 
-      {role === "receiver" && (
-        <>
-          <section style={{ margin: "24px 0" }}>
-            <h3>配对码</h3>
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <code style={{ fontSize: 32, letterSpacing: 4, background: "#f4f4f5", padding: "8px 16px", borderRadius: 8 }}>
-                {pairingCode || "— — — — — — — —"}
-              </code>
-              <button onClick={refreshCode} disabled={!running}>刷新</button>
-            </div>
-            {deviceId && <p style={{ color: "#888", fontSize: 13 }}>设备 ID：{deviceId}</p>}
-          </section>
-
-          <section style={{ margin: "24px 0" }}>
-            <h3>输出设备</h3>
-            <select
-              value={selectedDevice ?? ""}
-              onChange={(e) => pickDevice(Number(e.target.value))}
-              style={{ width: "100%", padding: 8, fontSize: 14 }}
-            >
-              <option value="">默认设备</option>
-              {devices.map((d, i) => (
-                <option key={d.id} value={i}>{d.name}</option>
-              ))}
-            </select>
-          </section>
-
-          <section style={{ margin: "24px 0" }}>
-            <h3>Jitter 模式</h3>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              {JITTER_MODES.map((m) => (
-                <button
-                  key={m.value}
-                  onClick={() => pickJitterMode(m.value)}
-                  style={{
-                    padding: "6px 12px",
-                    fontSize: 13,
-                    cursor: "pointer",
-                    border: jitterMode === m.value ? "2px solid #22c55e" : "1px solid #ccc",
-                    background: jitterMode === m.value ? "#f0fdf4" : "#fff",
-                    borderRadius: 6,
-                  }}
-                  title={m.desc}
-                >
-                  {m.label} <span style={{ color: "#888", fontSize: 11 }}>({m.desc})</span>
+        {role === "receiver" && (
+          <div className="mode-panel">
+            <section className="panel-card pairing-card">
+              <div className="section-title-row">
+                <h2>配对码</h2>
+                <button className="text-button" onClick={refreshCode} disabled={!running} type="button">
+                  <span aria-hidden="true">↻</span> 刷新
                 </button>
-              ))}
-            </div>
-          </section>
-
-          <section style={{ margin: "24px 0" }}>
-            <h3>音量</h3>
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <input
-                type="range"
-                min={0}
-                max={100}
-                value={volume}
-                onChange={(e) => changeVolume(Number(e.target.value))}
-                style={{ flex: 1, cursor: "pointer" }}
-              />
-              <span style={{ minWidth: 48, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
-                {volume}%
-              </span>
-            </div>
-          </section>
-
-          <section style={{ margin: "24px 0" }}>
-            <button
-              onClick={running ? stop : start}
-              style={{
-                padding: "10px 20px", fontSize: 15, cursor: "pointer",
-                background: running ? "#ef4444" : "#22c55e", color: "#fff",
-                border: "none", borderRadius: 8,
-              }}
-            >
-              {running ? "停止接收" : "开始接收"}
-            </button>
-          </section>
-
-          {status && (
-            <section style={{ margin: "24px 0", background: "#f9fafb", padding: 16, borderRadius: 8 }}>
-              <h3 style={{ marginTop: 0 }}>状态</h3>
-              <dl style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "4px 12px", fontSize: 14 }}>
-                <dt>状态</dt><dd style={{ margin: 0 }}>{status.state}</dd>
-                <dt>已收包</dt><dd style={{ margin: 0 }}>{status.packets_recv}</dd>
-                <dt>丢包</dt><dd style={{ margin: 0 }}>{status.packets_lost}（{lossPct}%）</dd>
-                <dt>丢弃</dt><dd style={{ margin: 0 }}>{status.packets_dropped}</dd>
-                <dt>缓冲</dt><dd style={{ margin: 0 }}>{status.buffer_ms} ms（{status.buffer_depth} 帧）</dd>
-                <dt>抖动</dt><dd style={{ margin: 0 }}>{status.jitter_ms} ms</dd>
-                <dt>估算延迟</dt><dd style={{ margin: 0 }}>{status.est_latency_ms} ms</dd>
-                <dt>接收码率</dt><dd style={{ margin: 0 }}>{bitrateKbps} kbps</dd>
-                <dt>建议码率</dt><dd style={{ margin: 0 }}>{recBitrateKbps} kbps{recBitrateKbps > 0 && recBitrateKbps !== 128 ? "（自适应）" : ""}</dd>
-                <dt>漂移校正</dt><dd style={{ margin: 0 }}>{driftPct}%</dd>
-                <dt>连续 PLC</dt><dd style={{ margin: 0 }}>{status.consecutive_plc} 帧</dd>
-                <dt>Jitter 模式</dt><dd style={{ margin: 0 }}>{status.jitter_mode}</dd>
-              </dl>
+              </div>
+              <div className="pairing-display">
+                <span>{formatPairingCode(pairingCode)}</span>
+                <small>设备 ID：{deviceId || "RCV-9819"}</small>
+              </div>
             </section>
-          )}
-        </>
-      )}
 
-      {role === "sender" && (
-        <>
-          <section style={{ margin: "24px 0" }}>
-            <h3>采集源</h3>
-            <select
-              value={selectedSource}
-              onChange={(e) => setSelectedSource(e.target.value)}
-              style={{ width: "100%", padding: 8, fontSize: 14 }}
-            >
-              {captureSources.map((s) => (
-                <option key={s.id} value={s.id} disabled={!s.available}>
-                  {s.name}{!s.available ? "（不可用）" : ""}
-                </option>
-              ))}
-            </select>
-          </section>
+            <section className="panel-card settings-card">
+              <h2>输出设备</h2>
+              <label className="field-shell">
+                <select
+                  value={selectedDevice ?? ""}
+                  onChange={(e) => pickDevice(Number(e.target.value))}
+                >
+                  <option value="">默认设备</option>
+                  {devices.map((d, i) => (
+                    <option key={d.id} value={i}>{d.name}</option>
+                  ))}
+                </select>
+              </label>
 
-          <section style={{ margin: "24px 0" }}>
-            <h3>发现 Receiver</h3>
-            <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-              <button onClick={discoverReceivers} disabled={discovering || senderRunning}>
-                {discovering ? "扫描中..." : "扫描局域网"}
-              </button>
-            </div>
-            {discovered.length > 0 && (
-              <ul style={{ margin: 0, padding: 0, listStyle: "none" }}>
-                {discovered.map((d) => (
-                  <li key={d.device_id} style={{ padding: 8, borderBottom: "1px solid #eee", cursor: "pointer" }}
-                    onClick={() => setReceiverAddr(d.control_addr)}>
-                    <strong>{d.device_name}</strong>
-                    <span style={{ color: "#888", fontSize: 12 }}> {d.control_addr} {d.pairing_required ? "· 需配对" : "· 已信任"}</span>
-                  </li>
+              <h2 className="subsection-title">JITTER 模式</h2>
+              <div className="jitter-grid">
+                {JITTER_MODES.map((m) => (
+                  <button
+                    key={m.value}
+                    className={jitterMode === m.value ? "selected" : ""}
+                    onClick={() => pickJitterMode(m.value)}
+                    title={m.desc}
+                    type="button"
+                  >
+                    {m.label}
+                  </button>
                 ))}
-              </ul>
-            )}
-            {discovered.length === 0 && !discovering && (
-              <p style={{ color: "#888", fontSize: 13 }}>未发现设备，可手动输入地址。</p>
-            )}
-          </section>
+              </div>
 
-          <section style={{ margin: "24px 0" }}>
-            <h3>Receiver 地址</h3>
-            <input
-              type="text"
-              value={receiverAddr}
-              onChange={(e) => setReceiverAddr(e.target.value)}
-              placeholder="192.168.1.100:47810"
-              disabled={senderRunning}
-              style={{ width: "100%", padding: 8, fontSize: 14, boxSizing: "border-box" }}
-            />
-          </section>
-
-          <section style={{ margin: "24px 0" }}>
-            <h3>配对码</h3>
-            <input
-              type="text"
-              value={senderPairingCode}
-              onChange={(e) => setSenderPairingCode(e.target.value)}
-              placeholder="8 位配对码（已信任设备可留空）"
-              disabled={senderRunning}
-              style={{ width: "100%", padding: 8, fontSize: 14, boxSizing: "border-box" }}
-            />
-          </section>
-
-          <section style={{ margin: "24px 0" }}>
-            <button
-              onClick={senderRunning ? stopSender : startSender}
-              style={{
-                padding: "10px 20px", fontSize: 15, cursor: "pointer",
-                background: senderRunning ? "#ef4444" : "#3b82f6", color: "#fff",
-                border: "none", borderRadius: 8,
-              }}
-            >
-              {senderRunning ? "停止发送" : "开始发送"}
-            </button>
-          </section>
-
-          {senderStatus && (
-            <section style={{ margin: "24px 0", background: "#f9fafb", padding: 16, borderRadius: 8 }}>
-              <h3 style={{ marginTop: 0 }}>发送端状态</h3>
-              <dl style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "4px 12px", fontSize: 14 }}>
-                <dt>状态</dt><dd style={{ margin: 0 }}>{senderStatus.state}</dd>
-                <dt>目标</dt><dd style={{ margin: 0 }}>{senderStatus.receiver_device_name || senderStatus.target_addr}</dd>
-                <dt>已发包</dt><dd style={{ margin: 0 }}>{senderStatus.packets_sent}</dd>
-                <dt>编码耗时</dt><dd style={{ margin: 0 }}>{senderStatus.encode_ms_avg.toFixed(1)} ms</dd>
-                <dt>发送码率</dt><dd style={{ margin: 0 }}>{senderBitrateKbps} kbps</dd>
-                <dt>已信任</dt><dd style={{ margin: 0 }}>{senderStatus.trusted ? "是" : "否"}</dd>
-                {senderStatus.error && <><dt>错误</dt><dd style={{ margin: 0, color: "#ef4444" }}>{senderStatus.error}</dd></>}
-              </dl>
+              <div className="volume-head">
+                <h2>音量</h2>
+                <strong>{volume}%</strong>
+              </div>
+              <div className="volume-row">
+                <span aria-hidden="true">◖</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  value={volume}
+                  onChange={(e) => changeVolume(Number(e.target.value))}
+                  style={{ "--volume": `${volume}%` } as React.CSSProperties}
+                  aria-label="音量"
+                />
+              </div>
             </section>
-          )}
-        </>
-      )}
 
-      {error && <p style={{ color: "#ef4444" }}>错误：{error}</p>}
+            <button
+              className={`primary-action ${activeReceiver ? "danger" : "success"}`}
+              onClick={activeReceiver ? stop : start}
+              type="button"
+            >
+              <span aria-hidden="true">{activeReceiver ? "□" : "▷"}</span>
+              {activeReceiver ? "停止接收" : "开始接收"}
+            </button>
 
-      <p style={{ color: "#aaa", fontSize: 12, marginTop: 32 }}>
-        阶段 5：桌面发送端（双电脑互传）。运行 <code>cargo run --example phase5_loopback</code> 自测。
-      </p>
-    </div>
+            {status && (
+              <section className="panel-card stats-card">
+                <h2>状态</h2>
+                <div className="stats-grid">
+                  <StatCard label="状态" value={status.state} />
+                  <StatCard label="已收包" value={status.packets_recv} />
+                  <StatCard label="丢包" value={`${status.packets_lost}（${lossPct}%）`} />
+                  <StatCard label="丢弃" value={status.packets_dropped} />
+                  <StatCard label="缓冲" value={`${status.buffer_ms} ms（${status.buffer_depth} 帧）`} />
+                  <StatCard label="抖动" value={`${status.jitter_ms} ms`} />
+                  <StatCard label="估算延迟" value={`${status.est_latency_ms} ms`} />
+                  <StatCard label="接收码率" value={`${bitrateKbps} kbps`} />
+                  <StatCard label="建议码率" value={`${recBitrateKbps} kbps${recBitrateKbps > 0 && recBitrateKbps !== 128 ? "（自适应）" : ""}`} />
+                  <StatCard label="漂移校正" value={`${driftPct}%`} />
+                  <StatCard label="连续 PLC" value={`${status.consecutive_plc} 帧`} />
+                  <StatCard label="Jitter 模式" value={status.jitter_mode} />
+                </div>
+              </section>
+            )}
+          </div>
+        )}
+
+        {role === "sender" && (
+          <div className="mode-panel">
+            <section className="panel-card settings-card">
+              <h2>采集源</h2>
+              <label className="field-shell">
+                <select
+                  value={selectedSource}
+                  onChange={(e) => setSelectedSource(e.target.value)}
+                  disabled={senderRunning}
+                >
+                  {captureSources.map((s) => (
+                    <option key={s.id} value={s.id} disabled={!s.available}>
+                      {s.name}{!s.available ? "（不可用）" : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <div className="section-title-row scan-row">
+                <h2>发现 Receiver</h2>
+                <button className="text-button" onClick={discoverReceivers} disabled={discovering || senderRunning} type="button">
+                  <span aria-hidden="true">⌕</span> {discovering ? "扫描中" : "扫描局域网"}
+                </button>
+              </div>
+
+              <div className="receiver-list">
+                {discovered.length > 0 ? discovered.map((d) => (
+                  <button
+                    key={d.device_id}
+                    className={receiverAddr === d.control_addr ? "receiver-item selected" : "receiver-item"}
+                    onClick={() => setReceiverAddr(d.control_addr)}
+                    type="button"
+                  >
+                    <strong>{d.device_name}</strong>
+                    <span>{d.control_addr}</span>
+                    <em>{d.pairing_required ? "需配对" : "已信任"}</em>
+                  </button>
+                )) : (
+                  <div className="empty-state">未发现设备，可手动输入地址。</div>
+                )}
+              </div>
+            </section>
+
+            <section className="panel-card settings-card compact-card">
+              <h2>Receiver 地址</h2>
+              <label className="field-shell">
+                <input
+                  type="text"
+                  value={receiverAddr}
+                  onChange={(e) => setReceiverAddr(e.target.value)}
+                  placeholder="192.168.1.100:47810"
+                  disabled={senderRunning}
+                />
+              </label>
+
+              <h2 className="subsection-title">配对码</h2>
+              <label className="field-shell">
+                <input
+                  type="text"
+                  value={senderPairingCode}
+                  onChange={(e) => setSenderPairingCode(e.target.value)}
+                  placeholder="8 位配对码（已信任设备可留空）"
+                  disabled={senderRunning}
+                />
+              </label>
+            </section>
+
+            <button
+              className={`primary-action ${activeSender ? "danger" : "send"}`}
+              onClick={activeSender ? stopSender : startSender}
+              type="button"
+            >
+              <span aria-hidden="true">{activeSender ? "□" : "▷"}</span>
+              {activeSender ? "停止发送" : "开始发送"}
+            </button>
+
+            {senderStatus && (
+              <section className="panel-card stats-card">
+                <h2>发送端状态</h2>
+                <div className="stats-grid">
+                  <StatCard label="状态" value={senderStatus.state} />
+                  <StatCard label="目标" value={senderStatus.receiver_device_name || senderStatus.target_addr} />
+                  <StatCard label="已发包" value={senderStatus.packets_sent} />
+                  <StatCard label="编码耗时" value={`${senderStatus.encode_ms_avg.toFixed(1)} ms`} />
+                  <StatCard label="发送码率" value={`${senderBitrateKbps} kbps`} />
+                  <StatCard label="已信任" value={senderStatus.trusted ? "是" : "否"} />
+                  {senderStatus.error && <StatCard label="错误" value={senderStatus.error} />}
+                </div>
+              </section>
+            )}
+          </div>
+        )}
+
+        {error && <div className="error-banner">错误：{error}</div>}
+
+        <footer className="stage-footer">
+          阶段 5：桌面发送端（双电脑互传）。运行 <code>cargo run --example phase5_loopback</code> 自测。
+        </footer>
+      </section>
+    </main>
   );
 }

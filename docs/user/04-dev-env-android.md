@@ -53,6 +53,7 @@ flutter doctor          # 按提示补齐 Android 工具链、接受 SDK 许可
 
 ```bash
 cd mobile/flutter_app
+cd D:\CodeProject\TRAE_Projects\SoundLink\mobile\flutter_app
 flutter pub get
 flutter run -d <android-device-id>     # flutter devices 查看设备 id
 flutter run -d 41091JEKB06514
