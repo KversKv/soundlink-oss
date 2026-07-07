@@ -15,6 +15,7 @@ class SoundLinkPlugin: NSObject, FlutterPlugin {
     static let channelName = "com.soundlink/platform"
     static let appGroupId = "group.com.soundlink"
     static let configKey = "soundlink.session.config"
+    static let stopRequestedKey = "soundlink.stop_requested"
     static let deviceIdKey = "soundlink.device_id"
     /// App Group 共享键名：是否转储采集 PCM/Opus（供 Extension 读取）。
     static let dumpPcmKey = "soundlink.dump_pcm"
@@ -37,7 +38,9 @@ class SoundLinkPlugin: NSObject, FlutterPlugin {
                 result(FlutterError(code: "ARG", message: "缺少 config", details: nil))
                 return
             }
-            UserDefaults(suiteName: Self.appGroupId)?.set(config, forKey: Self.configKey)
+            let defaults = UserDefaults(suiteName: Self.appGroupId)
+            defaults?.set(config, forKey: Self.configKey)
+            defaults?.set(false, forKey: Self.stopRequestedKey)
             result(true)
 
         case "startCapture":
@@ -46,8 +49,13 @@ class SoundLinkPlugin: NSObject, FlutterPlugin {
             result(true)
 
         case "stopCapture":
-            // 清除配置；广播由用户经红色状态栏停止，Extension 随后收到 broadcastFinished。
-            UserDefaults(suiteName: Self.appGroupId)?.removeObject(forKey: Self.configKey)
+            let args = call.arguments as? [String: Any]
+            let clearSession = args?["clearSession"] as? Bool ?? true
+            let defaults = UserDefaults(suiteName: Self.appGroupId)
+            defaults?.set(true, forKey: Self.stopRequestedKey)
+            if clearSession {
+                defaults?.removeObject(forKey: Self.configKey)
+            }
             presentedNav?.dismiss(animated: true) { self.presentedNav = nil }
             result(true)
 

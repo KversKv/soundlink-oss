@@ -126,6 +126,9 @@ class AudioCaptureService : Service() {
 
         if (record.state != AudioRecord.STATE_INITIALIZED) {
             Log.e(TAG, "AudioRecord 初始化失败")
+            running = false
+            record.release()
+            stopSelf()
             return
         }
         audioRecord = record
@@ -202,6 +205,9 @@ class AudioCaptureService : Service() {
         opusDumpStream?.close()
         record.stop()
         record.release()
+        if (audioRecord === record) {
+            audioRecord = null
+        }
     }
 
     /// 通过 MediaStore 在公共 Download/soundlink_dump/ 下创建文件，返回 OutputStream。
@@ -230,14 +236,26 @@ class AudioCaptureService : Service() {
         captureThread?.join(500)
         captureThread = null
         encoder?.close()
+        encoder = null
         sender?.close()
+        sender = null
         mediaProjection?.stop()
+        mediaProjection = null
         stopForegroundCompat()
         stopSelf()
     }
 
     override fun onDestroy() {
         running = false
+        audioRecord?.runCatching { stop() }
+        audioRecord?.release()
+        audioRecord = null
+        encoder?.close()
+        encoder = null
+        sender?.close()
+        sender = null
+        mediaProjection?.stop()
+        mediaProjection = null
         super.onDestroy()
     }
 

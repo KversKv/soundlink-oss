@@ -43,7 +43,8 @@ Future<Uint8List> chacha20Poly1305Decrypt({
   }
   final ct = Uint8List.sublistView(ciphertext, 0, ciphertext.length - tagLen);
   final mac = crypto.Mac(
-      Uint8List.sublistView(ciphertext, ciphertext.length - tagLen));
+    Uint8List.sublistView(ciphertext, ciphertext.length - tagLen),
+  );
   final cipher = crypto.Chacha20.poly1305Aead();
   final box = crypto.SecretBox(ct, nonce: nonce, mac: mac);
   final plain = await cipher.decrypt(

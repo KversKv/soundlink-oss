@@ -39,17 +39,16 @@ class AudioPacketHeader {
     required int sequence,
     required int timestamp,
     int flags = 0,
-  }) =>
-      AudioPacketHeader(
-        streamId: streamId,
-        sequence: sequence,
-        timestamp: timestamp,
-        codec: k.codecOpus,
-        channels: k.channels,
-        frameDurationMs: k.frameDurationMs,
-        flags: flags,
-        sampleRate: k.sampleRate,
-      );
+  }) => AudioPacketHeader(
+    streamId: streamId,
+    sequence: sequence,
+    timestamp: timestamp,
+    codec: k.codecOpus,
+    channels: k.channels,
+    frameDurationMs: k.frameDurationMs,
+    flags: flags,
+    sampleRate: k.sampleRate,
+  );
 
   /// 序列化为 32 字节大端头部。
   Uint8List toBytes() {
@@ -150,10 +149,7 @@ Future<Uint8List> encodePacket(
 }
 
 /// 解码 AudioPacket：校验头部 → AEAD 解密 → 返回 Opus 帧明文。
-Future<Uint8List> decodePacket(
-  Uint8List audioKey,
-  Uint8List buf,
-) async {
+Future<Uint8List> decodePacket(Uint8List audioKey, Uint8List buf) async {
   if (buf.length < k.headerLen) {
     throw AudioPacketException('包过短：${buf.length} 字节，需至少 ${k.headerLen}');
   }
@@ -162,7 +158,8 @@ Future<Uint8List> decodePacket(
   final cipherLen = buf.length - k.headerLen;
   if (declared + k.aeadTagLen != cipherLen) {
     throw AudioPacketException(
-        'payload_len 与实际包长不符：声明 $declared，实际 $cipherLen');
+      'payload_len 与实际包长不符：声明 $declared，实际 $cipherLen',
+    );
   }
   final nonce = buildNonce(header.streamId, header.sequence);
   final cipherWithTag = Uint8List.sublistView(buf, k.headerLen);

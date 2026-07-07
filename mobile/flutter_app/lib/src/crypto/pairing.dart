@@ -64,7 +64,11 @@ Future<bool> verifySenderProof(
   String receiverDeviceId,
   Uint8List proof,
 ) async {
-  final expected = await senderProof(pairingSecret, senderPub, receiverDeviceId);
+  final expected = await senderProof(
+    pairingSecret,
+    senderPub,
+    receiverDeviceId,
+  );
   return constantTimeEq(expected, proof);
 }
 
@@ -76,8 +80,12 @@ Future<bool> verifyReceiverProof(
   String receiverDeviceId,
   Uint8List proof,
 ) async {
-  final expected =
-      await receiverProof(pairingSecret, receiverPub, senderPub, receiverDeviceId);
+  final expected = await receiverProof(
+    pairingSecret,
+    receiverPub,
+    senderPub,
+    receiverDeviceId,
+  );
   return constantTimeEq(expected, proof);
 }
 

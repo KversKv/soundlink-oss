@@ -38,14 +38,14 @@ class DiscoveredDevice {
       pairingRequired:
           (txt['pairing_required'] ?? 'true').toLowerCase() == 'true',
       audioCodec: txt['audio_codec'] ?? 'opus',
-      sampleRate: int.tryParse(txt['sample_rate'] ?? '${k.sampleRate}') ??
-          k.sampleRate,
-      controlPort: int.tryParse(
-              txt['control_port'] ?? '${k.defaultControlPort}') ??
+      sampleRate:
+          int.tryParse(txt['sample_rate'] ?? '${k.sampleRate}') ?? k.sampleRate,
+      controlPort:
+          int.tryParse(txt['control_port'] ?? '${k.defaultControlPort}') ??
           k.defaultControlPort,
       audioPort:
           int.tryParse(txt['audio_port'] ?? '${k.defaultAudioPort}') ??
-              k.defaultAudioPort,
+          k.defaultAudioPort,
       host: host,
     );
   }

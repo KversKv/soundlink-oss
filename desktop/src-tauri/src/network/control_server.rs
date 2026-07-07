@@ -3,7 +3,7 @@
 //! 消息格式：每条 UTF-8 JSON + `\n`。所有消息含 `type`/`msg_id`/`ts`。
 //! 状态机（Receiver 视角）：IDLE → HANDSHAKING → PAIRED → RECEIVING → IDLE。
 
-use crate::constants::PROTOCOL_VERSION;
+use crate::constants::{HEARTBEAT_TIMEOUT_SECS, PROTOCOL_VERSION};
 use crate::device::device_identity::DeviceIdentity;
 use crate::pairing::{
     derive_pairing_secret, derive_session_keys, diffie_hellman, receiver_proof,
@@ -17,7 +17,7 @@ use serde_json::{json, Value};
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::task::JoinHandle;
@@ -174,16 +174,32 @@ async fn handle_connection(
     let mut reader = BufReader::new(reader);
     let mut line = String::new();
     let mut last_hello_device: Option<String> = None;
+    let mut stream_active = false;
+    let mut last_seen = Instant::now();
+    let timeout_duration = Duration::from_secs(HEARTBEAT_TIMEOUT_SECS);
 
     loop {
         line.clear();
-        let n = reader
-            .read_line(&mut line)
-            .await
-            .map_err(|e| format!("读控制消息失败：{}", e))?;
+        let read_result = tokio::time::timeout(timeout_duration, reader.read_line(&mut line)).await;
+        let n = match read_result {
+            Ok(Ok(n)) => n,
+            Ok(Err(e)) => return Err(format!("读控制消息失败：{}", e)),
+            Err(_) => {
+                if stream_active && last_seen.elapsed() >= timeout_duration {
+                    tracing::warn!("控制连接（{}）心跳超时，停止接收流。", addr);
+                    handle_stream_stop_internal(&state);
+                    break;
+                }
+                continue;
+            }
+        };
         if n == 0 {
-            break; // 对端关闭
+            if stream_active {
+                handle_stream_stop_internal(&state);
+            }
+            break;
         }
+        last_seen = Instant::now();
         let trimmed = line.trim();
         if trimmed.is_empty() {
             continue;
@@ -206,8 +222,18 @@ async fn handle_connection(
                 Some(handle_hello(&msg, &state))
             }
             msg_type::PAIR_REQUEST => Some(handle_pair_request(&msg, &state, addr).await),
-            msg_type::STREAM_START => Some(handle_stream_start(&msg, &state).await),
+            msg_type::STREAM_START => {
+                let resp = handle_stream_start(&msg, &state).await;
+                if resp.get("type").and_then(|v| v.as_str()) == Some(msg_type::STREAM_START_ACK)
+                    && resp.get("result").and_then(|v| v.as_str()) == Some("ok")
+                {
+                    stream_active = true;
+                    last_seen = Instant::now();
+                }
+                Some(resp)
+            }
             msg_type::STREAM_STOP => {
+                stream_active = false;
                 handle_stream_stop(&msg, &state);
                 None
             }
@@ -457,7 +483,13 @@ async fn handle_stream_start(msg: &Value, state: &ControlState) -> Value {
 
 /// stream_stop：停止 UDP 接收（保留控制连接与信任）。
 fn handle_stream_stop(_msg: &Value, state: &ControlState) {
-    state.engine.stop();
+    handle_stream_stop_internal(state);
+}
+
+fn handle_stream_stop_internal(state: &ControlState) {
+    if state.engine.is_running() {
+        state.engine.stop();
+    }
     if let Some(s) = state.current_session.lock().as_mut() {
         s.stream_id = 0;
     }

@@ -53,7 +53,8 @@ class SettingsPage extends StatelessWidget {
               ListTile(
                 title: const Text('编码'),
                 trailing: Text(
-                    'Opus ${frameDurationMs}ms / ${opusBitrate ~/ 1000}kbps'),
+                  'Opus ${frameDurationMs}ms / ${opusBitrate ~/ 1000}kbps',
+                ),
               ),
               const _SectionHeader('设备'),
               ListTile(
@@ -81,6 +82,7 @@ class _SectionHeader extends StatelessWidget {
   final String text;
   const _SectionHeader(this.text);
   @override
-  Widget build(BuildContext context) =>
-      ListTile(title: Text(text, style: Theme.of(context).textTheme.titleSmall));
+  Widget build(BuildContext context) => ListTile(
+    title: Text(text, style: Theme.of(context).textTheme.titleSmall),
+  );
 }

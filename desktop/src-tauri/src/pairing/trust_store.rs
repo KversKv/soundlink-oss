@@ -99,8 +99,7 @@ impl TrustStore {
         if self.path.as_os_str().is_empty() {
             return Ok(());
         }
-        let json = serde_json::to_string_pretty(&self.devices)
-            .map_err(std::io::Error::other)?;
+        let json = serde_json::to_string_pretty(&self.devices).map_err(std::io::Error::other)?;
         fs::write(&self.path, json)
     }
 }

@@ -25,15 +25,24 @@ class DiscoveryService {
   /// 创建一个不使用 reusePort 的 MDnsClient（兼容 Android）。
   MDnsClient _createClient() {
     return MDnsClient(
-      rawDatagramSocketFactory: (dynamic host, int port,
-          {bool reuseAddress = true,
-          bool reusePort = false,
-          int ttl = 0}) {
-        // 强制 reusePort=false：Android 不支持 SO_REUSEPORT，dart:io 会报错。
-        // reuseAddress=true 已足以让多个查询 socket 共存。
-        return RawDatagramSocket.bind(host, port,
-            reuseAddress: true, reusePort: false, ttl: ttl);
-      },
+      rawDatagramSocketFactory:
+          (
+            dynamic host,
+            int port, {
+            bool reuseAddress = true,
+            bool reusePort = false,
+            int ttl = 0,
+          }) {
+            // 强制 reusePort=false：Android 不支持 SO_REUSEPORT，dart:io 会报错。
+            // reuseAddress=true 已足以让多个查询 socket 共存。
+            return RawDatagramSocket.bind(
+              host,
+              port,
+              reuseAddress: true,
+              reusePort: false,
+              ttl: ttl,
+            );
+          },
     );
   }
 

@@ -45,18 +45,22 @@ class _PairingPageState extends State<PairingPage> {
           return ListView(
             padding: const EdgeInsets.all(20),
             children: [
-              Text('目标设备',
-                  style: Theme.of(context).textTheme.titleSmall),
+              Text('目标设备', style: Theme.of(context).textTheme.titleSmall),
               const SizedBox(height: 4),
-              Text(device != null
-                  ? '${device.deviceName}\n${device.host}'
-                  : '未选择（请在“设备”页选择）'),
+              Text(
+                device != null
+                    ? '${device.deviceName}\n${device.host}'
+                    : '未选择（请在“设备”页选择）',
+              ),
               const SizedBox(height: 24),
               if (app.lastError != null)
                 Container(
                   padding: const EdgeInsets.all(10),
                   color: Colors.red.shade50,
-                  child: Text(app.lastError!, style: const TextStyle(fontSize: 13)),
+                  child: Text(
+                    app.lastError!,
+                    style: const TextStyle(fontSize: 13),
+                  ),
                 ),
               const SizedBox(height: 16),
               TextField(
@@ -86,13 +90,15 @@ class _PairingPageState extends State<PairingPage> {
                 label: const Text('已信任设备直接连接'),
               ),
               const SizedBox(height: 24),
-              if (app.conn == LinkState.streaming)
+              if (app.conn == LinkState.streaming ||
+                  app.conn == LinkState.reconnecting)
                 FilledButton.tonalIcon(
                   onPressed: _busy ? null : () => app.stop(),
                   icon: const Icon(Icons.stop),
                   label: const Text('停止广播'),
                   style: FilledButton.styleFrom(
-                      backgroundColor: Colors.red.shade100),
+                    backgroundColor: Colors.red.shade100,
+                  ),
                 ),
             ],
           );

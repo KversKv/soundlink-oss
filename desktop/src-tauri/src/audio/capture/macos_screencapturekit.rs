@@ -9,7 +9,7 @@ use super::CaptureSource;
 
 /// macOS ScreenCaptureKit 采集源（占位）。
 pub struct ScreenCaptureKitCapture {
-    running: bool;
+    running: bool,
 }
 
 impl ScreenCaptureKitCapture {

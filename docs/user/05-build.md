@@ -11,6 +11,9 @@
 ```bash
 cd desktop/src-tauri
 cargo tauri dev
+
+cd D:\CodeProject\TRAE_Projects\SoundLink\desktop\src-tauri
+cargo tauri dev --features tauri_app
 ```
 
 ### 仅编译 Rust 核心
@@ -35,6 +38,34 @@ cargo tauri build
 | Windows | `.msi` / `.exe`（NSIS） |
 | macOS | `.app` / `.dmg`（需签名 / 公证以分发） |
 | Linux | `.deb` / `.AppImage`（后续阶段） |
+
+### Windows 11 打包为可直接运行的 exe（非安装包）
+
+若只需要一个可双击运行的桌面程序，而不是 NSIS / MSI 安装包，推荐使用 Tauri CLI 的 `--no-bundle` 参数：
+
+```powershell
+cd D:\CodeProject\TRAE_Projects\SoundLink\desktop\ui
+npm install
+npm exec tauri -- build --features tauri_app --no-bundle
+```
+
+该命令仍会执行 `tauri.conf.json` 中配置的前端构建命令，但会跳过安装包打包步骤。生成的可执行文件位于：
+
+```text
+D:\CodeProject\TRAE_Projects\SoundLink\desktop\src-tauri\target\release\soundlink.exe
+```
+
+也可以手动分两步构建前端与 Rust/Tauri 外壳：
+
+```powershell
+cd D:\CodeProject\TRAE_Projects\SoundLink\desktop\ui
+npm run build
+
+cd D:\CodeProject\TRAE_Projects\SoundLink\desktop\src-tauri
+cargo build --release --features tauri_app
+```
+
+可按需复制并重命名为 `SoundLink.exe` 后分发。该方式不会生成安装向导，也不会写入开始菜单 / 卸载项；目标机器需具备 Windows 11 默认 WebView2 Runtime，若缺失需用户自行安装。
 
 ## 2. iOS
 

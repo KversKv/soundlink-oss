@@ -147,8 +147,7 @@ impl MdnsBrowser {
     /// 扫描指定时长（秒），返回发现的 Receiver 列表。
     /// 至少扫描 1 秒以收集 mDNS 响应。
     pub fn browse(&self, duration_secs: u64) -> Result<Vec<DiscoveredReceiver>, String> {
-        let daemon =
-            ServiceDaemon::new().map_err(|e| format!("创建 mDNS daemon 失败：{}", e))?;
+        let daemon = ServiceDaemon::new().map_err(|e| format!("创建 mDNS daemon 失败：{}", e))?;
         let receiver = daemon
             .browse(MDNS_SERVICE_TYPE)
             .map_err(|e| format!("启动 mDNS browse 失败：{}", e))?;

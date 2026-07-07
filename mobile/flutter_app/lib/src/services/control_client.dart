@@ -19,26 +19,39 @@ class ControlClient {
   Socket? _socket;
   String _incoming = '';
   final _controllers = <StreamController<Map<String, dynamic>>>[];
+  final _disconnectController = StreamController<void>.broadcast();
   bool _connecting = false;
+  bool _manualDisconnect = false;
 
   ControlClient({required this.host, required this.port});
 
   bool get isConnected => _socket != null && !_connecting;
+  Stream<void> get onDisconnected => _disconnectController.stream;
 
   /// 连接并启动接收循环。
   Future<void> connect() async {
     if (_socket != null) return;
+    _manualDisconnect = false;
     _connecting = true;
-    _socket = await Socket.connect(host, port,
-        timeout: const Duration(seconds: 5));
-    _connecting = false;
+    try {
+      _socket = await Socket.connect(
+        host,
+        port,
+        timeout: const Duration(seconds: 5),
+      );
+    } finally {
+      _connecting = false;
+    }
     _socket!.listen(
       (List<int> data) {
         _incoming += utf8.decode(data);
         _drainLines();
       },
-      onError: (Object e) => _notifyError('socket error: $e'),
-      onDone: () => disconnect(),
+      onError: (Object e) {
+        _notifyError('socket error: $e');
+        _handleRemoteDisconnect();
+      },
+      onDone: _handleRemoteDisconnect,
     );
   }
 
@@ -92,30 +105,55 @@ class ControlClient {
   }) async {
     final completer = Completer<Map<String, dynamic>>();
     late StreamSubscription sub;
-    sub = messages.listen((msg) {
-      if (test(msg) && !completer.isCompleted) {
-        completer.complete(msg);
+    sub = messages.listen(
+      (msg) {
+        if (test(msg) && !completer.isCompleted) {
+          completer.complete(msg);
+          sub.cancel();
+        }
+      },
+      onError: (Object e) {
+        if (!completer.isCompleted) completer.completeError(e);
+      },
+      onDone: () {
+        if (!completer.isCompleted) {
+          completer.completeError(StateError('控制连接已断开（等待消息时 socket 关闭）'));
+        }
+      },
+    );
+    return completer.future.timeout(
+      timeout,
+      onTimeout: () {
         sub.cancel();
-      }
-    }, onError: (Object e) {
-      if (!completer.isCompleted) completer.completeError(e);
-    }, onDone: () {
-      if (!completer.isCompleted) {
-        completer.completeError(
-          StateError('控制连接已断开（等待消息时 socket 关闭）'),
-        );
-      }
-    });
-    return completer.future.timeout(timeout, onTimeout: () {
-      sub.cancel();
-      throw TimeoutException('控制消息等待超时');
-    });
+        throw TimeoutException('控制消息等待超时');
+      },
+    );
+  }
+
+  void _handleRemoteDisconnect() {
+    final wasConnected = _socket != null;
+    _socket?.destroy();
+    _socket = null;
+    _incoming = '';
+    if (wasConnected && !_manualDisconnect) {
+      _disconnectController.add(null);
+    }
+    for (final c in List<StreamController<Map<String, dynamic>>>.from(
+      _controllers,
+    )) {
+      c.close();
+    }
+    _controllers.clear();
   }
 
   void disconnect() {
+    _manualDisconnect = true;
     _socket?.destroy();
     _socket = null;
-    for (final c in _controllers) {
+    _incoming = '';
+    for (final c in List<StreamController<Map<String, dynamic>>>.from(
+      _controllers,
+    )) {
       c.close();
     }
     _controllers.clear();

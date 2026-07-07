@@ -38,8 +38,8 @@ class PlatformService {
   }
 
   /// 停止采集。
-  Future<void> stopCapture() async {
-    await _channel.invokeMethod('stopCapture');
+  Future<void> stopCapture({bool clearSession = true}) async {
+    await _channel.invokeMethod('stopCapture', {'clearSession': clearSession});
   }
 
   /// 请求 MediaProjection 授权（Android）。

@@ -32,24 +32,24 @@ class TrustedReceiver {
   });
 
   Map<String, dynamic> toJson() => {
-        'device_id': deviceId,
-        'identity_pub_b64': identityPubB64,
-        'device_name': deviceName,
-        'host': host,
-        'control_port': controlPort,
-        'audio_port': audioPort,
-        'last_seen': lastSeen,
-      };
+    'device_id': deviceId,
+    'identity_pub_b64': identityPubB64,
+    'device_name': deviceName,
+    'host': host,
+    'control_port': controlPort,
+    'audio_port': audioPort,
+    'last_seen': lastSeen,
+  };
 
   factory TrustedReceiver.fromJson(Map<String, dynamic> j) => TrustedReceiver(
-        deviceId: j['device_id'] as String? ?? '',
-        identityPubB64: j['identity_pub_b64'] as String? ?? '',
-        deviceName: j['device_name'] as String? ?? 'SoundLink Receiver',
-        host: j['host'] as String? ?? '',
-        controlPort: j['control_port'] as int? ?? 47810,
-        audioPort: j['audio_port'] as int? ?? 47811,
-        lastSeen: j['last_seen'] as int? ?? 0,
-      );
+    deviceId: j['device_id'] as String? ?? '',
+    identityPubB64: j['identity_pub_b64'] as String? ?? '',
+    deviceName: j['device_name'] as String? ?? 'SoundLink Receiver',
+    host: j['host'] as String? ?? '',
+    controlPort: j['control_port'] as int? ?? 47810,
+    audioPort: j['audio_port'] as int? ?? 47811,
+    lastSeen: j['last_seen'] as int? ?? 0,
+  );
 }
 
 /// 信任存储管理器。
@@ -64,7 +64,10 @@ class TrustStore {
     try {
       final list = json.decode(raw) as List;
       return list
-          .map((e) => TrustedReceiver.fromJson(Map<String, dynamic>.from(e as Map)))
+          .map(
+            (e) =>
+                TrustedReceiver.fromJson(Map<String, dynamic>.from(e as Map)),
+          )
           .toList();
     } catch (_) {
       return [];
@@ -124,7 +127,8 @@ class MobileIdentity {
   static const _deviceIdKey = 'soundlink.device_id';
 
   /// 加载或生成设备身份。
-  static Future<({String deviceId, String identityPubB64})> loadOrCreate() async {
+  static Future<({String deviceId, String identityPubB64})>
+  loadOrCreate() async {
     final prefs = await SharedPreferences.getInstance();
 
     // Device ID

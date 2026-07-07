@@ -27,6 +27,9 @@ class PairingService {
   final String identityPubB64; // 本机 Ed25519 公钥（base64）
 
   SessionKeys? _keys;
+  StreamSubscription<void>? _disconnectSub;
+  Timer? _heartbeatTimer;
+  Timer? _statsTimer;
   final int _streamId = defaultStreamId;
   int _audioPort = defaultAudioPort;
 
@@ -52,6 +55,11 @@ class PairingService {
   }) async {
     onState(LinkState.connecting);
     await control.connect();
+    _disconnectSub?.cancel();
+    _disconnectSub = control.onDisconnected.listen((_) async {
+      await _stopLocalCapture();
+      onState(LinkState.reconnecting);
+    });
 
     // 1) hello
     final hello = HelloMsg(
@@ -70,14 +78,11 @@ class PairingService {
     );
     control.send(hello);
 
-    final helloAck = await control.waitFor(
-      (m) => m['type'] == 'hello_ack',
-    );
+    final helloAck = await control.waitFor((m) => m['type'] == 'hello_ack');
     onState(LinkState.connected);
 
     final receiverDeviceId = helloAck['device_id'] as String;
-    final pairingRequired =
-        (helloAck['pairing_required'] as bool?) ?? true;
+    final pairingRequired = (helloAck['pairing_required'] as bool?) ?? true;
     final trusted = (helloAck['trusted'] as bool?) ?? false;
 
     // 2) 配对（如需且未信任）
@@ -86,20 +91,26 @@ class PairingService {
         throw StateError('需要配对码但未提供');
       }
       onState(LinkState.pairing);
-      final handshake =
-          await SenderHandshake.begin(pairingCode, receiverDeviceId);
+      final handshake = await SenderHandshake.begin(
+        pairingCode,
+        receiverDeviceId,
+      );
       final proof = await handshake.computeProof(receiverDeviceId);
 
-      control.send(PairRequestMsg(
-        msgId: newMsgId('c'),
-        ts: nowMs(),
-        deviceId: deviceId,
-        senderPub: base64Encode(handshake.keyPair.publicKey),
-        senderIdentityPub: identityPubB64,
-        proof: base64Encode(proof),
-      ));
+      control.send(
+        PairRequestMsg(
+          msgId: newMsgId('c'),
+          ts: nowMs(),
+          deviceId: deviceId,
+          senderPub: base64Encode(handshake.keyPair.publicKey),
+          senderIdentityPub: identityPubB64,
+          proof: base64Encode(proof),
+        ),
+      );
 
-      final pairResp = await control.waitFor((m) => m['type'] == 'pair_response');
+      final pairResp = await control.waitFor(
+        (m) => m['type'] == 'pair_response',
+      );
       if (pairResp['result'] != 'ok') {
         onState(LinkState.error);
         throw StateError('配对失败：${pairResp['error']}');
@@ -124,30 +135,35 @@ class PairingService {
       _keys = await handshake.complete(receiverPub);
 
       // 保存信任关系（移动端信任接收端）。
-      await TrustStore.add(TrustedReceiver(
-        deviceId: receiverDeviceId,
-        identityPubB64: receiverIdentityPubB64,
-        deviceName: (helloAck['device_name'] as String?) ?? device.deviceName,
-        host: device.host,
-        controlPort: device.controlPort,
-        audioPort: device.audioPort,
-        lastSeen: DateTime.now().millisecondsSinceEpoch ~/ 1000,
-      ));
+      await TrustStore.add(
+        TrustedReceiver(
+          deviceId: receiverDeviceId,
+          identityPubB64: receiverIdentityPubB64,
+          deviceName: (helloAck['device_name'] as String?) ?? device.deviceName,
+          host: device.host,
+          controlPort: device.controlPort,
+          audioPort: device.audioPort,
+          lastSeen: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+        ),
+      );
       onState(LinkState.paired);
     } else {
       // 已信任：跳过配对码，直接 X25519 协商（pairing_secret 用全 0 占位）。
       onState(LinkState.pairing);
-      final handshake =
-          await SenderHandshake.beginTrusted(receiverDeviceId);
-      control.send(PairRequestMsg(
-        msgId: newMsgId('c'),
-        ts: nowMs(),
-        deviceId: deviceId,
-        senderPub: base64Encode(handshake.keyPair.publicKey),
-        senderIdentityPub: identityPubB64,
-        proof: '',
-      ));
-      final pairResp = await control.waitFor((m) => m['type'] == 'pair_response');
+      final handshake = await SenderHandshake.beginTrusted(receiverDeviceId);
+      control.send(
+        PairRequestMsg(
+          msgId: newMsgId('c'),
+          ts: nowMs(),
+          deviceId: deviceId,
+          senderPub: base64Encode(handshake.keyPair.publicKey),
+          senderIdentityPub: identityPubB64,
+          proof: '',
+        ),
+      );
+      final pairResp = await control.waitFor(
+        (m) => m['type'] == 'pair_response',
+      );
       if (pairResp['result'] != 'ok') {
         throw StateError('协商失败：${pairResp['error']}');
       }
@@ -158,17 +174,19 @@ class PairingService {
 
     // 3) stream_start
     _audioPort = device.audioPort;
-    control.send(StreamStartMsg(
-      msgId: newMsgId('c'),
-      ts: nowMs(),
-      streamId: _streamId,
-      audioPort: _audioPort,
-      codec: 'opus',
-      sampleRate: sampleRate,
-      channels: channels,
-      frameDurationMs: frameDurationMs,
-      bitrate: opusBitrate,
-    ));
+    control.send(
+      StreamStartMsg(
+        msgId: newMsgId('c'),
+        ts: nowMs(),
+        streamId: _streamId,
+        audioPort: _audioPort,
+        codec: 'opus',
+        sampleRate: sampleRate,
+        channels: channels,
+        frameDurationMs: frameDurationMs,
+        bitrate: opusBitrate,
+      ),
+    );
     final ack = await control.waitFor((m) => m['type'] == 'stream_start_ack');
     if (ack['result'] != 'ok') {
       throw StateError('stream_start 被拒绝：${ack['error']}');
@@ -188,18 +206,52 @@ class PairingService {
     );
     await platform.writeSessionConfig(config);
     await platform.startCapture();
+    _startEventLoops();
 
     onState(LinkState.streaming);
   }
 
+  void _startEventLoops() {
+    _heartbeatTimer?.cancel();
+    _statsTimer?.cancel();
+    _heartbeatTimer = Timer.periodic(
+      const Duration(seconds: heartbeatIntervalSecs),
+      (_) {
+        if (!control.isConnected) return;
+        control.send(HeartbeatMsg(msgId: newMsgId('c-hb'), ts: nowMs()));
+      },
+    );
+    _statsTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!control.isConnected) return;
+      control.send(
+        StatsMsg(msgId: newMsgId('c-stats'), ts: nowMs(), streamId: _streamId),
+      );
+    });
+  }
+
+  Future<void> _stopLocalCapture({bool clearSession = false}) async {
+    _heartbeatTimer?.cancel();
+    _statsTimer?.cancel();
+    _heartbeatTimer = null;
+    _statsTimer = null;
+    await platform.stopCapture(clearSession: clearSession);
+    _keys = null;
+  }
+
   /// 停止流并断开。
   Future<void> stop() async {
-    control.send(StreamStopMsg(
-      msgId: newMsgId('c'),
-      ts: nowMs(),
-      streamId: _streamId,
-    ));
-    await platform.stopCapture();
+    _heartbeatTimer?.cancel();
+    _statsTimer?.cancel();
+    _heartbeatTimer = null;
+    _statsTimer = null;
+    if (control.isConnected) {
+      control.send(
+        StreamStopMsg(msgId: newMsgId('c'), ts: nowMs(), streamId: _streamId),
+      );
+    }
+    await _stopLocalCapture(clearSession: true);
+    await _disconnectSub?.cancel();
+    _disconnectSub = null;
     control.disconnect();
     _keys = null;
   }
@@ -228,13 +280,13 @@ class SessionConfig {
   });
 
   String toJson() => json.encode({
-        'target_host': targetHost,
-        'audio_port': audioPort,
-        'stream_id': streamId,
-        'audio_key': base64Encode(audioKey),
-        'sample_rate': sampleRate,
-        'channels': channels,
-        'frame_duration_ms': frameDurationMs,
-        'bitrate': bitrate,
-      });
+    'target_host': targetHost,
+    'audio_port': audioPort,
+    'stream_id': streamId,
+    'audio_key': base64Encode(audioKey),
+    'sample_rate': sampleRate,
+    'channels': channels,
+    'frame_duration_ms': frameDurationMs,
+    'bitrate': bitrate,
+  });
 }

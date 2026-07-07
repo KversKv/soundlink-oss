@@ -57,7 +57,10 @@ fn main() {
 #[cfg(not(feature = "tauri_app"))]
 fn main() {
     soundlink_lib::logging::init();
-    println!("SoundLink 桌面核心（无 Tauri 外壳）。DEBUG={}, DUMP_ENABLE={}", DEBUG, DUMP_ENABLE);
+    println!(
+        "SoundLink 桌面核心（无 Tauri 外壳）。DEBUG={}, DUMP_ENABLE={}",
+        DEBUG, DUMP_ENABLE
+    );
     println!();
     println!("阶段 1 自测（音频环回）：  cargo run --example loopback_sender");
     println!("阶段 3 自测（配对发现）：  cargo run --example control_loopback");

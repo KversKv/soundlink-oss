@@ -38,28 +38,32 @@ class HelloMsg extends ControlMessage {
 
   @override
   Map<String, dynamic> toJson() => {
-        'type': type,
-        'msg_id': msgId,
-        'ts': ts,
-        'protocol_version': protocolVersion,
-        'device_id': deviceId,
-        'device_name': deviceName,
-        'role': role,
-        'platform': platform,
-        'capabilities': capabilities.toJson(),
-      };
+    'type': type,
+    'msg_id': msgId,
+    'ts': ts,
+    'protocol_version': protocolVersion,
+    'device_id': deviceId,
+    'device_name': deviceName,
+    'role': role,
+    'platform': platform,
+    'capabilities': capabilities.toJson(),
+  };
 }
 
 class Capabilities {
   final List<String> codec; // ["opus"]
   final int sampleRate;
   final int channels;
-  Capabilities({required this.codec, required this.sampleRate, required this.channels});
+  Capabilities({
+    required this.codec,
+    required this.sampleRate,
+    required this.channels,
+  });
   Map<String, dynamic> toJson() => {
-        'codec': codec,
-        'sample_rate': sampleRate,
-        'channels': channels,
-      };
+    'codec': codec,
+    'sample_rate': sampleRate,
+    'channels': channels,
+  };
 }
 
 /// hello_ack (Receiver→Sender)
@@ -82,15 +86,15 @@ class HelloAckMsg extends ControlMessage {
 
   @override
   Map<String, dynamic> toJson() => {
-        'type': type,
-        'msg_id': msgId,
-        'ts': ts,
-        'protocol_version': protocolVersion,
-        'device_id': deviceId,
-        'device_name': deviceName,
-        'pairing_required': pairingRequired,
-        'trusted': trusted,
-      };
+    'type': type,
+    'msg_id': msgId,
+    'ts': ts,
+    'protocol_version': protocolVersion,
+    'device_id': deviceId,
+    'device_name': deviceName,
+    'pairing_required': pairingRequired,
+    'trusted': trusted,
+  };
 }
 
 /// pair_request (Sender→Receiver)
@@ -111,14 +115,14 @@ class PairRequestMsg extends ControlMessage {
 
   @override
   Map<String, dynamic> toJson() => {
-        'type': type,
-        'msg_id': msgId,
-        'ts': ts,
-        'device_id': deviceId,
-        'sender_pub': senderPub,
-        'sender_identity_pub': senderIdentityPub,
-        'proof': proof,
-      };
+    'type': type,
+    'msg_id': msgId,
+    'ts': ts,
+    'device_id': deviceId,
+    'sender_pub': senderPub,
+    'sender_identity_pub': senderIdentityPub,
+    'proof': proof,
+  };
 }
 
 /// pair_response (Receiver→Sender)
@@ -141,15 +145,16 @@ class PairResponseMsg extends ControlMessage {
 
   @override
   Map<String, dynamic> toJson() => {
-        'type': type,
-        'msg_id': msgId,
-        'ts': ts,
-        'result': result,
-        if (receiverPub != null) 'receiver_pub': receiverPub,
-        if (receiverIdentityPub != null) 'receiver_identity_pub': receiverIdentityPub,
-        if (proof != null) 'proof': proof,
-        if (error != null) 'error': error!.toJson(),
-      };
+    'type': type,
+    'msg_id': msgId,
+    'ts': ts,
+    'result': result,
+    if (receiverPub != null) 'receiver_pub': receiverPub,
+    if (receiverIdentityPub != null)
+      'receiver_identity_pub': receiverIdentityPub,
+    if (proof != null) 'proof': proof,
+    if (error != null) 'error': error!.toJson(),
+  };
 }
 
 class ErrorDetail {
@@ -183,17 +188,17 @@ class StreamStartMsg extends ControlMessage {
 
   @override
   Map<String, dynamic> toJson() => {
-        'type': type,
-        'msg_id': msgId,
-        'ts': ts,
-        'stream_id': streamId,
-        'audio_port': audioPort,
-        'codec': codec,
-        'sample_rate': sampleRate,
-        'channels': channels,
-        'frame_duration_ms': frameDurationMs,
-        'bitrate': bitrate,
-      };
+    'type': type,
+    'msg_id': msgId,
+    'ts': ts,
+    'stream_id': streamId,
+    'audio_port': audioPort,
+    'codec': codec,
+    'sample_rate': sampleRate,
+    'channels': channels,
+    'frame_duration_ms': frameDurationMs,
+    'bitrate': bitrate,
+  };
 }
 
 /// stream_start_ack (Receiver→Sender)
@@ -212,13 +217,13 @@ class StreamStartAckMsg extends ControlMessage {
 
   @override
   Map<String, dynamic> toJson() => {
-        'type': type,
-        'msg_id': msgId,
-        'ts': ts,
-        'stream_id': streamId,
-        'result': result,
-        if (receiverAudioPort != null) 'receiver_audio_port': receiverAudioPort,
-      };
+    'type': type,
+    'msg_id': msgId,
+    'ts': ts,
+    'stream_id': streamId,
+    'result': result,
+    if (receiverAudioPort != null) 'receiver_audio_port': receiverAudioPort,
+  };
 }
 
 /// stream_stop (Sender→Receiver)
@@ -232,17 +237,17 @@ class StreamStopMsg extends ControlMessage {
 
   @override
   Map<String, dynamic> toJson() => {
-        'type': type,
-        'msg_id': msgId,
-        'ts': ts,
-        'stream_id': streamId,
-      };
+    'type': type,
+    'msg_id': msgId,
+    'ts': ts,
+    'stream_id': streamId,
+  };
 }
 
 /// heartbeat (双向)
 class HeartbeatMsg extends ControlMessage {
   HeartbeatMsg({required String msgId, required int ts})
-      : super('heartbeat', msgId, ts);
+    : super('heartbeat', msgId, ts);
   @override
   Map<String, dynamic> toJson() => {'type': type, 'msg_id': msgId, 'ts': ts};
 }
@@ -275,37 +280,34 @@ class StatsMsg extends ControlMessage {
 
   @override
   Map<String, dynamic> toJson() => {
-        'type': type,
-        'msg_id': msgId,
-        'ts': ts,
-        'stream_id': streamId,
-        if (packetsSent != null) 'packets_sent': packetsSent,
-        if (bitrate != null) 'bitrate': bitrate,
-        if (encodeMsAvg != null) 'encode_ms_avg': encodeMsAvg,
-        if (packetsRecv != null) 'packets_recv': packetsRecv,
-        if (packetsLost != null) 'packets_lost': packetsLost,
-        if (jitterMs != null) 'jitter_ms': jitterMs,
-        if (bufferMs != null) 'buffer_ms': bufferMs,
-        if (estLatencyMs != null) 'est_latency_ms': estLatencyMs,
-      };
+    'type': type,
+    'msg_id': msgId,
+    'ts': ts,
+    'stream_id': streamId,
+    if (packetsSent != null) 'packets_sent': packetsSent,
+    if (bitrate != null) 'bitrate': bitrate,
+    if (encodeMsAvg != null) 'encode_ms_avg': encodeMsAvg,
+    if (packetsRecv != null) 'packets_recv': packetsRecv,
+    if (packetsLost != null) 'packets_lost': packetsLost,
+    if (jitterMs != null) 'jitter_ms': jitterMs,
+    if (bufferMs != null) 'buffer_ms': bufferMs,
+    if (estLatencyMs != null) 'est_latency_ms': estLatencyMs,
+  };
 }
 
 /// error (双向)
 class ErrorMsg extends ControlMessage {
   final ErrorDetail error;
-  ErrorMsg({
-    required String msgId,
-    required int ts,
-    required this.error,
-  }) : super('error', msgId, ts);
+  ErrorMsg({required String msgId, required int ts, required this.error})
+    : super('error', msgId, ts);
 
   @override
   Map<String, dynamic> toJson() => {
-        'type': type,
-        'msg_id': msgId,
-        'ts': ts,
-        'error': error.toJson(),
-      };
+    'type': type,
+    'msg_id': msgId,
+    'ts': ts,
+    'error': error.toJson(),
+  };
 }
 
 /// 解析一条 JSON 控制消息（去换行后）。

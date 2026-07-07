@@ -241,8 +241,7 @@ impl JitterBuffer {
 
     /// 自适应目标深度：target = clamp(jitter_ewma * K + base, min, max)。
     fn adjust_auto_target(&mut self) {
-        let computed = (self.jitter_ewma_frames * JITTER_AUTO_K) as usize
-            + JITTER_AUTO_BASE_FRAMES;
+        let computed = (self.jitter_ewma_frames * JITTER_AUTO_K) as usize + JITTER_AUTO_BASE_FRAMES;
         let new_target = computed.clamp(JITTER_AUTO_MIN_FRAMES, JITTER_AUTO_MAX_FRAMES);
         if new_target != self.target_depth {
             self.target_depth = new_target;

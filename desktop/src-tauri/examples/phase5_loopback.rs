@@ -141,8 +141,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let _ = std::fs::remove_dir_all(&tmp_dir);
 
     tracing::info!("=== 自测结束 ===");
-    tracing::info!("Sender 最终：state={} packets_sent={}", final_sender.state, final_sender.packets_sent);
-    tracing::info!("Receiver 最终：state={} packets_recv={} packets_lost={}", final_receiver.state, final_receiver.packets_recv, final_receiver.packets_lost);
+    tracing::info!(
+        "Sender 最终：state={} packets_sent={}",
+        final_sender.state,
+        final_sender.packets_sent
+    );
+    tracing::info!(
+        "Receiver 最终：state={} packets_recv={} packets_lost={}",
+        final_receiver.state,
+        final_receiver.packets_recv,
+        final_receiver.packets_lost
+    );
 
     let ok = final_sender.state == "STREAMING"
         && final_sender.packets_sent > 0

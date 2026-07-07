@@ -10,12 +10,14 @@
 
 import ReplayKit
 import CoreMedia
+import Foundation
 
 class SampleHandler: RPBroadcastSampleHandler {
 
     private var processor: AudioProcessor?
     private var encoder: OpusEncoderWrapper?
     private var sender: UdpAudioSender?
+    private var stopMonitor: DispatchSourceTimer?
     private var started = false
 
     /// 调试：是否转储采集 PCM + Opus 帧。由主 App 通过 App Group 写入。
@@ -52,6 +54,7 @@ class SampleHandler: RPBroadcastSampleHandler {
         if dumpEnabled {
             openDumpFiles()
         }
+        startStopMonitor()
     }
 
     override func processSampleBuffer(_ sampleBuffer: CMSampleBuffer, with sampleBufferType: RPSampleBufferType) {
@@ -83,6 +86,8 @@ class SampleHandler: RPBroadcastSampleHandler {
     override func broadcastResumed() { /* 无操作 */ }
 
     override func broadcastFinished() {
+        stopMonitor?.cancel()
+        stopMonitor = nil
         // 发送一个 stream_end 末包（空 Opus 帧或最后一帧置 flag）。
         if let s = sender {
             s.send(opusFrame: Data(), streamEnd: true)
@@ -91,6 +96,25 @@ class SampleHandler: RPBroadcastSampleHandler {
         started = false
         PairingStateReader.clear()
         closeDumpFiles()
+    }
+
+    private func startStopMonitor() {
+        stopMonitor?.cancel()
+        guard let defaults = UserDefaults(suiteName: PairingStateReader.appGroupId) else { return }
+        let timer = DispatchSource.makeTimerSource(queue: DispatchQueue(label: "soundlink.stop.monitor"))
+        timer.schedule(deadline: .now() + 1, repeating: 1)
+        timer.setEventHandler { [weak self] in
+            guard let self else { return }
+            if defaults.bool(forKey: PairingStateReader.stopRequestedKey) {
+                DispatchQueue.main.async {
+                    self.finishBroadcastWithError(NSError(
+                        domain: "SoundLink", code: 3,
+                        userInfo: [NSLocalizedDescriptionKey: "控制连接已断开，广播已自动停止"]))
+                }
+            }
+        }
+        timer.resume()
+        stopMonitor = timer
     }
 
     /// 在 App Group 共享容器创建 PCM / Opus 转储文件（覆盖写）。

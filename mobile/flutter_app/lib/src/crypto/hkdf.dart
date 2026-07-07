@@ -35,10 +35,7 @@ Future<Uint8List> hmacSha256({
   required Uint8List data,
 }) async {
   final hmac = crypto.Hmac.sha256();
-  final mac = await hmac.calculateMac(
-    data,
-    secretKey: crypto.SecretKey(key),
-  );
+  final mac = await hmac.calculateMac(data, secretKey: crypto.SecretKey(key));
   return Uint8List.fromList(mac.bytes);
 }
 

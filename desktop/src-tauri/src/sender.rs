@@ -12,9 +12,8 @@
 use crate::audio::capture::CaptureSource;
 use crate::audio::opus_codec::default_codec;
 use crate::constants::{
-    DEFAULT_STREAM_ID, ENCODE_MS_EWMA_ALPHA, FRAME_SAMPLES_TOTAL,
-    PROTOCOL_VERSION, SAMPLE_RATE, SENDER_CONNECT_TIMEOUT_SECS, SENDER_HEARTBEAT_INTERVAL_SECS,
-    SENDER_STATS_INTERVAL_SECS,
+    DEFAULT_STREAM_ID, ENCODE_MS_EWMA_ALPHA, FRAME_SAMPLES_TOTAL, PROTOCOL_VERSION, SAMPLE_RATE,
+    SENDER_CONNECT_TIMEOUT_SECS, SENDER_HEARTBEAT_INTERVAL_SECS, SENDER_STATS_INTERVAL_SECS,
 };
 use crate::network::control_server::msg_type;
 use crate::network::packet::{encode_packet, AudioPacketHeader};
@@ -31,13 +30,13 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::net::{TcpStream, UdpSocket};
+use tokio::net::{tcp::OwnedReadHalf, tcp::OwnedWriteHalf, TcpStream, UdpSocket};
 use tokio::task::JoinHandle;
 use tokio::time::{interval, timeout};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct SenderStatus {
-    /// "IDLE" | "CONNECTING" | "PAIRED" | "STREAMING" | "ERROR"
+    /// "IDLE" | "CONNECTING" | "PAIRED" | "STREAMING" | "DISCONNECTED" | "ERROR"
     pub state: String,
     pub target_addr: String,
     pub receiver_device_id: String,
@@ -47,6 +46,8 @@ pub struct SenderStatus {
     pub encode_ms_avg: f32,
     /// 当前发送码率（bps，从 Opus 帧实测）。
     pub bitrate: u32,
+    /// 接收端建议码率（bps，来自 stats）。
+    pub recommended_bitrate: u32,
     /// 是否走已信任路径（跳过配对码）。
     pub trusted: bool,
     /// 错误信息（state=ERROR 时）。
@@ -63,6 +64,7 @@ impl Default for SenderStatus {
             packets_sent: 0,
             encode_ms_avg: 0.0,
             bitrate: 0,
+            recommended_bitrate: 0,
             trusted: false,
             error: String::new(),
         }
@@ -139,15 +141,22 @@ impl SenderEngine {
             )
             .await;
 
-        let (audio_key, stream_id, tcp_writer, receiver_device_id, receiver_device_name, trusted) =
-            match handshake_result {
-                Ok(v) => v,
-                Err(e) => {
-                    self.set_error(&e);
-                    self.running.store(false, Ordering::SeqCst);
-                    return Err(e);
-                }
-            };
+        let (
+            audio_key,
+            stream_id,
+            tcp_reader,
+            tcp_writer,
+            receiver_device_id,
+            receiver_device_name,
+            trusted,
+        ) = match handshake_result {
+            Ok(v) => v,
+            Err(e) => {
+                self.set_error(&e);
+                self.running.store(false, Ordering::SeqCst);
+                return Err(e);
+            }
+        };
 
         {
             let mut s = self.status.lock();
@@ -158,25 +167,31 @@ impl SenderEngine {
         }
 
         // 2) 启动采集源。
-        capture.start().map_err(|e| {
+        if let Err(e) = capture.start() {
             self.set_error(&format!("采集源启动失败：{}", e));
             self.running.store(false, Ordering::SeqCst);
-            e
-        })?;
+            return Err(e);
+        }
 
         // 3) UDP 发送 socket。
-        let udp = UdpSocket::bind("0.0.0.0:0")
-            .await
-            .map_err(|e| format!("绑定 UDP 发送 socket 失败：{}", e))?;
+        let udp = match UdpSocket::bind("0.0.0.0:0").await {
+            Ok(udp) => udp,
+            Err(e) => {
+                capture.stop();
+                self.set_error(&format!("绑定 UDP 发送 socket 失败：{}", e));
+                self.running.store(false, Ordering::SeqCst);
+                return Err(format!("绑定 UDP 发送 socket 失败：{}", e));
+            }
+        };
         // 目标地址 = receiver_addr 的 IP + audio_port。
-        let target_ip = receiver_addr
-            .split(':')
-            .next()
-            .unwrap_or("127.0.0.1");
+        let target_ip = receiver_addr.split(':').next().unwrap_or("127.0.0.1");
         let udp_target = format!("{}:{}", target_ip, audio_port);
-        udp.connect(&udp_target)
-            .await
-            .map_err(|e| format!("UDP connect 失败：{}", e))?;
+        if let Err(e) = udp.connect(&udp_target).await {
+            capture.stop();
+            self.set_error(&format!("UDP connect 失败：{}", e));
+            self.running.store(false, Ordering::SeqCst);
+            return Err(format!("UDP connect 失败：{}", e));
+        }
 
         {
             let mut s = self.status.lock();
@@ -205,7 +220,7 @@ impl SenderEngine {
         let status = self.status.clone();
         let running = self.running.clone();
         let control_handle = tokio::spawn(async move {
-            control_loop(tcp_writer, stream_id, status, running).await;
+            control_loop(tcp_reader, tcp_writer, stream_id, status, running).await;
         });
         *self.control_task.lock() = Some(control_handle);
 
@@ -222,7 +237,9 @@ impl SenderEngine {
             h.abort();
         }
         let mut s = self.status.lock();
-        s.state = "IDLE".into();
+        if s.state != "DISCONNECTED" && s.state != "ERROR" {
+            s.state = "IDLE".into();
+        }
     }
 
     /// 状态快照。
@@ -256,7 +273,8 @@ impl SenderEngine {
         (
             [u8; 32],
             u32,
-            tokio::net::tcp::OwnedWriteHalf,
+            OwnedReadHalf,
+            OwnedWriteHalf,
             String,
             String,
             bool,
@@ -296,10 +314,7 @@ impl SenderEngine {
         if hello_ack["type"] != msg_type::HELLO_ACK {
             return Err(format!("期望 hello_ack，got: {}", hello_ack));
         }
-        let receiver_device_id = hello_ack["device_id"]
-            .as_str()
-            .unwrap_or("")
-            .to_string();
+        let receiver_device_id = hello_ack["device_id"].as_str().unwrap_or("").to_string();
         let receiver_device_name = hello_ack["device_name"]
             .as_str()
             .unwrap_or("SoundLink Receiver")
@@ -349,9 +364,7 @@ impl SenderEngine {
         }
         if pair_resp["result"] != "ok" {
             let code = pair_resp["error"]["code"].as_i64().unwrap_or(0);
-            let msg = pair_resp["error"]["message"]
-                .as_str()
-                .unwrap_or("配对失败");
+            let msg = pair_resp["error"]["message"].as_str().unwrap_or("配对失败");
             return Err(format!("配对失败（code={}）：{}", code, msg));
         }
 
@@ -424,9 +437,16 @@ impl SenderEngine {
             audio_port
         );
 
-        // 关闭 reader，保留 writer 供心跳/stats。
-        drop(reader);
-        Ok((audio_key, stream_id, writer, receiver_device_id, receiver_device_name, trusted))
+        let reader = reader.into_inner();
+        Ok((
+            audio_key,
+            stream_id,
+            reader,
+            writer,
+            receiver_device_id,
+            receiver_device_name,
+            trusted,
+        ))
     }
 }
 
@@ -465,11 +485,15 @@ async fn send_loop(
     let mut opus_dump: Option<std::fs::File> = None;
     if dump_enable {
         pcm_dump = std::fs::OpenOptions::new()
-            .create(true).truncate(true).write(true)
+            .create(true)
+            .truncate(true)
+            .write(true)
             .open("soundlink_sender_pcm.raw")
             .ok();
         opus_dump = std::fs::OpenOptions::new()
-            .create(true).truncate(true).write(true)
+            .create(true)
+            .truncate(true)
+            .write(true)
             .open("soundlink_sender_opus.bin")
             .ok();
         if pcm_dump.is_some() || opus_dump.is_some() {
@@ -491,11 +515,7 @@ async fn send_loop(
             }
         };
         if pcm.len() != FRAME_SAMPLES_TOTAL {
-            tracing::warn!(
-                "采集帧长度异常：{} != {}",
-                pcm.len(),
-                FRAME_SAMPLES_TOTAL
-            );
+            tracing::warn!("采集帧长度异常：{} != {}", pcm.len(), FRAME_SAMPLES_TOTAL);
             continue;
         }
         total_samples += (FRAME_SAMPLES_TOTAL / 2) as u64;
@@ -513,7 +533,8 @@ async fn send_loop(
         let enc_start = std::time::Instant::now();
         let frame_bytes = codec.encode(&pcm);
         let enc_elapsed = enc_start.elapsed().as_secs_f64() * 1000.0;
-        encode_ms_ewma = ENCODE_MS_EWMA_ALPHA * enc_elapsed + (1.0 - ENCODE_MS_EWMA_ALPHA) * encode_ms_ewma;
+        encode_ms_ewma =
+            ENCODE_MS_EWMA_ALPHA * enc_elapsed + (1.0 - ENCODE_MS_EWMA_ALPHA) * encode_ms_ewma;
 
         // 转储 Opus 帧（4 字节小端长度前缀 + 数据）。
         if let Some(f) = opus_dump.as_mut() {
@@ -561,16 +582,48 @@ async fn send_loop(
 
 /// 控制通道循环：心跳 + stats 上报。
 async fn control_loop(
-    mut writer: tokio::net::tcp::OwnedWriteHalf,
+    reader: OwnedReadHalf,
+    mut writer: OwnedWriteHalf,
     stream_id: u32,
     status: Arc<Mutex<SenderStatus>>,
     running: Arc<AtomicBool>,
 ) {
-    let mut hb_ticker = interval(std::time::Duration::from_secs(SENDER_HEARTBEAT_INTERVAL_SECS));
+    let mut reader = BufReader::new(reader);
+    let mut line = String::new();
+    let mut hb_ticker = interval(std::time::Duration::from_secs(
+        SENDER_HEARTBEAT_INTERVAL_SECS,
+    ));
     let mut stats_ticker = interval(std::time::Duration::from_secs(SENDER_STATS_INTERVAL_SECS));
 
     while running.load(Ordering::SeqCst) {
         tokio::select! {
+            read = reader.read_line(&mut line) => {
+                match read {
+                    Ok(0) => {
+                        tracing::warn!("控制连接已由接收端关闭，停止发送。");
+                        running.store(false, Ordering::SeqCst);
+                        let mut s = status.lock();
+                        s.state = "DISCONNECTED".into();
+                        s.error = "接收端已断开".into();
+                        break;
+                    }
+                    Ok(_) => {
+                        let trimmed = line.trim();
+                        if !trimmed.is_empty() {
+                            handle_control_message(trimmed, &status, &running);
+                        }
+                        line.clear();
+                    }
+                    Err(e) => {
+                        tracing::warn!("读取控制消息失败：{}", e);
+                        running.store(false, Ordering::SeqCst);
+                        let mut s = status.lock();
+                        s.state = "DISCONNECTED".into();
+                        s.error = format!("控制连接读取失败：{}", e);
+                        break;
+                    }
+                }
+            }
             _ = hb_ticker.tick() => {
                 let hb = json!({
                     "type": msg_type::HEARTBEAT,
@@ -579,6 +632,10 @@ async fn control_loop(
                 });
                 if send_msg(&mut writer, &hb).await.is_err() {
                     tracing::warn!("心跳发送失败，控制连接可能已断开。");
+                    running.store(false, Ordering::SeqCst);
+                    let mut s = status.lock();
+                    s.state = "DISCONNECTED".into();
+                    s.error = "心跳发送失败".into();
                     break;
                 }
             }
@@ -595,13 +652,16 @@ async fn control_loop(
                 });
                 if send_msg(&mut writer, &stats).await.is_err() {
                     tracing::warn!("stats 发送失败。");
+                    running.store(false, Ordering::SeqCst);
+                    let mut s = status.lock();
+                    s.state = "DISCONNECTED".into();
+                    s.error = "stats 发送失败".into();
                     break;
                 }
             }
         }
     }
 
-    // 发送 stream_stop。
     let stop_msg = json!({
         "type": msg_type::STREAM_STOP,
         "msg_id": "c-stop",
@@ -612,10 +672,37 @@ async fn control_loop(
     let _ = writer.shutdown().await;
 }
 
-async fn send_msg(
-    writer: &mut tokio::net::tcp::OwnedWriteHalf,
-    msg: &Value,
-) -> Result<(), String> {
+fn handle_control_message(
+    line: &str,
+    status: &Arc<Mutex<SenderStatus>>,
+    running: &Arc<AtomicBool>,
+) {
+    let Ok(msg) = serde_json::from_str::<Value>(line) else {
+        return;
+    };
+    match msg.get("type").and_then(|v| v.as_str()).unwrap_or("") {
+        msg_type::ERROR => {
+            let message = msg
+                .get("error")
+                .and_then(|e| e.get("message"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("接收端返回错误");
+            running.store(false, Ordering::SeqCst);
+            let mut s = status.lock();
+            s.state = "ERROR".into();
+            s.error = message.into();
+        }
+        msg_type::STATS => {
+            if let Some(recommended) = msg.get("recommended_bitrate").and_then(|v| v.as_u64()) {
+                let mut s = status.lock();
+                s.recommended_bitrate = recommended as u32;
+            }
+        }
+        _ => {}
+    }
+}
+
+async fn send_msg(writer: &mut OwnedWriteHalf, msg: &Value) -> Result<(), String> {
     let line = format!(
         "{}\n",
         serde_json::to_string(msg).map_err(|e| e.to_string())?
@@ -626,9 +713,7 @@ async fn send_msg(
         .map_err(|e| e.to_string())
 }
 
-async fn recv_msg(
-    reader: &mut tokio::io::BufReader<tokio::net::tcp::OwnedReadHalf>,
-) -> Result<Value, String> {
+async fn recv_msg(reader: &mut BufReader<OwnedReadHalf>) -> Result<Value, String> {
     let mut line = String::new();
     let n = reader
         .read_line(&mut line)

@@ -12,9 +12,7 @@
 //! - 线性插值实现，单帧 480 样本/声道，开销极低。
 //! - ratio 步进固定（每帧调整 ±0.01%），避免突变爆音。
 
-use crate::constants::{
-    DRIFT_ADJUST_THRESHOLD_FRAMES, DRIFT_CORRECTION_MAX_RATIO,
-};
+use crate::constants::{DRIFT_ADJUST_THRESHOLD_FRAMES, DRIFT_CORRECTION_MAX_RATIO};
 
 /// 漂移校正器：根据缓冲水位偏差计算重采样比率，并对 PCM 做线性插值。
 pub struct DriftResampler {
@@ -180,7 +178,11 @@ mod tests {
         for _ in 0..20 {
             r.observe(8, 8);
         }
-        assert!((r.ratio() - 1.0).abs() < 0.01, "ratio 应回归 1，实际 {}", r.ratio());
+        assert!(
+            (r.ratio() - 1.0).abs() < 0.01,
+            "ratio 应回归 1，实际 {}",
+            r.ratio()
+        );
     }
 
     #[test]

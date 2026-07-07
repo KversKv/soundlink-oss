@@ -24,6 +24,7 @@ struct SessionConfig: Codable {
 enum PairingStateReader {
     static let appGroupId = "group.com.soundlink"
     static let configKey = "soundlink.session.config"
+    static let stopRequestedKey = "soundlink.stop_requested"
 
     /// 读取最新会话配置；不存在或解析失败返回 nil。
     static func read() -> SessionConfig? {
@@ -40,11 +41,18 @@ enum PairingStateReader {
         if let json = try? JSONEncoder().encode(config),
            let str = String(data: json, encoding: .utf8) {
             defaults.set(str, forKey: configKey)
+            defaults.set(false, forKey: stopRequestedKey)
         }
+    }
+
+    static func requestStop() {
+        UserDefaults(suiteName: appGroupId)?.set(true, forKey: stopRequestedKey)
     }
 
     /// 主 App 调用：清除配置（停止后）。
     static func clear() {
-        UserDefaults(suiteName: appGroupId)?.removeObject(forKey: configKey)
+        guard let defaults = UserDefaults(suiteName: appGroupId) else { return }
+        defaults.removeObject(forKey: configKey)
+        defaults.removeObject(forKey: stopRequestedKey)
     }
 }

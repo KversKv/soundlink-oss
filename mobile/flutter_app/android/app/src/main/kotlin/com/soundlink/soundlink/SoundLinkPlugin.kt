@@ -64,11 +64,14 @@ class SoundLinkPlugin(
                 }
             }
             "stopCapture" -> {
+                val clearSession = call.argument<Boolean>("clearSession") ?: true
                 val svc = Intent(activity, AudioCaptureService::class.java).apply {
                     action = AudioCaptureService.ACTION_STOP
                 }
                 activity.startService(svc)
-                prefs.edit().remove(AudioCaptureService.KEY_CONFIG).apply()
+                if (clearSession) {
+                    prefs.edit().remove(AudioCaptureService.KEY_CONFIG).apply()
+                }
                 result.success(true)
             }
             "requestMediaProjection" -> result.success(true)

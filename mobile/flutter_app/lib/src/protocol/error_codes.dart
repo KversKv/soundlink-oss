@@ -17,6 +17,8 @@ enum ErrorCode {
   final String message;
   const ErrorCode(this.code, this.message);
 
-  static ErrorCode fromCode(int code) =>
-      values.firstWhere((e) => e.code == code, orElse: () => ErrorCode.internal);
+  static ErrorCode fromCode(int code) => values.firstWhere(
+    (e) => e.code == code,
+    orElse: () => ErrorCode.internal,
+  );
 }

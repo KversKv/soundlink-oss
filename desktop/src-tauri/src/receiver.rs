@@ -15,8 +15,8 @@ use crate::audio::output::{AudioOutput, PlaybackSource};
 use crate::audio::resampler::DriftResampler;
 use crate::constants::{
     BITRATE_MAX, BITRATE_MIN, BITRATE_STEP, DEFAULT_AUDIO_PORT, DEFAULT_JITTER_MS,
-    EST_LATENCY_INIT_MS, FRAME_DURATION_MS, LOSS_RATE_HIGH_THRESHOLD,
-    LOSS_RATE_LOW_THRESHOLD, OUTPUT_BUFFER_FRAMES, PLC_CONSECUTIVE_LIMIT, SAMPLE_RATE,
+    EST_LATENCY_INIT_MS, FRAME_DURATION_MS, LOSS_RATE_HIGH_THRESHOLD, LOSS_RATE_LOW_THRESHOLD,
+    OUTPUT_BUFFER_FRAMES, PLC_CONSECUTIVE_LIMIT, SAMPLE_RATE,
 };
 use crate::network::packet::decode_packet;
 use parking_lot::Mutex;
@@ -54,7 +54,11 @@ struct DebugDumper {
 
 /// 转储消息（音频线程 → IO 线程）。
 enum DumpMsg {
-    Opus { data: Vec<u8>, seq: u32, lost: bool },
+    Opus {
+        data: Vec<u8>,
+        seq: u32,
+        lost: bool,
+    },
     PcmDecoded(Vec<i16>),
     PcmResampled(Vec<i16>),
     /// 通知 IO 线程刷新并关闭。
@@ -68,14 +72,23 @@ impl DebugDumper {
             return None;
         }
         let opus_file = OpenOptions::new()
-            .create(true).truncate(true).write(true)
-            .open("soundlink_opus.bin").ok()?;
+            .create(true)
+            .truncate(true)
+            .write(true)
+            .open("soundlink_opus.bin")
+            .ok()?;
         let pcm_decoded_file = OpenOptions::new()
-            .create(true).truncate(true).write(true)
-            .open("soundlink_pcm_decoded.raw").ok()?;
+            .create(true)
+            .truncate(true)
+            .write(true)
+            .open("soundlink_pcm_decoded.raw")
+            .ok()?;
         let pcm_resampled_file = OpenOptions::new()
-            .create(true).truncate(true).write(true)
-            .open("soundlink_pcm_resampled.raw").ok()?;
+            .create(true)
+            .truncate(true)
+            .write(true)
+            .open("soundlink_pcm_resampled.raw")
+            .ok()?;
         let (tx, rx) = std::sync::mpsc::channel::<DumpMsg>();
         tracing::info!(
             "调试保存已启用：soundlink_opus.bin / soundlink_pcm_decoded.raw / soundlink_pcm_resampled.raw"
@@ -145,7 +158,10 @@ impl DebugDumper {
                 tracing::info!("调试保存 IO 线程退出");
             })
             .ok()?;
-        Some(Self { tx, _io_thread: io_thread })
+        Some(Self {
+            tx,
+            _io_thread: io_thread,
+        })
     }
 
     /// 保存原始 Opus 帧（4 字节小端长度前缀 + 数据）。
@@ -409,7 +425,9 @@ impl ReceiverEngine {
                 let ts_diff_samples = ls.latest_timestamp.saturating_sub(ls.first_timestamp);
                 let sender_ms = ts_diff_samples / (SAMPLE_RATE as u64 / 1000);
                 let output_buffer_ms = OUTPUT_BUFFER_FRAMES as u64 * FRAME_DURATION_MS as u64;
-                let est = wall_ms.saturating_sub(sender_ms).saturating_add(output_buffer_ms);
+                let est = wall_ms
+                    .saturating_sub(sender_ms)
+                    .saturating_add(output_buffer_ms);
                 s.est_latency_ms = est as u32;
 
                 // 码率：每秒刷新一次。

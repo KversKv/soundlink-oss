@@ -65,7 +65,7 @@ impl AudioCodec for PassthroughCodec {
 #[cfg(feature = "opus")]
 pub mod libopus {
     use super::{frame_pcm_len, AudioCodec};
-    use crate::constants::{OPUS_BITRATE, SAMPLE_RATE, SAMPLES_PER_FRAME_PER_CHANNEL};
+    use crate::constants::{OPUS_BITRATE, SAMPLES_PER_FRAME_PER_CHANNEL, SAMPLE_RATE};
     use libopus_sys as opusffi;
     use std::os::raw::{c_int, c_uchar};
     use std::ptr;

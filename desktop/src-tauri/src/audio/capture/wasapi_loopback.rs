@@ -104,8 +104,8 @@ fn run_capture_loop(
 ) -> Result<(), String> {
     use windows::Win32::Media::Audio::{
         eConsole, eRender, IAudioCaptureClient, IAudioClient, IMMDeviceEnumerator,
-        MMDeviceEnumerator, AUDCLNT_SHAREMODE_SHARED, AUDCLNT_STREAMFLAGS_LOOPBACK,
-        WAVEFORMATEX, WAVEFORMATEXTENSIBLE,
+        MMDeviceEnumerator, AUDCLNT_SHAREMODE_SHARED, AUDCLNT_STREAMFLAGS_LOOPBACK, WAVEFORMATEX,
+        WAVEFORMATEXTENSIBLE,
     };
     use windows::Win32::System::Com::{
         CoCreateInstance, CoInitializeEx, CoUninitialize, CLSCTX_ALL, COINIT_MULTITHREADED,
@@ -215,13 +215,7 @@ fn run_capture_loop(
                 let mut flags = 0u32;
 
                 let hr = unsafe {
-                    capture.GetBuffer(
-                        &mut data_ptr,
-                        &mut frames_in_packet,
-                        &mut flags,
-                        None,
-                        None,
-                    )
+                    capture.GetBuffer(&mut data_ptr, &mut frames_in_packet, &mut flags, None, None)
                 };
                 if hr.is_err() {
                     break;
@@ -235,7 +229,8 @@ fn run_capture_loop(
 
                     let converted: Vec<i16> = if is_float {
                         let float_ptr = data_ptr as *const f32;
-                        let floats = unsafe { std::slice::from_raw_parts(float_ptr, total_samples) };
+                        let floats =
+                            unsafe { std::slice::from_raw_parts(float_ptr, total_samples) };
                         floats_to_i16(floats)
                     } else {
                         // 整数 PCM（少见）：按 bits 处理。

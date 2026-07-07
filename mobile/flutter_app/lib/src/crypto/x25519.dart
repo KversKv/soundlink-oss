@@ -29,8 +29,10 @@ Future<Uint8List> x25519SharedSecret(
   Uint8List peerPublicKey,
 ) async {
   final algo = crypto.X25519();
-  final remotePub =
-      crypto.SimplePublicKey(peerPublicKey, type: crypto.KeyPairType.x25519);
+  final remotePub = crypto.SimplePublicKey(
+    peerPublicKey,
+    type: crypto.KeyPairType.x25519,
+  );
   final secret = await algo.sharedSecretKey(
     keyPair: own._keyPair,
     remotePublicKey: remotePub,

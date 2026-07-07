@@ -63,21 +63,25 @@ class _HomePageState extends State<HomePage> {
             onDestinationSelected: (i) => setState(() => _index = i),
             destinations: const [
               NavigationDestination(
-                  icon: Icon(Icons.devices_outlined),
-                  selectedIcon: Icon(Icons.devices),
-                  label: '设备'),
+                icon: Icon(Icons.devices_outlined),
+                selectedIcon: Icon(Icons.devices),
+                label: '设备',
+              ),
               NavigationDestination(
-                  icon: Icon(Icons.link_outlined),
-                  selectedIcon: Icon(Icons.link),
-                  label: '配对'),
+                icon: Icon(Icons.link_outlined),
+                selectedIcon: Icon(Icons.link),
+                label: '配对',
+              ),
               NavigationDestination(
-                  icon: Icon(Icons.cast_for_education_outlined),
-                  selectedIcon: Icon(Icons.cast_for_education),
-                  label: '广播'),
+                icon: Icon(Icons.cast_for_education_outlined),
+                selectedIcon: Icon(Icons.cast_for_education),
+                label: '广播',
+              ),
               NavigationDestination(
-                  icon: Icon(Icons.settings_outlined),
-                  selectedIcon: Icon(Icons.settings),
-                  label: '设置'),
+                icon: Icon(Icons.settings_outlined),
+                selectedIcon: Icon(Icons.settings),
+                label: '设置',
+              ),
             ],
           ),
         );
@@ -110,14 +114,10 @@ class StatusBar extends StatelessWidget {
   }
 
   Color _statusColor(LinkState c) => switch (c) {
-        LinkState.streaming => Colors.green.shade700,
-        LinkState.connecting ||
-        LinkState.pairing =>
-          Colors.orange.shade700,
-        LinkState.error => Colors.red.shade700,
-        LinkState.connected ||
-        LinkState.paired =>
-          Colors.blue.shade700,
-        _ => Colors.grey.shade700,
-      };
+    LinkState.streaming => Colors.green.shade700,
+    LinkState.connecting || LinkState.pairing => Colors.orange.shade700,
+    LinkState.reconnecting || LinkState.error => Colors.red.shade700,
+    LinkState.connected || LinkState.paired => Colors.blue.shade700,
+    _ => Colors.grey.shade700,
+  };
 }

@@ -158,11 +158,19 @@ class AppState extends ChangeNotifier {
         pairingCode: pairingCode,
         onState: (s) {
           _conn = s;
+          if (s == LinkState.reconnecting) {
+            _pairing = null;
+            _lastError = '控制连接已断开，已自动停止采集';
+          }
           notifyListeners();
         },
       );
       await refreshTrusted();
     } catch (e) {
+      try {
+        await _pairing?.stop();
+      } catch (_) {}
+      _pairing = null;
       _lastError = '$e';
       _conn = LinkState.error;
       notifyListeners();
@@ -197,6 +205,7 @@ class AppState extends ChangeNotifier {
     try {
       await _pairing?.stop();
     } catch (_) {}
+    _pairing = null;
     _conn = LinkState.disconnected;
     notifyListeners();
   }
