@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "tauri:build:exe": "cd ..\\src-tauri && npm exec --prefix ..\\ui tauri -- build --features tauri_app --no-bundle"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.0.0",

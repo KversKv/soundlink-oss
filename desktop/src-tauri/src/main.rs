@@ -1,5 +1,6 @@
 // 顶部引用 + 非 tauri 入口
 #![cfg_attr(not(feature = "tauri_app"), allow(dead_code))]
+#![cfg_attr(all(feature = "tauri_app", not(debug_assertions), windows), windows_subsystem = "windows")]
 
 /// 调试开关（开发期临时便利）。
 ///
