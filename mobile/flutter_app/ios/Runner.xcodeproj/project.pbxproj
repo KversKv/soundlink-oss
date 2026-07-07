@@ -230,7 +230,6 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 0BE900000000000000000001 /* Build configuration list for PBXNativeTarget "BroadcastExtension" */;
 			buildPhases = (
-				0BE700000000000000000002 /* Build Opus XCFramework */,
 				0BE800000000000000000001 /* Sources */,
 				0BE800000000000000000002 /* Frameworks */,
 				0BE800000000000000000003 /* Resources */,
@@ -364,23 +363,6 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
-		0BE700000000000000000002 /* Build Opus XCFramework */ = {
-			isa = PBXShellScriptBuildPhase;
-			alwaysOutOfDate = 1;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputPaths = (
-				"$(SRCROOT)/scripts/build_opus_xcframework.sh",
-			);
-			name = "Build Opus XCFramework";
-			outputPaths = (
-				"$(SRCROOT)/Frameworks/Opus.xcframework",
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "if [ ! -d \"$SRCROOT/Frameworks/Opus.xcframework\" ]; then\n  /bin/sh \"$SRCROOT/scripts/build_opus_xcframework.sh\"\nfi\n";
-		};
 		3B06AD1E1E4923F5004D2608 /* Thin Binary */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
