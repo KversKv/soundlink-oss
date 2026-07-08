@@ -245,16 +245,20 @@ async fn handle_connection(
             Ok(Err(e)) => return Err(format!("读控制消息失败：{}", e)),
             Err(_) => {
                 if stream_active && last_seen.elapsed() >= timeout_duration {
-                    tracing::warn!("控制连接（{}）心跳超时，停止接收流。", addr);
-                    handle_stream_stop_internal(&state);
+                    // 心跳超时：iOS 锁屏后主 App 被挂起，TCP 心跳停止，
+                    // 但 BroadcastExtension 进程独立运行，UDP 音频仍在发送。
+                    // 只断开控制连接，不停止音频接收，让音频流继续。
+                    tracing::warn!("控制连接（{}）心跳超时，断开控制连接（音频流保持）。", addr);
                     break;
                 }
                 continue;
             }
         };
         if n == 0 {
+            // 对端关闭连接（EOF）：同上，只断开控制连接，不停止音频流。
+            // 音频流由 BroadcastExtension 独立发送，不受主 App 控制连接影响。
             if stream_active {
-                handle_stream_stop_internal(&state);
+                tracing::info!("控制连接（{}）对端关闭，音频流保持。", addr);
             }
             break;
         }

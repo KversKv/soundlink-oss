@@ -59,7 +59,10 @@ class PairingService {
     await control.connect();
     _disconnectSub?.cancel();
     _disconnectSub = control.onDisconnected.listen((_) async {
-      await _stopLocalCapture();
+      // iOS：锁屏后主 App 被挂起，TCP 控制连接可能超时断开。
+      // 但 BroadcastExtension 进程独立运行，不应因控制连接断开而停止。
+      // 这里只通知 UI 进入重连态，不调用 _stopLocalCapture（不写 stopRequestedKey），
+      // 让广播继续运行。用户主动停止时才调用 stop()。
       onState(LinkState.reconnecting);
     });
     await _messageSub?.cancel();

@@ -15,6 +15,7 @@ final class AudioProcessor {
 
     private var converter: AVAudioConverter?
     private var outFormat: AVAudioFormat!
+    private var lastInputFormat: AVAudioFormat?
     private var pending = Data() // Int16 交错累积缓冲
 
     /// 处理一个音频 CMSampleBuffer，返回 0 或多个完整 10ms 帧（Int16 交错 Data）。
@@ -25,15 +26,21 @@ final class AudioProcessor {
         let inASBD = CMAudioFormatDescriptionGetStreamBasicDescription(formatDesc)
         guard let inBD = inASBD?.pointee else { return [] }
 
-        if converter == nil {
-            var bd = inBD
-            let inFormat = AVAudioFormat(streamDescription: &bd)!
+        var bd = inBD
+        let inFormat = AVAudioFormat(streamDescription: &bd)!
+        // 首次或输入格式变化（音频路由切换、暂停/恢复后采样率/声道变化）时
+        // 重建 converter。否则沿用旧 converter 转换新格式数据会失败或产出垃圾。
+        if converter == nil
+            || lastInputFormat == nil
+            || !inFormat.isEqual(lastInputFormat!) {
             outFormat = AVAudioFormat(
                 commonFormat: .pcmFormatInt16,
                 sampleRate: outSampleRate,
                 channels: outChannels,
                 interleaved: true)
             converter = AVAudioConverter(from: inFormat, to: outFormat)
+            lastInputFormat = inFormat
+            pending.removeAll() // 格式变化时丢弃过期残余，避免混帧
             if converter == nil { return [] }
         }
 

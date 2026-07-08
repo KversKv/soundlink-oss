@@ -83,8 +83,15 @@ class SampleHandler: RPBroadcastSampleHandler {
         }
     }
 
-    override func broadcastPaused() { /* 无操作 */ }
-    override func broadcastResumed() { /* 无操作 */ }
+    override func broadcastPaused() {
+        // 暂停时清空 PCM 累积缓冲，避免恢复后用过期残留拼帧导致杂音/错位。
+        processor?.reset()
+    }
+    override func broadcastResumed() {
+        // 恢复时再次清空，确保从干净状态接收新 sample。
+        // AudioProcessor 还会在输入格式变化时自动重建 converter。
+        processor?.reset()
+    }
 
     override func broadcastFinished() {
         stopMonitor?.cancel()
