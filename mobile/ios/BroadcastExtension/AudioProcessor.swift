@@ -40,12 +40,12 @@ final class AudioProcessor {
         let frameCount = CMSampleBufferGetNumSamples(sampleBuffer)
         guard frameCount > 0,
               let inFormat = converter?.inputFormat,
-              let inputBuf = AVAudioPCMBuffer(pcmFormat: inFormat, frameCapacity: frameCount) else {
+              let inputBuf = AVAudioPCMBuffer(pcmFormat: inFormat, frameCapacity: AVAudioFrameCount(frameCount)) else {
             return []
         }
-        inputBuf.frameLength = frameCount
+        inputBuf.frameLength = AVAudioFrameCount(frameCount)
         let status = CMSampleBufferCopyPCMDataIntoAudioBufferList(
-            sampleBuffer, at: 0, frameCount: frameCount, into: inputBuf.mutableAudioBufferList)
+            sampleBuffer, at: 0, frameCount: Int32(frameCount), into: inputBuf.mutableAudioBufferList)
         guard status == noErr else { return [] }
 
         // 估算输出帧数（采样率比，+1 容差）。

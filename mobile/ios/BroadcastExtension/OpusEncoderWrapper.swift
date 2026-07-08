@@ -38,10 +38,10 @@ final class OpusEncoderWrapper {
             return
         }
         self.state = st
-        opus_encoder_ctl(st, OPUS_SET_BITRATE_REQUEST, Int32(bitrate))
-        opus_encoder_ctl(st, OPUS_SET_COMPLEXITY_REQUEST, Int32(10))
-        opus_encoder_ctl(st, OPUS_SET_SIGNAL_REQUEST, OPUS_SIGNAL_MUSIC)
-        opus_encoder_ctl(st, OPUS_SET_PACKET_LOSS_PERC_REQUEST, Int32(0))
+        opus_encoder_set_bitrate(st, Int32(bitrate))
+        opus_encoder_set_complexity(st, Int32(10))
+        opus_encoder_set_signal(st, OPUS_SIGNAL_MUSIC)
+        opus_encoder_set_packet_loss_perc(st, Int32(0))
     }
 
     deinit {
