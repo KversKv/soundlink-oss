@@ -148,7 +148,9 @@ class DiscoveryPage extends StatelessWidget {
             hintText: '192.168.1.10',
             labelText: '桌面端 IP',
           ),
-          keyboardType: TextInputType.number,
+          // IPv4 含 "."，纯数字键盘无法输入该符号；
+          // numberWithOptions(decimal: true) 在 iOS/Android 上都会提供 "." 键。
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
         ),
         actions: [
           TextButton(

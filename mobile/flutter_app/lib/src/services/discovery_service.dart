@@ -22,8 +22,13 @@ class DiscoveryService {
 
   DiscoveryService({this.serviceType = k.mdnsServiceType});
 
-  /// 创建一个不使用 reusePort 的 MDnsClient（兼容 Android）。
+  /// 创建 MDnsClient。
+  ///
+  /// - iOS/macOS：reusePort=true，需要 SO_REUSEPORT 才能与系统 mDNSResponder
+  ///   及本端其它查询 socket 共享 5353 端口，否则 bind 报 EADDRINUSE (errno=48)。
+  /// - Android：reusePort=false，Android 不支持 SO_REUSEPORT，reuseAddress 已足够。
   MDnsClient _createClient() {
+    final enableReusePort = !Platform.isAndroid;
     return MDnsClient(
       rawDatagramSocketFactory:
           (
@@ -33,13 +38,11 @@ class DiscoveryService {
             bool reusePort = false,
             int ttl = 0,
           }) {
-            // 强制 reusePort=false：Android 不支持 SO_REUSEPORT，dart:io 会报错。
-            // reuseAddress=true 已足以让多个查询 socket 共存。
             return RawDatagramSocket.bind(
               host,
               port,
               reuseAddress: true,
-              reusePort: false,
+              reusePort: enableReusePort,
               ttl: ttl,
             );
           },

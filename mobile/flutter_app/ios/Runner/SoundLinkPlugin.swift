@@ -22,9 +22,6 @@ class SoundLinkPlugin: NSObject, FlutterPlugin {
     /// Broadcast Extension 的 Bundle Identifier（在 Xcode 中配置）。
     static let preferredExtension = "com.soundlink.soundlink.BroadcastExtension"
 
-    /// 当前呈现的广播选择器（强引用以保持存活）。
-    private var presentedNav: UINavigationController?
-
     static func register(with registrar: FlutterPluginRegistrar) {
         let channel = FlutterMethodChannel(name: channelName, binaryMessenger: registrar.messenger())
         registrar.addMethodCallDelegate(SoundLinkPlugin(), channel: channel)
@@ -59,7 +56,6 @@ class SoundLinkPlugin: NSObject, FlutterPlugin {
             if clearSession {
                 defaults?.removeObject(forKey: Self.configKey)
             }
-            presentedNav?.dismiss(animated: true) { self.presentedNav = nil }
             result(true)
 
         case "requestMediaProjection":
@@ -96,38 +92,24 @@ class SoundLinkPlugin: NSObject, FlutterPlugin {
     }
 
     /// 呈现 RPSystemBroadcastPickerView，引导用户选择本 App 的 Extension 并开始广播。
+    ///
+    /// RPSystemBroadcastPickerView 内部包含一个系统私有的 UIButton，点击后 iOS 会
+    /// 弹出原生广播确认 UI。之前的实现把 picker 包在自定义 modal VC 中用 Auto Layout
+    /// 呈现，但 picker 在被添加到 window 之前不会初始化内部按钮，且 formSheet 的布局
+    /// 时序导致按钮不渲染（弹窗全白）。
+    ///
+    /// 修复：创建 picker 后直接触发其内部按钮的 touchUpInside，跳过自定义 UI，
+    /// 让系统直接弹出广播确认对话框。
     private func presentBroadcastPicker() {
         DispatchQueue.main.async { [weak self] in
-            guard let self = self,
-                  let root = UIApplication.shared.windows.first(where: { $0.isKeyWindow })?.rootViewController else {
-                return
-            }
+            guard self != nil else { return }
             let picker = RPSystemBroadcastPickerView(frame: .zero)
             picker.preferredExtension = Self.preferredExtension
             picker.showsMicrophoneButton = false
-            picker.translatesAutoresizingMaskIntoConstraints = false
-
-            let host = UIViewController()
-            host.view.backgroundColor = .systemBackground
-            host.navigationItem.title = "开始广播"
-            host.navigationItem.leftBarButtonItem = UIBarButtonItem(
-                barButtonSystemItem: .cancel, target: self, action: #selector(self.dismissPresented))
-            host.view.addSubview(picker)
-            NSLayoutConstraint.activate([
-                picker.centerXAnchor.constraint(equalTo: host.view.centerXAnchor),
-                picker.centerYAnchor.constraint(equalTo: host.view.centerYAnchor),
-                picker.widthAnchor.constraint(equalToConstant: 240),
-                picker.heightAnchor.constraint(equalToConstant: 60),
-            ])
-
-            let nav = UINavigationController(rootViewController: host)
-            nav.modalPresentationStyle = .formSheet
-            self.presentedNav = nav
-            root.present(nav, animated: true)
+            // 直接触发 picker 内部按钮，弹出系统广播确认 UI。
+            if let button = picker.subviews.compactMap({ $0 as? UIButton }).first {
+                button.sendActions(for: .touchUpInside)
+            }
         }
-    }
-
-    @objc private func dismissPresented() {
-        presentedNav?.dismiss(animated: true) { self.presentedNav = nil }
     }
 }
