@@ -289,9 +289,11 @@ class AppState extends ChangeNotifier {
         audioSettings: _audioSettings,
         onState: (s) {
           if (s == LinkState.reconnecting) {
+            // 仅在远端主动 stream_stop / error 或重连失败时进入此分支。
+            // 尝试读取 Extension 写入的停止原因，便于排查"直播已停止"。
             _conn = LinkState.disconnected;
             _pairing = null;
-            _lastError = '对端已停止或控制连接已断开，已自动停止采集';
+            _loadStopReason();
           } else {
             _conn = s;
           }
@@ -342,6 +344,24 @@ class AppState extends ChangeNotifier {
     } catch (_) {}
     _pairing = null;
     _conn = LinkState.disconnected;
+    notifyListeners();
+  }
+
+  /// 读取 Broadcast Extension 停止原因并更新错误提示。
+  Future<void> _loadStopReason() async {
+    try {
+      final info = await platform.popStopReason();
+      if (info != null) {
+        final reason = info['reason'] as String? ?? '';
+        _lastError = reason.isNotEmpty
+            ? '直播已停止：$reason'
+            : '对端已停止或控制连接已断开，已自动停止采集';
+      } else {
+        _lastError = '对端已停止或控制连接已断开，已自动停止采集';
+      }
+    } catch (_) {
+      _lastError = '对端已停止或控制连接已断开，已自动停止采集';
+    }
     notifyListeners();
   }
 

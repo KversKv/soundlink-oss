@@ -48,6 +48,9 @@ enum PairingStateReader {
     static let appGroupId = "group.com.soundlink"
     static let configKey = "soundlink.session.config"
     static let stopRequestedKey = "soundlink.stop_requested"
+    /// Extension 停止原因日志键（主 App 读取用于排查"直播已停止"）。
+    static let stopReasonKey = "soundlink.stop_reason"
+    static let stopReasonTimestampKey = "soundlink.stop_reason_ts"
 
     /// 读取最新会话配置；不存在或解析失败返回 nil。
     static func read() -> SessionConfig? {
@@ -70,6 +73,23 @@ enum PairingStateReader {
 
     static func requestStop() {
         UserDefaults(suiteName: appGroupId)?.set(true, forKey: stopRequestedKey)
+    }
+
+    /// Extension 停止时记录原因（主 App 读取用于排查）。
+    static func recordStopReason(_ reason: String) {
+        guard let defaults = UserDefaults(suiteName: appGroupId) else { return }
+        defaults.set(reason, forKey: stopReasonKey)
+        defaults.set(Date().timeIntervalSince1970, forKey: stopReasonTimestampKey)
+    }
+
+    /// 读取并清除停止原因（主 App 调用）。
+    static func popStopReason() -> (reason: String, ts: TimeInterval)? {
+        guard let defaults = UserDefaults(suiteName: appGroupId) else { return nil }
+        guard let reason = defaults.string(forKey: stopReasonKey) else { return nil }
+        let ts = defaults.double(forKey: stopReasonTimestampKey)
+        defaults.removeObject(forKey: stopReasonKey)
+        defaults.removeObject(forKey: stopReasonTimestampKey)
+        return (reason, ts)
     }
 
     /// 主 App 调用：清除配置（停止后）。

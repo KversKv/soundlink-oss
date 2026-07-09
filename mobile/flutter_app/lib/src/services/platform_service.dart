@@ -58,6 +58,13 @@ class PlatformService {
     await _channel.invokeMethod('setDumpPcm', {'enabled': enabled});
   }
 
+  /// 读取并清除 Broadcast Extension 停止原因（仅 iOS 有意义；Android 返回 null）。
+  Future<Map<String, dynamic>?> popStopReason() async {
+    final r = await _channel.invokeMethod('popStopReason');
+    if (r == null) return null;
+    return Map<String, dynamic>.from(r as Map);
+  }
+
   /// 采集状态事件流（state/packets_sent/bitrate 等）。
   Stream<Map<String, dynamic>> get captureState => _stateChannel
       .receiveBroadcastStream()

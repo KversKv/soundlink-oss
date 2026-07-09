@@ -80,6 +80,15 @@ const int heartbeatIntervalSecs = 2;
 /// 心跳超时（秒）。
 const int heartbeatTimeoutSecs = 6;
 
+/// 控制连接断开后自动重连最大尝试次数。
+const int reconnectMaxAttempts = 5;
+
+/// 重连初始退避（毫秒）。
+const int reconnectBackoffInitialMs = 500;
+
+/// 重连最大退避（毫秒）。
+const int reconnectBackoffMaxMs = 8000;
+
 /// HKDF 派生 salt。
 final List<int> pairingSalt = utf8.encode('soundlink-pair-v1');
 

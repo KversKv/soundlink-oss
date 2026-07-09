@@ -29,6 +29,7 @@ class SampleHandler: RPBroadcastSampleHandler {
     override func broadcastStarted(withSetupInfo setupInfo: [String: NSObject]?) {
         // 在 Extension 进程读取主 App 写入的会话配置。
         guard let rawConfig = PairingStateReader.read() else {
+            PairingStateReader.recordStopReason("broadcastStarted: 未找到会话配置")
             finishBroadcastWithError(NSError(
                 domain: "SoundLink", code: 1,
                 userInfo: [NSLocalizedDescriptionKey: "未找到会话配置，请先在主 App 配对并连接"]))
@@ -36,6 +37,7 @@ class SampleHandler: RPBroadcastSampleHandler {
         }
         let config = rawConfig.runtimeBaseline
         guard let s = UdpAudioSender(config: config) else {
+            PairingStateReader.recordStopReason("broadcastStarted: UDP/密钥初始化失败")
             finishBroadcastWithError(NSError(
                 domain: "SoundLink", code: 2,
                 userInfo: [NSLocalizedDescriptionKey: "UDP/密钥初始化失败"]))
@@ -102,6 +104,7 @@ class SampleHandler: RPBroadcastSampleHandler {
         }
         processor?.reset()
         started = false
+        PairingStateReader.recordStopReason("broadcastFinished: 广播正常结束（用户停止或系统终止）")
         PairingStateReader.clear()
         closeDumpFiles()
     }
@@ -114,6 +117,7 @@ class SampleHandler: RPBroadcastSampleHandler {
         timer.setEventHandler { [weak self] in
             guard let self else { return }
             if defaults.bool(forKey: PairingStateReader.stopRequestedKey) {
+                PairingStateReader.recordStopReason("stop_monitor: 收到主 App stop_requested 信号")
                 DispatchQueue.main.async {
                     self.finishBroadcastWithError(NSError(
                         domain: "SoundLink", code: 3,

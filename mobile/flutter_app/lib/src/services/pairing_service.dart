@@ -33,6 +33,12 @@ class PairingService {
   Timer? _statsTimer;
   final int _streamId = defaultStreamId;
   int _audioPort = defaultAudioPort;
+  DiscoveredDevice? _device;
+  AudioSettings? _audioSettings;
+  void Function(LinkState)? _onState;
+  bool _stoppedByUser = false;
+  bool _streamStopFromRemote = false;
+  bool _reconnecting = false;
 
   PairingService({
     required this.control,
@@ -44,6 +50,7 @@ class PairingService {
   });
 
   SessionKeys? get sessionKeys => _keys;
+  bool get isReconnecting => _reconnecting;
 
   /// 执行完整握手与流启动。
   ///
@@ -55,26 +62,47 @@ class PairingService {
     required AudioSettings audioSettings,
     required void Function(LinkState) onState,
   }) async {
+    _device = device;
+    _audioSettings = audioSettings;
+    _onState = onState;
+    _stoppedByUser = false;
+    _streamStopFromRemote = false;
+    _reconnecting = false;
     onState(LinkState.connecting);
     await control.connect();
-    _disconnectSub?.cancel();
-    _disconnectSub = control.onDisconnected.listen((_) async {
-      // iOS：锁屏后主 App 被挂起，TCP 控制连接可能超时断开。
-      // 但 BroadcastExtension 进程独立运行，不应因控制连接断开而停止。
-      // 这里只通知 UI 进入重连态，不调用 _stopLocalCapture（不写 stopRequestedKey），
-      // 让广播继续运行。用户主动停止时才调用 stop()。
-      onState(LinkState.reconnecting);
-    });
-    await _messageSub?.cancel();
-    _messageSub = control.messages.listen((msg) async {
-      if (msg['type'] == 'stream_stop' || msg['type'] == 'error') {
-        await _stopLocalCapture(clearSession: true);
-        onState(LinkState.reconnecting);
-      }
-    });
+    _wireControlEvents();
+    await _handshakeAndStream(device, pairingCode: pairingCode);
+
+    // 将会话配置写入 App Group / Service 共享，通知原生开始采集。
+    final config = SessionConfig(
+      targetHost: device.host,
+      audioPort: _audioPort,
+      streamId: _streamId,
+      audioKey: _keys!.audioKey,
+      sampleRate: audioSettings.sampleRate,
+      channels: audioSettings.channels,
+      frameDurationMs: audioSettings.frameDurationMs,
+      bitrate: audioSettings.bitrate,
+    );
+    await platform.writeSessionConfig(config);
+    await platform.startCapture();
+    _startEventLoops();
+
+    onState(LinkState.streaming);
+  }
+
+  /// 建立/重建设备级握手并启动流（首次与重连复用）。
+  ///
+  /// 重连时若已存在 [_keys]（已信任会话）则跳过配对，直接 hello → pair_request
+  /// （trusted 路径）→ stream_start。原 audio_key 不变，Extension 无需热切换。
+  Future<void> _handshakeAndStream(
+    DiscoveredDevice device, {
+    String? pairingCode,
+  }) async {
+    final audioSettings = _audioSettings!;
 
     // 1) hello
-    final hello = HelloMsg(
+    control.send(HelloMsg(
       msgId: newMsgId('c'),
       ts: nowMs(),
       protocolVersion: protocolVersion,
@@ -87,11 +115,9 @@ class PairingService {
         sampleRate: audioSettings.sampleRate,
         channels: audioSettings.channels,
       ),
-    );
-    control.send(hello);
-
+    ));
     final helloAck = await control.waitFor((m) => m['type'] == 'hello_ack');
-    onState(LinkState.connected);
+    _onState?.call(LinkState.connected);
 
     final receiverDeviceId = helloAck['device_id'] as String;
     final pairingRequired = (helloAck['pairing_required'] as bool?) ?? true;
@@ -102,7 +128,7 @@ class PairingService {
       if (pairingCode == null) {
         throw StateError('需要配对码但未提供');
       }
-      onState(LinkState.pairing);
+      _onState?.call(LinkState.pairing);
       final handshake = await SenderHandshake.begin(
         pairingCode,
         receiverDeviceId,
@@ -124,7 +150,7 @@ class PairingService {
         (m) => m['type'] == 'pair_response',
       );
       if (pairResp['result'] != 'ok') {
-        onState(LinkState.error);
+        _onState?.call(LinkState.error);
         throw StateError('配对失败：${pairResp['error']}');
       }
       final receiverPub = base64Decode(pairResp['receiver_pub'] as String);
@@ -140,7 +166,7 @@ class PairingService {
           base64Decode(receiverProofB64),
         );
         if (!await ok) {
-          onState(LinkState.error);
+          _onState?.call(LinkState.error);
           throw StateError('Receiver 回证校验失败');
         }
       }
@@ -158,10 +184,10 @@ class PairingService {
           lastSeen: DateTime.now().millisecondsSinceEpoch ~/ 1000,
         ),
       );
-      onState(LinkState.paired);
+      _onState?.call(LinkState.paired);
     } else {
       // 已信任：跳过配对码，直接 X25519 协商（pairing_secret 用全 0 占位）。
-      onState(LinkState.pairing);
+      _onState?.call(LinkState.pairing);
       final handshake = await SenderHandshake.beginTrusted(receiverDeviceId);
       control.send(
         PairRequestMsg(
@@ -181,7 +207,7 @@ class PairingService {
       }
       final receiverPub = base64Decode(pairResp['receiver_pub'] as String);
       _keys = await handshake.complete(receiverPub);
-      onState(LinkState.paired);
+      _onState?.call(LinkState.paired);
     }
 
     // 3) stream_start
@@ -204,23 +230,67 @@ class PairingService {
       throw StateError('stream_start 被拒绝：${ack['error']}');
     }
     _audioPort = (ack['receiver_audio_port'] as int?) ?? _audioPort;
+  }
 
-    // 4) 将会话配置写入 App Group / Service 共享，通知原生开始采集。
-    final config = SessionConfig(
-      targetHost: device.host,
-      audioPort: _audioPort,
-      streamId: _streamId,
-      audioKey: _keys!.audioKey,
-      sampleRate: audioSettings.sampleRate,
-      channels: audioSettings.channels,
-      frameDurationMs: audioSettings.frameDurationMs,
-      bitrate: audioSettings.bitrate,
-    );
-    await platform.writeSessionConfig(config);
-    await platform.startCapture();
-    _startEventLoops();
+  /// 绑定控制通道断开与入站消息事件。
+  void _wireControlEvents() {
+    _disconnectSub?.cancel();
+    _disconnectSub = control.onDisconnected.listen((_) async {
+      // iOS 锁屏后主 App 被挂起，TCP 控制连接可能超时断开。
+      // 但 BroadcastExtension 进程独立运行，不应因控制连接断开而停止。
+      // 尝试自动重连：保持原 audio_key，Extension 无需热切换。
+      if (_stoppedByUser || _streamStopFromRemote) return;
+      await _tryReconnect();
+    });
+    _messageSub?.cancel();
+    _messageSub = control.messages.listen((msg) async {
+      if (msg['type'] == 'stream_stop' || msg['type'] == 'error') {
+        _streamStopFromRemote = true;
+        await _stopLocalCapture(clearSession: true);
+        _onState?.call(LinkState.reconnecting);
+      }
+    });
+  }
 
-    onState(LinkState.streaming);
+  /// 尝试自动重连：使用原设备信息与 audio_key 重建控制会话。
+  /// 成功则恢复心跳/stats 并保持 LinkState.streaming；
+  /// 失败才进入 LinkState.reconnecting 让用户感知。
+  Future<void> _tryReconnect() async {
+    if (_reconnecting) return;
+    _reconnecting = true;
+    _stopEventLoops();
+    final device = _device;
+    if (device == null) {
+      _reconnecting = false;
+      _onState?.call(LinkState.reconnecting);
+      return;
+    }
+    _onState?.call(LinkState.connecting);
+
+    var backoff = reconnectBackoffInitialMs;
+    for (var attempt = 1; attempt <= reconnectMaxAttempts; attempt++) {
+      if (_stoppedByUser || _streamStopFromRemote) {
+        _reconnecting = false;
+        return;
+      }
+      try {
+        await control.connect();
+        _wireControlEvents();
+        await _handshakeAndStream(device);
+        _startEventLoops();
+        _reconnecting = false;
+        _onState?.call(LinkState.streaming);
+        return;
+      } catch (e) {
+        if (attempt == reconnectMaxAttempts) break;
+        await Future<void>.delayed(Duration(milliseconds: backoff));
+        backoff = (backoff * 2)
+            .clamp(reconnectBackoffInitialMs, reconnectBackoffMaxMs)
+            .toInt();
+      }
+    }
+    _reconnecting = false;
+    _onState?.call(LinkState.reconnecting);
   }
 
   void sendAudioParamsUpdate(AudioSettings settings) {
@@ -237,8 +307,7 @@ class PairingService {
   }
 
   void _startEventLoops() {
-    _heartbeatTimer?.cancel();
-    _statsTimer?.cancel();
+    _stopEventLoops();
     _heartbeatTimer = Timer.periodic(
       const Duration(seconds: heartbeatIntervalSecs),
       (_) {
@@ -254,21 +323,23 @@ class PairingService {
     });
   }
 
-  Future<void> _stopLocalCapture({bool clearSession = false}) async {
+  void _stopEventLoops() {
     _heartbeatTimer?.cancel();
     _statsTimer?.cancel();
     _heartbeatTimer = null;
     _statsTimer = null;
+  }
+
+  Future<void> _stopLocalCapture({bool clearSession = false}) async {
+    _stopEventLoops();
     await platform.stopCapture(clearSession: clearSession);
     _keys = null;
   }
 
   /// 停止流并断开。
   Future<void> stop() async {
-    _heartbeatTimer?.cancel();
-    _statsTimer?.cancel();
-    _heartbeatTimer = null;
-    _statsTimer = null;
+    _stoppedByUser = true;
+    _stopEventLoops();
     if (control.isConnected) {
       await control.sendAndFlush(
         StreamStopMsg(msgId: newMsgId('c'), ts: nowMs(), streamId: _streamId),

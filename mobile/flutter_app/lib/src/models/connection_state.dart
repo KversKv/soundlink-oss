@@ -21,7 +21,7 @@ extension LinkStateX on LinkState {
     LinkState.pairing => '配对中',
     LinkState.paired => '已配对',
     LinkState.streaming => '正在广播',
-    LinkState.reconnecting => '连接已断开',
+    LinkState.reconnecting => '控制连接已断开',
     LinkState.error => '错误',
   };
 }

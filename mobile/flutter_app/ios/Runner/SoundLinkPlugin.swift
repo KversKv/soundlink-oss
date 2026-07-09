@@ -58,6 +58,17 @@ class SoundLinkPlugin: NSObject, FlutterPlugin {
             }
             result(true)
 
+        case "popStopReason":
+            // 读取并清除 Broadcast Extension 写入的停止原因。
+            let defaults = UserDefaults(suiteName: Self.appGroupId)
+            let reason = defaults?.string(forKey: "soundlink.stop_reason")
+            let ts = defaults?.double(forKey: "soundlink.stop_reason_ts") ?? 0
+            if reason != nil {
+                defaults?.removeObject(forKey: "soundlink.stop_reason")
+                defaults?.removeObject(forKey: "soundlink.stop_reason_ts")
+            }
+            result(reason != nil ? ["reason": reason!, "ts": ts] : nil)
+
         case "requestMediaProjection":
             // iOS 无此概念；返回 true 保持通道语义一致。
             result(true)

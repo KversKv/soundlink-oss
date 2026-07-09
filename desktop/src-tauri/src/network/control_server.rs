@@ -527,19 +527,26 @@ async fn handle_stream_start(msg: &Value, state: &ControlState) -> Value {
         s.stream_id = stream_id;
     }
 
-    // 若引擎已运行，先停止。
-    if state.engine.is_running() {
-        state.engine.stop();
-    }
+    // 若引擎已运行且 audio_key 相同（重连场景），跳过重启避免音频中断。
+    // 否则：先停止旧引擎，再用新 key 启动。
+    let need_restart = !state.engine.is_running()
+        || state.engine.current_audio_key() != audio_key;
+    if need_restart {
+        if state.engine.is_running() {
+            state.engine.stop();
+        }
 
-    let bind = format!("0.0.0.0:{}", audio_port);
-    let device_index = *state.selected_device.lock();
-    if let Err(e) = state
-        .engine
-        .start(audio_key, stream_id, &bind, device_index)
-        .await
-    {
-        return error_msg(msg, ErrorCode::Internal, &format!("启动接收器失败：{}", e));
+        let bind = format!("0.0.0.0:{}", audio_port);
+        let device_index = *state.selected_device.lock();
+        if let Err(e) = state
+            .engine
+            .start(audio_key, stream_id, &bind, device_index)
+            .await
+        {
+            return error_msg(msg, ErrorCode::Internal, &format!("启动接收器失败：{}", e));
+        }
+    } else {
+        tracing::info!("stream_start：audio_key 未变，跳过引擎重启（重连场景）");
     }
 
     json!({

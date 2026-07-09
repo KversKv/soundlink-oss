@@ -248,6 +248,8 @@ pub struct ReceiverEngine {
     latency_state: Arc<Mutex<LatencyState>>,
     /// 是否启用音频 RAW Data 转储（来自 main.rs 的 DUMP_ENABLE）。
     dump_enable: bool,
+    /// 当前会话的 audio_key（用于重连时判断 key 是否变化）。
+    current_audio_key: Mutex<[u8; 32]>,
 }
 
 /// 延迟估算状态：记录首个包接收时刻与 timestamp 基准。
@@ -287,6 +289,7 @@ impl ReceiverEngine {
             audio_output: Mutex::new(AudioOutput::new()),
             latency_state: Arc::new(Mutex::new(LatencyState::default())),
             dump_enable,
+            current_audio_key: Mutex::new([0u8; 32]),
         }
     }
 
@@ -301,6 +304,8 @@ impl ReceiverEngine {
         if self.running.load(Ordering::SeqCst) {
             return Err("接收器已在运行".into());
         }
+        // 保存当前会话 audio_key，用于重连时判断是否需要重启引擎。
+        *self.current_audio_key.lock() = audio_key;
         let sock = UdpSocket::bind(bind_addr)
             .await
             .map_err(|e| format!("绑定 {} 失败：{}", bind_addr, e))?;
@@ -500,6 +505,11 @@ impl ReceiverEngine {
     /// 是否正在接收。
     pub fn is_running(&self) -> bool {
         self.running.load(Ordering::SeqCst)
+    }
+
+    /// 当前会话的 audio_key（用于重连时判断 key 是否变化）。
+    pub fn current_audio_key(&self) -> [u8; 32] {
+        *self.current_audio_key.lock()
     }
 }
 
