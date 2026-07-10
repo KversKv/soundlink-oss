@@ -12,6 +12,7 @@
 //! WASAPI loopback 采集：`cargo run --example phase5_loopback --features wasapi`（仅 Windows）。
 
 use soundlink_lib::audio::capture::{self, CaptureSource};
+use soundlink_lib::config::AudioParams;
 use soundlink_lib::constants::{DEFAULT_AUDIO_PORT, DEFAULT_CONTROL_PORT};
 use soundlink_lib::device::device_identity::DeviceIdentity;
 use soundlink_lib::logging;
@@ -107,6 +108,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             &sender_device_name,
             &sender_signing,
             DEFAULT_AUDIO_PORT,
+            AudioParams::default().normalized(),
         )
         .await?;
     tracing::info!("Sender 已启动，进入 STREAMING 状态。");

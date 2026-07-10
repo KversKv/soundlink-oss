@@ -19,7 +19,9 @@ default = []
 opus = ["dep:libopus_sys"]
 # 启用 Tauri 应用外壳（需 MSVC Build Tools + WebView2）。
 # 自动启用 opus（生产环境必须用真实 libopus，否则解码回退 passthrough 产生噪声）。
-tauri_app = ["dep:tauri", "dep:tauri-build", "dep:dirs", "dep:tauri-plugin-opener", "opus"]
+# 自动启用 wasapi：Windows GUI 模式下发送端默认用 WASAPI Loopback 采集系统音频
+# （非 Windows 平台 wasapi feature 为 no-op，windows crate 有 target 门控）。
+tauri_app = ["dep:tauri", "dep:tauri-build", "dep:dirs", "dep:tauri-plugin-opener", "opus", "wasapi"]
 # 启用 Windows WASAPI Loopback 采集（阶段 5，仅 Windows）。
 wasapi = ["dep:windows"]
 
