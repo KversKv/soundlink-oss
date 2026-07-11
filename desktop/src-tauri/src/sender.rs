@@ -21,7 +21,7 @@ use crate::network::control_server::msg_type;
 use crate::network::packet::{encode_packet, AudioPacketHeader};
 use crate::pairing::{
     derive_pairing_secret, derive_session_keys, diffie_hellman, sender_proof,
-    verify_receiver_proof, EphemeralKeyPair,
+    verify_receiver_proof, EphemeralKeyPair, TrustStore, TrustedDevice,
 };
 use base64::{engine::general_purpose::STANDARD, Engine};
 use ed25519_dalek::SigningKey;
@@ -83,6 +83,8 @@ pub struct SenderEngine {
     control_task: Mutex<Option<JoinHandle<()>>>,
     /// 是否启用音频 RAW Data 转储（来自 main.rs 的 DUMP_ENABLE）。
     dump_enable: bool,
+    /// 信任存储：配对成功后保存 Receiver 身份与连接信息。
+    trust: Option<Arc<Mutex<TrustStore>>>,
 }
 
 impl SenderEngine {
@@ -99,6 +101,20 @@ impl SenderEngine {
             send_task: Mutex::new(None),
             control_task: Mutex::new(None),
             dump_enable,
+            trust: None,
+        }
+    }
+
+    /// 注入信任存储，启用"记住设备"功能。
+    pub fn with_trust(trust: Arc<Mutex<TrustStore>>, dump_enable: bool) -> Self {
+        Self {
+            status: Arc::new(Mutex::new(SenderStatus::default())),
+            running: Arc::new(AtomicBool::new(false)),
+            stop_notify: Arc::new(Notify::new()),
+            send_task: Mutex::new(None),
+            control_task: Mutex::new(None),
+            dump_enable,
+            trust: Some(trust),
         }
     }
 
@@ -156,6 +172,7 @@ impl SenderEngine {
             receiver_device_id,
             receiver_device_name,
             trusted,
+            receiver_identity_pub_b64,
         ) = match handshake_result {
             Ok(v) => v,
             Err(e) => {
@@ -171,6 +188,33 @@ impl SenderEngine {
             s.receiver_device_id = receiver_device_id.clone();
             s.receiver_device_name = receiver_device_name.clone();
             s.trusted = trusted;
+        }
+
+        // 配对成功后保存信任关系（记住 Receiver）。
+        if let Some(trust) = &self.trust {
+            let target_ip = receiver_addr.split(':').next().unwrap_or("");
+            let control_port = receiver_addr
+                .rsplit(':')
+                .next()
+                .and_then(|p| p.parse::<u16>().ok());
+            let trusted_device = TrustedDevice {
+                device_id: receiver_device_id.clone(),
+                identity_pub_b64: receiver_identity_pub_b64.clone(),
+                name: Some(receiver_device_name.clone()),
+                last_seen: now_secs(),
+                host: Some(target_ip.to_string()),
+                control_port,
+                audio_port: Some(audio_port),
+            };
+            if let Err(e) = trust.lock().add(trusted_device) {
+                tracing::warn!("保存信任 Receiver 失败：{}", e);
+            } else {
+                tracing::info!(
+                    "已记住 Receiver：{} ({})",
+                    receiver_device_id,
+                    receiver_device_name
+                );
+            }
         }
 
         // 2) 启动采集源。
@@ -282,7 +326,8 @@ impl SenderEngine {
 
     /// 控制通道握手：hello → pair_request → pair_response → stream_start → stream_start_ack。
     ///
-    /// 返回 (audio_key, stream_id, tcp_writer, receiver_device_id, receiver_device_name, trusted)。
+    /// 返回 (audio_key, stream_id, tcp_reader, tcp_writer,
+    ///       receiver_device_id, receiver_device_name, trusted, receiver_identity_pub_b64)。
     async fn handshake(
         &self,
         receiver_addr: &str,
@@ -301,6 +346,7 @@ impl SenderEngine {
             String,
             String,
             bool,
+            String,
         ),
         String,
     > {
@@ -347,6 +393,13 @@ impl SenderEngine {
         if receiver_device_id.is_empty() {
             return Err("hello_ack 缺少 device_id".into());
         }
+
+        // 查询本地信任记录（用于身份一致性校验）。
+        let locally_trusted_pub: Option<String> = self.trust.as_ref().and_then(|t| {
+            t.lock()
+                .get(&receiver_device_id)
+                .map(|d| d.identity_pub_b64.clone())
+        });
 
         // X25519 密钥对 + 配对秘密。
         let send_kp = EphemeralKeyPair::generate();
@@ -403,6 +456,23 @@ impl SenderEngine {
         let mut rp_arr = [0u8; 32];
         rp_arr.copy_from_slice(&receiver_pub_bytes);
         let receiver_pub = x25519_dalek::PublicKey::from(rp_arr);
+
+        // 提取 Receiver 身份公钥（Ed25519），用于本地信任校验与保存。
+        let receiver_identity_pub_b64 = pair_resp["receiver_identity_pub"]
+            .as_str()
+            .unwrap_or("")
+            .to_string();
+
+        // 身份一致性校验：若本地已信任该 Receiver，核对公钥是否匹配。
+        if let Some(saved_pub) = &locally_trusted_pub {
+            if !saved_pub.is_empty() && saved_pub.as_str() != receiver_identity_pub_b64.as_str() {
+                tracing::warn!(
+                    "Receiver 身份公钥与已保存的不匹配！可能中间人攻击。saved={} recv={}",
+                    saved_pub,
+                    receiver_identity_pub_b64
+                );
+            }
+        }
 
         // 校验 receiver_proof（防中间人）。
         if let Some(rp_b64) = pair_resp["proof"].as_str() {
@@ -469,6 +539,7 @@ impl SenderEngine {
             receiver_device_id,
             receiver_device_name,
             trusted,
+            receiver_identity_pub_b64,
         ))
     }
 }
@@ -797,6 +868,13 @@ fn now_ms() -> u64 {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis() as u64
+}
+
+fn now_secs() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
 }
 
 #[cfg(test)]

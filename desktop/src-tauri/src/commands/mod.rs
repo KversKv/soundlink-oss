@@ -80,6 +80,7 @@ impl AppState {
             tracing::warn!("信任存储加载失败：{}；用内存存储。", e);
             TrustStore::in_memory()
         });
+        let trust = Arc::new(Mutex::new(trust));
         let config = AppConfig::load_or_default(&dir);
         let pairing = Arc::new(PairingCodeManager::with_debug(debug));
         if config.pairing_code_mode == "fixed" {
@@ -94,10 +95,10 @@ impl AppState {
         let role = parse_role(&config.role).unwrap_or_default();
         Self {
             engine,
-            sender: Arc::new(SenderEngine::with_dump(dump_enable)),
+            sender: Arc::new(SenderEngine::with_trust(trust.clone(), dump_enable)),
             pairing,
             identity: Arc::new(Mutex::new(identity)),
-            trust: Arc::new(Mutex::new(trust)),
+            trust,
             selected_device: Arc::new(Mutex::new(config.default_output_device)),
             control: Mutex::new(None),
             mdns: Mutex::new(None),
@@ -328,10 +329,18 @@ pub fn get_status(state: State<'_, AppState>) -> Result<ReceiverStatus, String> 
     Ok(state.inner().engine.status())
 }
 
-/// 列举已信任设备。
+/// 列举已信任设备（接收端视角：信任的发送端，host 为 None）。
 #[tauri::command]
 pub fn list_trusted_devices(state: State<'_, AppState>) -> Result<Vec<TrustedDevice>, String> {
-    Ok(state.inner().trust.lock().list().to_vec())
+    Ok(state
+        .inner()
+        .trust
+        .lock()
+        .list()
+        .iter()
+        .filter(|d| d.host.is_none())
+        .cloned()
+        .collect())
 }
 
 /// 移除已信任设备。
@@ -598,4 +607,99 @@ pub fn set_role(state: State<'_, AppState>, role: String) -> Result<String, Stri
     s.config.lock().role = role_as_str(r).into();
     save_config(s)?;
     Ok(role_as_str(r).into())
+}
+
+// ─────────────────── 发送端：记住设备 / 信任直连 ───────────────────
+
+/// 列举已信任的 Receiver（发送端视角：host 为 Some 的条目）。
+#[tauri::command]
+pub fn list_trusted_receivers(state: State<'_, AppState>) -> Result<Vec<TrustedDevice>, String> {
+    Ok(state
+        .inner()
+        .trust
+        .lock()
+        .list()
+        .iter()
+        .filter(|d| d.host.is_some())
+        .cloned()
+        .collect())
+}
+
+/// 移除已信任的 Receiver。
+#[tauri::command]
+pub fn remove_trusted_receiver(
+    state: State<'_, AppState>,
+    device_id: String,
+) -> Result<bool, String> {
+    state
+        .inner()
+        .trust
+        .lock()
+        .remove(&device_id)
+        .map_err(|e| e.to_string())
+}
+
+/// 一键直连已信任的 Receiver。
+///
+/// 从信任存储中按 `device_id` 查找设备，取出 host/control_port 拼接地址，
+/// 配对码留空（走已信任路径），调用与 `start_sender` 相同的启动逻辑。
+#[tauri::command]
+pub async fn connect_trusted_receiver(
+    state: State<'_, AppState>,
+    device_id: String,
+    capture_source: Option<String>,
+) -> Result<(), String> {
+    let s = state.inner();
+    // 查找设备并提取连接信息。
+    let receiver_addr = {
+        let trust = s.trust.lock();
+        let dev = trust
+            .get(&device_id)
+            .ok_or_else(|| format!("未找到已信任设备：{}", device_id))?;
+        let host = dev.host.clone().ok_or_else(|| "设备缺少 host 信息".to_string())?;
+        let control_port = dev
+            .control_port
+            .ok_or_else(|| "设备缺少 control_port 信息".to_string())?;
+        format!("{}:{}", host, control_port)
+    };
+
+    let source_id = capture_source.unwrap_or_else(|| {
+        #[cfg(all(windows, feature = "wasapi"))]
+        {
+            "wasapi".into()
+        }
+        #[cfg(not(all(windows, feature = "wasapi")))]
+        {
+            "sine".into()
+        }
+    });
+    let source = make_capture_source(&source_id)?;
+    let (sender_device_id, sender_device_name, signing_key) = {
+        let id = s.identity.lock();
+        (
+            id.device_id.clone(),
+            s.device_name.lock().clone(),
+            id.signing_key.clone(),
+        )
+    };
+    let audio_params = s.config.lock().audio_params.clone().normalized();
+    {
+        let mut cfg = s.config.lock();
+        cfg.last_receiver_addr = receiver_addr.clone();
+        cfg.selected_capture_source = source_id;
+    }
+    save_config(s)?;
+    // 配对码留空：走已信任路径（Receiver 端会识别本机身份）。
+    s.sender
+        .start(
+            source,
+            &receiver_addr,
+            "",
+            &sender_device_id,
+            &sender_device_name,
+            &signing_key,
+            DEFAULT_AUDIO_PORT,
+            audio_params,
+        )
+        .await
 }

@@ -469,6 +469,9 @@ async fn handle_pair_request(msg: &Value, state: &ControlState, addr: SocketAddr
                 .and_then(|v| v.as_str())
                 .map(String::from),
             last_seen: now_secs(),
+            host: None,
+            control_port: None,
+            audio_port: None,
         };
         if let Err(e) = state.trust.lock().add(trusted_device) {
             tracing::warn!("保存信任失败：{}", e);

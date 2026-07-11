@@ -8,6 +8,10 @@ use std::fs;
 use std::path::PathBuf;
 
 /// 已信任设备。
+///
+/// 同时承载两种视角：
+/// - 接收端视角（信任发送端）：`host` 为 `None`
+/// - 发送端视角（信任接收端）：`host` 为 `Some(ip)`，附带端口信息
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct TrustedDevice {
     pub device_id: String,
@@ -17,6 +21,15 @@ pub struct TrustedDevice {
     /// 上次配对/连接的 unix 时间戳（秒）。
     #[serde(default)]
     pub last_seen: u64,
+    /// 发送端视角：Receiver 的 IP（host）。`None` 表示接收端视角的信任条目。
+    #[serde(default)]
+    pub host: Option<String>,
+    /// 发送端视角：Receiver 控制端口。
+    #[serde(default)]
+    pub control_port: Option<u16>,
+    /// 发送端视角：Receiver 音频端口。
+    #[serde(default)]
+    pub audio_port: Option<u16>,
 }
 
 /// 信任存储（文件持久化）。
@@ -132,6 +145,9 @@ mod tests {
                     identity_pub_b64: "base64pub".into(),
                     name: Some("My iPhone".into()),
                     last_seen: 1000,
+                    host: None,
+                    control_port: None,
+                    audio_port: None,
                 })
                 .unwrap();
             assert!(store.is_trusted("ios-ab12"));
@@ -156,6 +172,9 @@ mod tests {
                 identity_pub_b64: "pub".into(),
                 name: None,
                 last_seen: 0,
+                host: None,
+                control_port: None,
+                audio_port: None,
             })
             .unwrap();
         assert!(store.remove("android-xx").unwrap());

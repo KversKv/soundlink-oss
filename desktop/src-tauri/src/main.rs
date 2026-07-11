@@ -57,6 +57,9 @@ fn main() {
             soundlink_lib::commands::discover_receivers,
             soundlink_lib::commands::get_role,
             soundlink_lib::commands::set_role,
+            soundlink_lib::commands::list_trusted_receivers,
+            soundlink_lib::commands::remove_trusted_receiver,
+            soundlink_lib::commands::connect_trusted_receiver,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

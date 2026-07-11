@@ -51,6 +51,16 @@ interface DiscoveredReceiver {
   pairing_required: boolean;
 }
 
+interface TrustedReceiver {
+  device_id: string;
+  identity_pub_b64: string;
+  name: string | null;
+  last_seen: number;
+  host: string | null;
+  control_port: number | null;
+  audio_port: number | null;
+}
+
 interface CaptureSourceInfo {
   id: string;
   name: string;
@@ -140,6 +150,7 @@ export default function App() {
   const [captureSources, setCaptureSources] = useState<CaptureSourceInfo[]>([]);
   const [selectedSource, setSelectedSource] = useState("sine");
   const [discovering, setDiscovering] = useState(false);
+  const [trustedReceivers, setTrustedReceivers] = useState<TrustedReceiver[]>([]);
 
   const [error, setError] = useState<string>("");
 
@@ -154,6 +165,7 @@ export default function App() {
         if (firstAvail) setSelectedSource(firstAvail.id);
       })
       .catch(() => {});
+    loadTrustedReceivers();
     invoke<DesktopSettings>("get_desktop_settings")
       .then((settings) => {
         setRole(settings.role);
@@ -340,6 +352,7 @@ export default function App() {
         captureSource: selectedSource,
       });
       setSenderRunning(true);
+      loadTrustedReceivers();
     } catch (e) {
       setError(String(e));
     }
@@ -351,6 +364,47 @@ export default function App() {
       await invoke("stop_sender");
       setSenderRunning(false);
       setSenderStatus(null);
+      loadTrustedReceivers();
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
+  async function loadTrustedReceivers() {
+    try {
+      const list = await invoke<TrustedReceiver[]>("list_trusted_receivers");
+      setTrustedReceivers(list);
+    } catch {
+      // 忽略加载失败
+    }
+  }
+
+  async function connectTrustedReceiver(dev: TrustedReceiver) {
+    setError("");
+    if (!dev.host || !dev.control_port) {
+      setError("已信任设备缺少连接信息");
+      return;
+    }
+    const addr = `${dev.host}:${dev.control_port}`;
+    setReceiverAddr(addr);
+    setSenderPairingCode("");
+    try {
+      await invoke("connect_trusted_receiver", {
+        deviceId: dev.device_id,
+        captureSource: selectedSource,
+      });
+      setSenderRunning(true);
+      loadTrustedReceivers();
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
+  async function removeTrustedReceiver(deviceId: string) {
+    setError("");
+    try {
+      await invoke("remove_trusted_receiver", { deviceId });
+      loadTrustedReceivers();
     } catch (e) {
       setError(String(e));
     }
@@ -575,7 +629,9 @@ export default function App() {
               </div>
 
               <div className="receiver-list">
-                {discovered.length > 0 ? discovered.map((d) => (
+                {discovered.length > 0 ? discovered.map((d) => {
+                  const isTrusted = trustedReceivers.some((t) => t.device_id === d.device_id);
+                  return (
                   <button
                     key={d.device_id}
                     className={receiverAddr === d.control_addr ? "receiver-item selected" : "receiver-item"}
@@ -584,13 +640,45 @@ export default function App() {
                   >
                     <strong>{d.device_name}</strong>
                     <span>{d.control_addr}</span>
-                    <em>{d.pairing_required ? "需配对" : "已信任"}</em>
+                    <em>{isTrusted ? "已信任" : d.pairing_required ? "需配对" : "可连接"}</em>
                   </button>
-                )) : (
+                  );
+                }) : (
                   <div className="empty-state">未发现设备，可手动输入地址。</div>
                 )}
               </div>
             </section>
+
+            {trustedReceivers.length > 0 && (
+              <section className="panel-card settings-card">
+                <h2>已信任设备</h2>
+                <div className="receiver-list">
+                  {trustedReceivers.map((t) => (
+                    <div key={t.device_id} className="receiver-item trusted-item">
+                      <button
+                        className="trusted-main"
+                        onClick={() => connectTrustedReceiver(t)}
+                        disabled={senderRunning}
+                        type="button"
+                      >
+                        <strong>{t.name || t.device_id}</strong>
+                        <span>{t.host && t.control_port ? `${t.host}:${t.control_port}` : t.device_id}</span>
+                        <em>已信任 · 一键直连</em>
+                      </button>
+                      <button
+                        className="text-button danger"
+                        onClick={() => removeTrustedReceiver(t.device_id)}
+                        disabled={senderRunning}
+                        type="button"
+                        title="移除信任"
+                      >
+                        移除
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
 
             <section className="panel-card settings-card compact-card">
               <h2>Receiver 地址</h2>

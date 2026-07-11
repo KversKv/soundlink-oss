@@ -608,6 +608,56 @@ select:focus-visible {
   font-weight: 700;
 }
 
+.trusted-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-color: #c8e6d4;
+  background: #f4fbf6;
+}
+
+.trusted-item:hover:not(:disabled) {
+  border-color: #6ec48f;
+  background: #ecf8f0;
+}
+
+.trusted-item .trusted-main {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 8px;
+  padding: 4px 6px;
+  text-align: left;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: transform 180ms ease;
+}
+
+.trusted-item .trusted-main:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.trusted-item .trusted-main:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.trusted-item .trusted-main em {
+  color: #2e9e5b;
+}
+
+.text-button.danger {
+  color: #d46a6a;
+  flex: 0 0 auto;
+  padding: 4px 8px;
+}
+
+.text-button.danger:hover:not(:disabled) {
+  color: #b94a4a;
+}
+
 .empty-state {
   display: grid;
   place-items: center;
