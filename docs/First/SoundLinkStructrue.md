@@ -74,14 +74,14 @@ flowchart LR
 
 | 层 | iOS | Android | 桌面端 |
 |---|---|---|---|
-| 语言 | Swift | Kotlin | Rust + 前端 TS |
-| UI | SwiftUI | Jetpack Compose | Tauri 2 + React |
-| 采集 | ReplayKit Broadcast Extension | MediaProjection + AudioPlaybackCapture | WASAPI Loopback / ScreenCaptureKit |
-| 编解码 | libopus | libopus | libopus |
-| 网络 | Network.framework / UDP | OkHttp(控制) + UDP | tokio UDP + TCP/WS |
-| 发现 | Bonjour/mDNS | NSD/mDNS | mdns 库 |
+| 语言 | 主 App：Dart(Flutter)；采集：Swift | 主 App：Dart(Flutter)；采集：Kotlin | Rust + 前端 TS |
+| UI | Flutter（主 App） | Flutter（主 App） | Tauri 2 + React |
+| 采集 | ReplayKit Broadcast Extension（原生 Swift） | MediaProjection + AudioPlaybackCapture（原生 Kotlin） | WASAPI Loopback（已实现）/ ScreenCaptureKit（占位） |
+| 编解码 | libopus | libopus（JNI/CMake） | libopus_sys FFI（`opus` feature） |
+| 网络 | UDP(采集) + Dart TCP JSON Lines(控制) | UDP(采集) + Dart TCP JSON Lines(控制) | tokio UDP + TCP JSON Lines |
+| 发现 | Dart multicast_dns | Dart multicast_dns | mdns-sd |
 | 加密 | ChaCha20-Poly1305 | ChaCha20-Poly1305 | ChaCha20-Poly1305 |
-| 密钥/信任 | Keychain | Keystore/EncryptedPrefs | 本地安全存储 |
+| 密钥/信任 | shared_preferences（后续 Keychain） | shared_preferences（后续 Keystore） | 本地 JSON trust store |
 
 完整选型见 [07-tech-stack](./07-tech-stack.md)。
 

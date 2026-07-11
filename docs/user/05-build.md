@@ -4,6 +4,16 @@
 
 > 仓库处于骨架阶段，以下命令为脚手架就绪后的目标工作流。
 
+如果只安装了 `desktop/ui` 里的本地 Tauri CLI，也可以用 npm 脚本从 `desktop/ui` 触发同一套构建流程：
+
+```powershell
+cd D:\CodeProject\TRAE_Projects\SoundLink\desktop\ui
+npm install
+npm run tauri:build:exe
+```
+
+
+
 ## 1. 桌面端（Tauri 2 + Rust）
 
 ### 开发运行（热重载）
