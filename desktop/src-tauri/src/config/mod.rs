@@ -190,22 +190,39 @@ fn jitter_mode_from_ms(ms: u32) -> &'static str {
 
 /// 从 OS keyring 读取固定配对码。失败返回 None。
 fn load_fixed_code_from_keyring() -> Option<String> {
-    let entry = keyring::Entry::new(KEYRING_SERVICE, KEYRING_ACCOUNT_FIXED_CODE).ok()?;
-    let secret = entry.get_secret().ok()?;
-    let code = String::from_utf8(secret.to_vec()).ok()?;
-    if code.is_empty() {
-        None
-    } else {
-        Some(code)
+    let entry = match keyring::Entry::new(KEYRING_SERVICE, KEYRING_ACCOUNT_FIXED_CODE) {
+        Ok(e) => e,
+        Err(e) => {
+            tracing::warn!("keyring Entry::new 失败：{}", e);
+            return None;
+        }
+    };
+    match entry.get_secret() {
+        Ok(secret) => {
+            let code = String::from_utf8(secret.to_vec()).ok()?;
+            if code.is_empty() {
+                tracing::info!("keyring 中固定配对码为空");
+                None
+            } else {
+                tracing::info!("keyring 固定配对码读取成功（{} 位）", code.len());
+                Some(code)
+            }
+        }
+        Err(e) => {
+            tracing::warn!("keyring get_secret 失败：{}", e);
+            None
+        }
     }
 }
 
 /// 写入固定配对码到 OS keyring。
 fn save_fixed_code_to_keyring(code: &str) {
-    if let Ok(entry) = keyring::Entry::new(KEYRING_SERVICE, KEYRING_ACCOUNT_FIXED_CODE) {
-        if let Err(e) = entry.set_secret(code.as_bytes()) {
-            tracing::warn!("固定配对码写入 keyring 失败：{}", e);
-        }
+    match keyring::Entry::new(KEYRING_SERVICE, KEYRING_ACCOUNT_FIXED_CODE) {
+        Ok(entry) => match entry.set_secret(code.as_bytes()) {
+            Ok(()) => tracing::info!("keyring 固定配对码写入成功（{} 位）", code.len()),
+            Err(e) => tracing::warn!("固定配对码写入 keyring 失败：{}", e),
+        },
+        Err(e) => tracing::warn!("keyring Entry::new 失败：{}", e),
     }
 }
 

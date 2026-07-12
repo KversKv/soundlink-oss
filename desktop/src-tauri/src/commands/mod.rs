@@ -90,11 +90,23 @@ impl AppState {
             TrustStore::in_memory()
         });
         let trust = Arc::new(Mutex::new(trust));
-        let config = AppConfig::load_or_default(&dir);
+        let mut config = AppConfig::load_or_default(&dir);
         let pairing = Arc::new(PairingCodeManager::with_debug(debug));
         if config.pairing_code_mode == "fixed" {
-            if let Err(e) = pairing.set_fixed_code(config.fixed_pairing_code.clone()) {
-                tracing::warn!("固定配对码配置无效：{}", e);
+            // keyring 读取失败或码无效时，fixed_pairing_code 为 None / set_fixed_code 报错。
+            // 为保持一致性：回退 config 到 random 模式，避免 issue() 走随机分支但 UI 显示 fixed。
+            let ok = config.fixed_pairing_code.as_deref()
+                .filter(|c| !c.is_empty())
+                .map(|c| pairing.set_fixed_code(Some(c.into())).is_ok())
+                .unwrap_or(false);
+            if !ok {
+                tracing::warn!("fixed 模式无可用长期码，回退 random；请重新设置长期配对码");
+                config.pairing_code_mode = "random".into();
+                config.fixed_pairing_code = None;
+                // 尝试持久化回退，失败仅告警（不阻塞启动）。
+                if let Err(e) = config.save(&dir) {
+                    tracing::warn!("回退 random 模式持久化失败：{}", e);
+                }
             }
         }
         let jitter_mode = parse_jitter_mode(&config.jitter_mode).unwrap_or(JitterMode::Balanced);
@@ -371,6 +383,13 @@ pub fn set_default_capture_source(
 pub fn get_desktop_settings(state: State<'_, AppState>) -> Result<DesktopSettings, String> {
     let s = state.inner();
     let cfg = s.config.lock().clone();
+    // 双重保险：以 PairingCodeManager.fixed_code() 实际值为准决定 mode，
+    // 避免 config.pairing_code_mode 与 keyring 实际状态不一致导致 UI 显示错位。
+    let fixed = s.pairing.fixed_code();
+    let mode = match &fixed {
+        Some(_) => "fixed".to_string(),
+        None => "random".to_string(),
+    };
     Ok(DesktopSettings {
         device_name: s.device_name.lock().clone(),
         role: role_as_str(*s.role.lock()).into(),
@@ -378,8 +397,8 @@ pub fn get_desktop_settings(state: State<'_, AppState>) -> Result<DesktopSetting
         jitter_mode: s.engine.jitter_mode().as_str().into(),
         volume: s.engine.volume(),
         pairing: PairingSettings {
-            mode: cfg.pairing_code_mode,
-            fixed_code: s.pairing.fixed_code().unwrap_or_default(),
+            mode,
+            fixed_code: fixed.unwrap_or_default(),
         },
         audio_params: cfg.audio_params,
         last_receiver_addr: cfg.last_receiver_addr,
@@ -417,9 +436,9 @@ pub fn set_pairing_settings(
                 cfg.fixed_pairing_code = Some(code.clone());
             }
             save_config(s)?;
-            if s.pairing.current().is_some() {
-                s.pairing.issue();
-            }
+            // set_fixed_code 会清空 current，这里重新 issue 让长期码立即可用。
+            // 不再依赖 current().is_some() 判断（已被清空，恒为 false）。
+            s.pairing.issue();
             Ok(PairingSettings {
                 mode: "fixed".into(),
                 fixed_code: code,

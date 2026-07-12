@@ -58,7 +58,13 @@ tauri-plugin-window-state = { version = "2", optional = true }
 tauri-plugin-global-shortcut = { version = "2", optional = true }
 dirs = { version = "5", optional = true }
 # OS keyring：Ed25519 私钥 / 固定配对码安全存储（阶段 A 安全红线修复）。
-keyring = "3"
+# keyring v3 默认不启用任何平台 backend，必须显式指定 native feature，
+# 否则 Entry::new / get_secret / set_secret 会静默失败（长期码丢失根因）。
+keyring = { version = "3", features = [
+    "windows-native",
+    "apple-native",
+    "linux-native-sync-persistent",
+] }
 
 # Windows WASAPI Loopback 采集（阶段 5）。
 [target.'cfg(windows)'.dependencies]
