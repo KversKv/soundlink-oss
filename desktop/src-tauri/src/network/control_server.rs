@@ -74,6 +74,14 @@ pub struct Session {
     pub stream_id: u32,
 }
 
+/// D4：可选 AppHandle 的类型别名。
+/// 仅在 `tauri_app` feature 下为 `tauri::AppHandle`，否则为 `()` 占位以保持 lib 在
+/// 非 Tauri 构建下可编译（供 examples 使用）。
+#[cfg(feature = "tauri_app")]
+pub type AppHandleOpt = Option<tauri::AppHandle>;
+#[cfg(not(feature = "tauri_app"))]
+pub type AppHandleOpt = Option<()>;
+
 /// 控制服务器共享状态。
 pub struct ControlState {
     pub engine: Arc<ReceiverEngine>,
@@ -88,6 +96,8 @@ pub struct ControlState {
     pub current_session: Mutex<Option<Session>>,
     pub running: Arc<AtomicBool>,
     pub stop_notify: Arc<Notify>,
+    /// D4：可选 AppHandle，用于在配对锁定时 emit `pairing-locked` 事件给前端。
+    pub app_handle: AppHandleOpt,
 }
 
 /// 控制服务器。
@@ -116,6 +126,7 @@ impl ControlServer {
             audio_port,
             None,
             None,
+            None,
         )
     }
 
@@ -130,6 +141,7 @@ impl ControlServer {
         audio_port: u16,
         config: Option<Arc<Mutex<AppConfig>>>,
         config_dir: Option<std::path::PathBuf>,
+        app_handle: AppHandleOpt,
     ) -> Self {
         Self {
             state: Arc::new(ControlState {
@@ -145,6 +157,7 @@ impl ControlServer {
                 current_session: Mutex::new(None),
                 running: Arc::new(AtomicBool::new(false)),
                 stop_notify: Arc::new(Notify::new()),
+                app_handle,
             }),
             listener_task: Mutex::new(None),
         }
@@ -455,6 +468,26 @@ async fn handle_pair_request(msg: &Value, state: &ControlState, addr: SocketAddr
             // 校验失败：递增尝试计数。
             match state.pairing.verify("__wrong__") {
                 PairingCodeState::Locked => {
+                    // D4：通知前端配对已锁定，附带剩余秒数与已用尝试次数。
+                    let (is_locked, remaining_secs, attempts) = state.pairing.lock_status();
+                    if is_locked {
+                        #[cfg(feature = "tauri_app")]
+                        if let Some(handle) = &state.app_handle {
+                            use tauri::Emitter;
+                            let _ = handle.emit(
+                                "pairing-locked",
+                                json!({
+                                    "remaining_secs": remaining_secs,
+                                    "remaining_attempts": attempts,
+                                }),
+                            );
+                        }
+                        // 非 tauri_app 构建下消除未使用变量告警。
+                        #[cfg(not(feature = "tauri_app"))]
+                        {
+                            let _ = (remaining_secs, attempts);
+                        }
+                    }
                     return pair_error(msg, ErrorCode::PairingLocked, "尝试次数超限");
                 }
                 PairingCodeState::Expired => {

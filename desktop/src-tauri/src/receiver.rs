@@ -250,7 +250,7 @@ pub struct ReceiverEngine {
     codec: Arc<Mutex<Box<dyn AudioCodec>>>,
     running: Arc<AtomicBool>,
     udp_task: Mutex<Option<JoinHandle<()>>>,
-    audio_output: Mutex<AudioOutput>,
+    audio_output: Arc<Mutex<AudioOutput>>,
     /// 延迟估算共享状态（push 端写入，status 端读取）。
     latency_state: Arc<Mutex<LatencyState>>,
     /// 是否启用音频 RAW Data 转储（来自 main.rs 的 DUMP_ENABLE）。
@@ -293,7 +293,7 @@ impl ReceiverEngine {
             codec: Arc::new(Mutex::new(default_codec())),
             running: Arc::new(AtomicBool::new(false)),
             udp_task: Mutex::new(None),
-            audio_output: Mutex::new(AudioOutput::new()),
+            audio_output: Arc::new(Mutex::new(AudioOutput::new())),
             latency_state: Arc::new(Mutex::new(LatencyState::default())),
             dump_enable,
             current_audio_key: Mutex::new([0u8; 32]),
@@ -344,61 +344,81 @@ impl ReceiverEngine {
         let jitter = self.jitter.clone();
         let latency_state = self.latency_state.clone();
         let running = self.running.clone();
+        let audio_output = self.audio_output.clone();
         let handle = tokio::spawn(async move {
             let mut buf = vec![0u8; 4096];
             let mut first_pkt = true;
+            let mut err_counter: u32 = 0;
             while running.load(Ordering::SeqCst) {
                 match sock.recv_from(&mut buf).await {
-                    Ok((n, _src)) => match decode_packet(&audio_key, &buf[..n]) {
-                        Ok(dec) => {
-                            if dec.header.stream_id != stream_id {
-                                continue;
-                            }
-                            let payload_len = dec.plaintext.len();
-                            let frame = JitterFrame {
-                                sequence: dec.header.sequence,
-                                timestamp: dec.header.timestamp,
-                                data: dec.plaintext,
-                            };
-                            // 延迟估算：首个包记录基准。
-                            {
-                                let mut ls = latency_state.lock();
-                                if ls.first_recv_instant.is_none() {
-                                    ls.first_recv_instant = Some(Instant::now());
-                                    ls.first_timestamp = frame.timestamp;
-                                    ls.bitrate_start = Some(Instant::now());
-                                    ls.bitrate_baseline_bytes = 0;
+                    Ok((n, _src)) => {
+                        // D1：正常收包，重置错误计数。
+                        err_counter = 0;
+                        match decode_packet(&audio_key, &buf[..n]) {
+                            Ok(dec) => {
+                                if dec.header.stream_id != stream_id {
+                                    continue;
                                 }
-                                ls.latest_timestamp = frame.timestamp;
-                                ls.bytes_recv += payload_len as u64;
+                                let payload_len = dec.plaintext.len();
+                                let frame = JitterFrame {
+                                    sequence: dec.header.sequence,
+                                    timestamp: dec.header.timestamp,
+                                    data: dec.plaintext,
+                                };
+                                // 延迟估算：首个包记录基准。
+                                {
+                                    let mut ls = latency_state.lock();
+                                    if ls.first_recv_instant.is_none() {
+                                        ls.first_recv_instant = Some(Instant::now());
+                                        ls.first_timestamp = frame.timestamp;
+                                        ls.bitrate_start = Some(Instant::now());
+                                        ls.bitrate_baseline_bytes = 0;
+                                    }
+                                    ls.latest_timestamp = frame.timestamp;
+                                    ls.bytes_recv += payload_len as u64;
+                                }
+                                let stats = {
+                                    let mut jb = jitter.lock();
+                                    jb.push(frame);
+                                    snapshot(&jb)
+                                };
+                                {
+                                    let mut s = status.lock();
+                                    if first_pkt {
+                                        s.state = "RECEIVING".into();
+                                        first_pkt = false;
+                                    }
+                                    s.packets_recv = stats.recv;
+                                    s.packets_lost = stats.lost;
+                                    s.packets_dropped = stats.dropped;
+                                    s.buffer_depth = stats.depth;
+                                    s.buffer_ms = (stats.depth as u32) * FRAME_DURATION_MS as u32;
+                                    s.jitter_ms = stats.jitter_ms;
+                                    s.jitter_mode = stats.mode;
+                                }
                             }
-                            let stats = {
-                                let mut jb = jitter.lock();
-                                jb.push(frame);
-                                snapshot(&jb)
-                            };
+                            Err(e) => {
+                                tracing::debug!("收包解密失败，丢弃：{:?}", e);
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        // D1：UDP recv 错误不直接 break，改为 continue 避免误显 RECEIVING。
+                        // 持续错误（>100 次，约 5s+）才标记 ERROR 并停 audio_output。
+                        tracing::warn!("UDP recv_from 错误：{}", e);
+                        err_counter = err_counter.saturating_add(1);
+                        if err_counter > 100 {
+                            tracing::error!("UDP recv 持续错误（{} 次），标记 ERROR。", err_counter);
+                            running.store(false, Ordering::SeqCst);
                             {
                                 let mut s = status.lock();
-                                if first_pkt {
-                                    s.state = "RECEIVING".into();
-                                    first_pkt = false;
-                                }
-                                s.packets_recv = stats.recv;
-                                s.packets_lost = stats.lost;
-                                s.packets_dropped = stats.dropped;
-                                s.buffer_depth = stats.depth;
-                                s.buffer_ms = (stats.depth as u32) * FRAME_DURATION_MS as u32;
-                                s.jitter_ms = stats.jitter_ms;
-                                s.jitter_mode = stats.mode;
+                                s.state = "ERROR".into();
                             }
+                            audio_output.lock().stop();
                         }
-                        Err(e) => {
-                            tracing::debug!("收包解密失败，丢弃：{:?}", e);
-                        }
-                    },
-                    Err(e) => {
-                        tracing::warn!("UDP recv_from 错误：{}", e);
-                        break;
+                        // 短暂休眠避免 busy-loop。
+                        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                        continue;
                     }
                 }
             }

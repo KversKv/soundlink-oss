@@ -57,7 +57,13 @@ pub fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
                 let _ = app.emit("tray-menu-click", TrayMenuEvent::Settings);
             }
             "quit" => {
-                app.exit(0);
+                // D3：异步调 cleanup_before_quit 再 exit，避免 block_on 死锁。
+                let app_handle = app.clone();
+                tauri::async_runtime::spawn(async move {
+                    let state: State<'_, AppState> = app_handle.state();
+                    crate::commands::cleanup_before_quit(state.inner()).await;
+                    app_handle.exit(0);
+                });
             }
             _ => {}
         })
@@ -107,7 +113,13 @@ pub fn handle_close_requested(window: &tauri::Window, event: &WindowEvent) {
                 let _ = window.hide();
             }
             "quit" => {
-                app.exit(0);
+                // D3：异步调 cleanup_before_quit 再 exit。
+                let app_handle = app.clone();
+                tauri::async_runtime::spawn(async move {
+                    let state: State<'_, AppState> = app_handle.state();
+                    crate::commands::cleanup_before_quit(state.inner()).await;
+                    app_handle.exit(0);
+                });
             }
             _ => {
                 api.prevent_close();

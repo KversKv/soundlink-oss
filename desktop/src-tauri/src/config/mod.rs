@@ -77,6 +77,12 @@ pub struct AppConfig {
     /// 自启动后自动开启发送（仅 role=sender 有意义）
     #[serde(default)]
     pub auto_send_on_start: bool,
+    /// E3：是否完成首次引导。false 时启动显示 Onboarding。
+    #[serde(default)]
+    pub onboarding_completed: bool,
+    /// F6：发送端 DRM 提示是否已展示。false 时首次开始发送弹模态。
+    #[serde(default)]
+    pub sender_drm_hint_seen: bool,
 }
 
 fn default_close_action() -> String {
@@ -105,6 +111,8 @@ impl Default for AppConfig {
             auto_start: false,
             auto_receive_on_start: false,
             auto_send_on_start: false,
+            onboarding_completed: false,
+            sender_drm_hint_seen: false,
         }
     }
 }

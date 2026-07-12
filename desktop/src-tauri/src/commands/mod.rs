@@ -59,6 +59,8 @@ pub struct AppState {
     pub config_dir: PathBuf,
     /// 调试：是否开启音频 RAW Data 转储（来自 main.rs 的 DUMP_ENABLE）。
     pub dump_enable: bool,
+    /// 设备身份加载是否失败（D5）：true 时 main.rs setup emit `identity-load-failed`。
+    pub identity_load_failed: bool,
 }
 
 impl AppState {
@@ -66,14 +68,21 @@ impl AppState {
     /// `dump_enable`：音频各阶段 RAW Data 转储开关。
     pub fn new(debug: bool, dump_enable: bool) -> Self {
         let dir = config_dir();
+        let mut identity_load_failed = false;
         let identity = DeviceIdentity::load_or_create(&dir).unwrap_or_else(|e| {
             tracing::warn!("设备身份加载失败：{}；用临时身份。", e);
+            identity_load_failed = true;
             let mut csprng = rand::rngs::OsRng;
             let sk = ed25519_dalek::SigningKey::generate(&mut csprng);
-            DeviceIdentity {
+            let temp_identity = DeviceIdentity {
                 device_id: format!("pc-tmp-{:03x}", rand::random::<u32>() & 0xFFF),
                 signing_key: sk,
+            };
+            // D5：尝试持久化临时身份，避免重启后身份变化导致已信任设备失效。
+            if let Err(e) = temp_identity.try_persist_temp(&dir) {
+                tracing::error!("临时身份持久化失败：{}；重启后身份将变化。", e);
             }
+            temp_identity
         });
         let trust_path = dir.join("trust_store.json");
         let trust = TrustStore::load_or_create(trust_path).unwrap_or_else(|e| {
@@ -107,6 +116,7 @@ impl AppState {
             config: Arc::new(Mutex::new(config)),
             config_dir: dir,
             dump_enable,
+            identity_load_failed,
         }
     }
 }
@@ -176,7 +186,10 @@ pub struct DesktopSettings {
 /// 启动接收器：生成配对码、启动 mDNS 广播 + 控制服务器。
 /// 真实发送端配对后由控制服务器自动启动 UDP 接收。
 #[tauri::command]
-pub async fn start_receiver(state: State<'_, AppState>) -> Result<StartResult, String> {
+pub async fn start_receiver(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<StartResult, String> {
     let s = state.inner();
     let code = s.pairing.issue();
     let device_id = s.identity.lock().device_id.clone();
@@ -208,6 +221,8 @@ pub async fn start_receiver(state: State<'_, AppState>) -> Result<StartResult, S
             DEFAULT_AUDIO_PORT,
             Some(s.config.clone()),
             Some(s.config_dir.clone()),
+            // D4：传入 AppHandle 以便配对锁定时 emit 事件给前端。
+            Some(app),
         );
         let bind = format!("0.0.0.0:{}", DEFAULT_CONTROL_PORT);
         control.start(&bind).await?;
@@ -236,10 +251,120 @@ pub fn stop_receiver(state: State<'_, AppState>) -> Result<(), String> {
     Ok(())
 }
 
+/// 优雅退出清理（D3）：停止 sender（带 1s 超时）+ receiver + control + mDNS。
+/// 在 quit_app 与 tray quit 路径调用，避免依赖 Drop 导致退出卡顿或端口残留。
+pub async fn cleanup_before_quit(state: &AppState) {
+    // 1. 停止 sender（带 1s 超时，避免卡死）
+    let _ = tokio::time::timeout(std::time::Duration::from_secs(1), state.sender.stop()).await;
+    // 2. 停止 receiver
+    state.engine.stop();
+    // 3. 停止 control server + mDNS
+    if let Some(c) = state.control.lock().take() {
+        c.stop();
+    }
+    if let Some(m) = state.mdns.lock().take() {
+        m.stop();
+    }
+    // 4. 短暂等待端口释放
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+}
+
 /// 获取/刷新配对码。
 #[tauri::command]
 pub fn get_pairing_code(state: State<'_, AppState>) -> Result<String, String> {
     Ok(state.inner().pairing.issue())
+}
+
+/// D4：查询当前配对锁定状态。返回 { is_locked, remaining_secs, attempts }。
+#[derive(Debug, Serialize)]
+pub struct PairingLockStatus {
+    pub is_locked: bool,
+    pub remaining_secs: u64,
+    pub attempts: u32,
+}
+
+#[tauri::command]
+pub fn get_pairing_lock_status(state: State<'_, AppState>) -> Result<PairingLockStatus, String> {
+    let (is_locked, remaining_secs, attempts) = state.inner().pairing.lock_status();
+    Ok(PairingLockStatus {
+        is_locked,
+        remaining_secs,
+        attempts,
+    })
+}
+
+/// E1：应用元信息（关于页用）。
+#[derive(Debug, Serialize)]
+pub struct AppVersionInfo {
+    pub version: &'static str,
+    pub name: &'static str,
+    pub license: &'static str,
+    pub repository: &'static str,
+    pub build_date: &'static str,
+}
+
+/// 获取应用版本/许可证/构建日期/仓库链接（关于页用，E1）。
+#[tauri::command]
+pub fn get_app_version() -> Result<AppVersionInfo, String> {
+    Ok(AppVersionInfo {
+        version: env!("CARGO_PKG_VERSION"),
+        name: env!("CARGO_PKG_NAME"),
+        license: "MIT",
+        repository: "https://github.com/KversKv/SoundLink",
+        build_date: env!("BUILD_DATE", "unknown"),
+    })
+}
+
+/// E4：日志目录路径（`%APPDATA%/soundlink/logs/`）。
+#[tauri::command]
+pub fn get_log_path() -> Result<String, String> {
+    let dir = crate::logging::log_dir()
+        .ok_or_else(|| "无法定位日志目录".to_string())?;
+    Ok(dir.to_string_lossy().into_owned())
+}
+
+/// E4：读取最新日志文件尾部 max_lines 行（默认 200）。供设置页只读预览。
+#[tauri::command]
+pub fn get_log_preview(max_lines: Option<usize>) -> Result<String, String> {
+    let dir = crate::logging::log_dir()
+        .ok_or_else(|| "无法定位日志目录".to_string())?;
+    // 找出目录下最新的 soundlink-*.log 文件。
+    let mut entries: Vec<_> = std::fs::read_dir(&dir)
+        .map_err(|e| format!("读取日志目录失败：{}", e))?
+        .filter_map(Result::ok)
+        .filter_map(|e| {
+            let p = e.path();
+            let name = p.file_name()?.to_string_lossy().to_string();
+            if name.starts_with("soundlink-") && name.ends_with(".log") {
+                Some(p)
+            } else {
+                None
+            }
+        })
+        .collect();
+    entries.sort();
+    let latest = entries
+        .last()
+        .ok_or_else(|| "暂无日志文件".to_string())?;
+    let content = std::fs::read_to_string(latest)
+        .map_err(|e| format!("读取日志文件失败：{}", e))?;
+    let limit = max_lines.unwrap_or(200);
+    let lines: Vec<&str> = content.lines().collect();
+    let start = if lines.len() > limit { lines.len() - limit } else { 0 };
+    Ok(lines[start..].join("\n"))
+}
+
+/// E4：设置默认采集源（持久化到 config.selected_capture_source）。
+#[tauri::command]
+pub fn set_default_capture_source(
+    state: State<'_, AppState>,
+    source: String,
+) -> Result<(), String> {
+    {
+        let mut cfg = state.config.lock();
+        cfg.selected_capture_source = source;
+    }
+    save_config(state.inner())
 }
 
 #[tauri::command]
@@ -518,14 +643,16 @@ fn make_capture_source(source_id: &str) -> Result<Box<dyn CaptureSource>, String
     }
 }
 
-/// 启动发送端：连接 Receiver → 握手 → 采集 → 发送。
+/// 启动发送端：连接 Receiver → 握手 → 采集 → 发送。D1：启用 backoff 重连。
 #[tauri::command]
 pub async fn start_sender(
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
     receiver_addr: String,
     pairing_code: String,
     capture_source: Option<String>,
 ) -> Result<(), String> {
+    use tauri::Emitter;
     let s = state.inner();
     let source_id = capture_source.unwrap_or_else(|| {
         #[cfg(all(windows, feature = "wasapi"))]
@@ -537,7 +664,18 @@ pub async fn start_sender(
             "sine".into()
         }
     });
-    let source = make_capture_source(&source_id)?;
+    // D1：注入状态变化回调（首次注入后复用；重复调用会覆盖，但回调逻辑相同）。
+    let app_for_cb = app.clone();
+    s.sender.set_on_state_change(Box::new(move |state, error| {
+        let _ = app_for_cb.emit(
+            "sender-state-changed",
+            serde_json::json!({ "state": state, "error": error }),
+        );
+    }));
+    // D1：capture_factory 闭包，重连时重新构造采集源。
+    let source_id_for_factory = source_id.clone();
+    let capture_factory: Arc<dyn Fn() -> Box<dyn CaptureSource> + Send + Sync> =
+        Arc::new(move || make_capture_source(&source_id_for_factory).unwrap_or_else(|_| capture::default_test_source()));
     let (device_id, device_name, signing_key) = {
         let id = s.identity.lock();
         (
@@ -554,8 +692,8 @@ pub async fn start_sender(
     }
     save_config(s)?;
     s.sender
-        .start(
-            source,
+        .start_with_reconnect(
+            capture_factory,
             &receiver_addr,
             &pairing_code,
             &device_id,
@@ -717,12 +855,18 @@ pub struct AppSettings {
     pub auto_start: bool,
     pub auto_receive_on_start: bool,
     pub auto_send_on_start: bool,
+    /// E3：是否已完成首次引导。
+    pub onboarding_completed: bool,
+    /// F6：发送端 DRM 提示是否已展示。
+    pub sender_drm_hint_seen: bool,
 }
 
-/// 退出整个应用（非仅关闭窗口）。
+/// 退出整个应用（非仅关闭窗口）。D3：先调 cleanup_before_quit 再 exit。
 #[tauri::command]
-pub fn quit_app(app: tauri::AppHandle) {
+pub async fn quit_app(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    cleanup_before_quit(state.inner()).await;
     app.exit(0);
+    Ok(())
 }
 
 /// 最小化到托盘：隐藏主窗口。
@@ -752,6 +896,8 @@ pub fn get_app_settings(state: State<'_, AppState>) -> Result<AppSettings, Strin
         auto_start: cfg.auto_start,
         auto_receive_on_start: cfg.auto_receive_on_start,
         auto_send_on_start: cfg.auto_send_on_start,
+        onboarding_completed: cfg.onboarding_completed,
+        sender_drm_hint_seen: cfg.sender_drm_hint_seen,
     })
 }
 
@@ -764,6 +910,8 @@ pub async fn set_app_settings(
     auto_start: Option<bool>,
     auto_receive_on_start: Option<bool>,
     auto_send_on_start: Option<bool>,
+    onboarding_completed: Option<bool>,
+    sender_drm_hint_seen: Option<bool>,
 ) -> Result<AppSettings, String> {
     {
         let mut cfg = state.config.lock();
@@ -781,6 +929,12 @@ pub async fn set_app_settings(
         }
         if let Some(v) = auto_send_on_start {
             cfg.auto_send_on_start = v;
+        }
+        if let Some(v) = onboarding_completed {
+            cfg.onboarding_completed = v;
+        }
+        if let Some(v) = sender_drm_hint_seen {
+            cfg.sender_drm_hint_seen = v;
         }
     }
     save_config(state.inner())?;

@@ -3,6 +3,7 @@ name = "soundlink"
 version = "0.1.0"
 edition = "2021"
 description = "SoundLink 桌面接收端（Tauri 2 + Rust 核心）"
+license = "MIT"
 rust-version = "1.80"
 
 [lib]
@@ -21,7 +22,7 @@ opus = ["dep:libopus_sys"]
 # 自动启用 opus（生产环境必须用真实 libopus，否则解码回退 passthrough 产生噪声）。
 # 自动启用 wasapi：Windows GUI 模式下发送端默认用 WASAPI Loopback 采集系统音频
 # （非 Windows 平台 wasapi feature 为 no-op，windows crate 有 target 门控）。
-tauri_app = ["dep:tauri", "dep:tauri-build", "dep:dirs", "dep:tauri-plugin-opener", "dep:tauri-plugin-autostart", "opus", "wasapi"]
+tauri_app = ["dep:tauri", "dep:tauri-build", "dep:dirs", "dep:tauri-plugin-opener", "dep:tauri-plugin-autostart", "dep:tauri-plugin-single-instance", "dep:tauri-plugin-window-state", "opus", "wasapi"]
 # 启用 Windows WASAPI Loopback 采集（阶段 5，仅 Windows）。
 wasapi = ["dep:windows"]
 
@@ -50,6 +51,8 @@ libopus_sys = { version = "0.3", optional = true }
 tauri = { version = "2", optional = true, features = ["tray-icon", "image-png"] }
 tauri-plugin-opener = { version = "2", optional = true }
 tauri-plugin-autostart = { version = "2", optional = true }
+tauri-plugin-single-instance = { version = "2", optional = true }
+tauri-plugin-window-state = { version = "2", optional = true }
 dirs = { version = "5", optional = true }
 # OS keyring：Ed25519 私钥 / 固定配对码安全存储（阶段 A 安全红线修复）。
 keyring = "3"
@@ -66,6 +69,8 @@ windows = { version = "0.58", optional = true, features = [
 
 [build-dependencies]
 tauri-build = { version = "2", optional = true , features = [] }
+# E1：build.rs 注入构建日期到环境变量。
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
 
 [dev-dependencies]
 

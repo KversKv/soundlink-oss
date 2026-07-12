@@ -1,7 +1,10 @@
 //! 配对码生成与校验。8 位数字，有效期 120s，尝试 5 次后失效。
 //! 对齐 `docs/First/11-implementation-spec.md` §1 / §5。
 
-use crate::constants::{PAIRING_CODE_DIGITS, PAIRING_CODE_MAX_ATTEMPTS, PAIRING_CODE_TTL_SECS};
+use crate::constants::{
+    PAIRING_CODE_DIGITS, PAIRING_CODE_MAX_ATTEMPTS, PAIRING_CODE_TTL_SECS,
+    PAIRING_LOCK_DURATION_SECS,
+};
 use parking_lot::Mutex;
 use rand::Rng;
 use std::time::{Duration, Instant};
@@ -11,6 +14,8 @@ pub struct PairingCode {
     pub code: String,
     pub created_at: Instant,
     pub attempts: u32,
+    /// D4：超限锁定到期时刻。None 表示未锁定；Some(t) 表示在 t 之前不可重试。
+    pub locked_until: Option<Instant>,
 }
 
 impl PairingCode {
@@ -22,6 +27,7 @@ impl PairingCode {
             code,
             created_at: Instant::now(),
             attempts: 0,
+            locked_until: None,
         }
     }
 
@@ -29,8 +35,35 @@ impl PairingCode {
         self.created_at.elapsed() > Duration::from_secs(PAIRING_CODE_TTL_SECS)
     }
 
+    /// 是否处于锁定状态。D4：兼顾尝试次数与锁定时长，锁定时长过期后视为未锁定。
     pub fn is_locked(&self) -> bool {
-        self.attempts >= PAIRING_CODE_MAX_ATTEMPTS
+        if self.attempts < PAIRING_CODE_MAX_ATTEMPTS {
+            return false;
+        }
+        match self.locked_until {
+            None => true, // 旧逻辑：仅次数超限即锁定
+            Some(t) => Instant::now() < t,
+        }
+    }
+
+    /// D4：剩余锁定秒数（0 表示已解锁或未锁定）。
+    pub fn remaining_lock_secs(&self) -> u64 {
+        match self.locked_until {
+            Some(t) => {
+                let now = Instant::now();
+                if now >= t {
+                    0
+                } else {
+                    t.duration_since(now).as_secs()
+                }
+            }
+            None => 0,
+        }
+    }
+
+    /// D4：剩余可尝试次数（已锁定时返回 0）。
+    pub fn remaining_attempts(&self) -> u32 {
+        self.attempts.min(PAIRING_CODE_MAX_ATTEMPTS)
     }
 }
 
@@ -94,6 +127,7 @@ impl PairingCodeManager {
                 code,
                 created_at: Instant::now(),
                 attempts: 0,
+                locked_until: None,
             };
             let code = pc.code.clone();
             *self.current.lock() = Some(pc);
@@ -104,6 +138,7 @@ impl PairingCodeManager {
                 code: "12345678".into(),
                 created_at: Instant::now(),
                 attempts: 0,
+                locked_until: None,
             };
             let code = pc.code.clone();
             *self.current.lock() = Some(pc);
@@ -143,9 +178,22 @@ impl PairingCodeManager {
         }
         pc.attempts += 1;
         if pc.attempts >= PAIRING_CODE_MAX_ATTEMPTS {
+            // D4：设置锁定到期时刻，达到 MAX_ATTEMPTS 后进入锁定窗口。
+            pc.locked_until =
+                Some(Instant::now() + Duration::from_secs(PAIRING_LOCK_DURATION_SECS));
             PairingCodeState::Locked
         } else {
             PairingCodeState::Wrong
+        }
+    }
+
+    /// D4：当前锁定状态快照。返回 `(is_locked, remaining_secs, remaining_attempts)`。
+    /// `remaining_attempts` 表示已用尝试次数（达到上限时返回 MAX_ATTEMPTS）。
+    pub fn lock_status(&self) -> (bool, u64, u32) {
+        let guard = self.current.lock();
+        match guard.as_ref() {
+            Some(pc) => (pc.is_locked(), pc.remaining_lock_secs(), pc.attempts),
+            None => (false, 0, 0),
         }
     }
 }
@@ -203,5 +251,26 @@ mod tests {
         let m = PairingCodeManager::new();
         assert!(m.set_fixed_code(Some("1234".into())).is_err());
         assert!(m.set_fixed_code(Some("abcdefgh".into())).is_err());
+    }
+
+    /// D4：超限锁定后 lock_status 返回锁定状态与剩余秒数。
+    #[test]
+    fn lock_status_after_max_attempts() {
+        let m = PairingCodeManager::new();
+        let _ = m.issue();
+        // 未锁定前：is_locked=false, remaining_secs=0
+        let (locked, _, attempts) = m.lock_status();
+        assert!(!locked);
+        assert_eq!(attempts, 0);
+        for _ in 0..PAIRING_CODE_MAX_ATTEMPTS {
+            let _ = m.verify("00000000");
+        }
+        let (locked, remaining, attempts) = m.lock_status();
+        assert!(locked);
+        assert_eq!(attempts, PAIRING_CODE_MAX_ATTEMPTS);
+        // 锁定窗口 60s
+        assert!(
+            remaining <= PAIRING_LOCK_DURATION_SECS && remaining > PAIRING_LOCK_DURATION_SECS - 5
+        );
     }
 }

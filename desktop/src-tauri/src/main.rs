@@ -28,9 +28,19 @@ pub const DUMP_ENABLE: bool = DEBUG;
 
 #[cfg(feature = "tauri_app")]
 fn main() {
+    use tauri::Manager;
     soundlink_lib::logging::init();
     install_panic_hook();
     tauri::Builder::default()
+        // 单实例锁定：必须最早注册。二次启动聚焦既有窗口（D2）。
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            if let Some(w) = app.get_webview_window("main") {
+                let _ = w.show();
+                let _ = w.set_focus();
+            }
+        }))
+        // 窗口大小/位置记忆（E2）。
+        .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
@@ -41,6 +51,17 @@ fn main() {
             if let Err(e) = soundlink_lib::commands::tray::setup_tray(app) {
                 tracing::warn!("托盘初始化失败：{}（应用继续启动）", e);
             }
+            // D5：identity 加载失败时通知前端提示用户重新配对。
+            let state: tauri::State<soundlink_lib::commands::AppState> = app.state();
+            if state.identity_load_failed {
+                use tauri::Emitter;
+                let _ = app.emit(
+                    "identity-load-failed",
+                    serde_json::json!({
+                        "message": "设备身份损坏，已使用临时身份。请重新配对所有已信任设备。"
+                    }),
+                );
+            }
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -50,6 +71,11 @@ fn main() {
             soundlink_lib::commands::start_receiver,
             soundlink_lib::commands::stop_receiver,
             soundlink_lib::commands::get_pairing_code,
+            soundlink_lib::commands::get_pairing_lock_status,
+            soundlink_lib::commands::get_app_version,
+            soundlink_lib::commands::get_log_path,
+            soundlink_lib::commands::get_log_preview,
+            soundlink_lib::commands::set_default_capture_source,
             soundlink_lib::commands::get_desktop_settings,
             soundlink_lib::commands::set_pairing_settings,
             soundlink_lib::commands::list_output_devices,

@@ -93,6 +93,9 @@ pub const PAIRING_CODE_TTL_SECS: u64 = 120;
 /// 配对码最大尝试次数。
 pub const PAIRING_CODE_MAX_ATTEMPTS: u32 = 5;
 
+/// 配对码超限锁定时长（秒）。D4：锁定后用户需等待此时长再重试。
+pub const PAIRING_LOCK_DURATION_SECS: u64 = 60;
+
 /// AEAD 密钥长度（字节）。
 pub const AEAD_KEY_LEN: usize = 32;
 

@@ -98,6 +98,25 @@ impl DeviceIdentity {
             signing_key,
         })
     }
+
+    /// 持久化临时身份（D5）：加载失败后用临时身份调用，尝试写盘避免重启后身份变化。
+    /// 不覆盖已存在的 device_id.txt；私钥写 keyring，失败则写 identity.bin 兜底。
+    pub fn try_persist_temp(&self, dir: &PathBuf) -> std::io::Result<()> {
+        fs::create_dir_all(dir)?;
+        let id_path = dir.join("device_id.txt");
+        if !id_path.exists() {
+            fs::write(&id_path, &self.device_id)?;
+        }
+        let key_bytes = self.signing_key.to_bytes();
+        if save_to_keyring(&key_bytes).is_err() {
+            tracing::warn!("临时身份 keyring 写入失败，回退到 identity.bin 文件存储");
+            let key_path = dir.join("identity.bin");
+            if !key_path.exists() {
+                fs::write(&key_path, key_bytes)?;
+            }
+        }
+        Ok(())
+    }
 }
 
 /// 从 keyring 读取私钥；同时从 `device_id.txt` 读取 device_id。

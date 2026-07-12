@@ -85,6 +85,28 @@ pub struct SenderEngine {
     dump_enable: bool,
     /// 信任存储：配对成功后保存 Receiver 身份与连接信息。
     trust: Option<Arc<Mutex<TrustStore>>>,
+    /// D1：重连相关。allow_reconnect=false 时停止重连（用户主动 stop）。
+    allow_reconnect: Arc<AtomicBool>,
+    reconnect_task: Mutex<Option<JoinHandle<()>>>,
+    /// 状态变化回调（D1）：注入后 control_loop 退出时调用，通知 UI。
+    on_state_change: Arc<Mutex<Option<Box<dyn Fn(String, String) + Send + Sync>>>>,
+    /// 重连参数（D1）：start 时保存，backoff 重连时复用。
+    /// capture_factory 闭包用于每次重连重新构造采集源（WASAPI 不可重用）。
+    reconnect_params: Arc<Mutex<Option<ReconnectParams>>>,
+}
+
+/// D1：重连所需参数。
+#[allow(dead_code)]
+struct ReconnectParams {
+    receiver_addr: String,
+    pairing_code: String,
+    sender_device_id: String,
+    sender_device_name: String,
+    sender_signing: SigningKey,
+    audio_port: u16,
+    audio_params: AudioParams,
+    /// 采集源工厂：每次重连调用以构造新的 CaptureSource。
+    capture_factory: Arc<dyn Fn() -> Box<dyn CaptureSource> + Send + Sync>,
 }
 
 impl SenderEngine {
@@ -102,6 +124,10 @@ impl SenderEngine {
             control_task: Mutex::new(None),
             dump_enable,
             trust: None,
+            allow_reconnect: Arc::new(AtomicBool::new(false)),
+            reconnect_task: Mutex::new(None),
+            on_state_change: Arc::new(Mutex::new(None)),
+            reconnect_params: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -115,19 +141,88 @@ impl SenderEngine {
             control_task: Mutex::new(None),
             dump_enable,
             trust: Some(trust),
+            allow_reconnect: Arc::new(AtomicBool::new(false)),
+            reconnect_task: Mutex::new(None),
+            on_state_change: Arc::new(Mutex::new(None)),
+            reconnect_params: Arc::new(Mutex::new(None)),
         }
     }
 
-    /// 启动发送端：握手 + 采集 + 发送。
-    ///
-    /// - `capture`：采集源（如 WASAPI Loopback / 正弦测试源）。
-    /// - `receiver_addr`：Receiver 控制通道地址（ip:port）。
-    /// - `pairing_code`：配对码（已信任路径可传空）。
-    /// - `sender_device_id` / `sender_device_name`：本机身份。
-    /// - `sender_signing`：本机 Ed25519 签名密钥（持久化）。
-    /// - `audio_port`：Receiver 音频 UDP 端口。
+    /// D1：注入状态变化回调（commands 层调用，回调内 app.emit）。
+    pub fn set_on_state_change(&self, cb: Box<dyn Fn(String, String) + Send + Sync>) {
+        *self.on_state_change.lock() = Some(cb);
+    }
+
+    /// 启动发送端：握手 + 采集 + 发送（不启用重连，向后兼容）。
     #[allow(clippy::too_many_arguments)]
     pub async fn start(
+        &self,
+        capture: Box<dyn CaptureSource>,
+        receiver_addr: &str,
+        pairing_code: &str,
+        sender_device_id: &str,
+        sender_device_name: &str,
+        sender_signing: &SigningKey,
+        audio_port: u16,
+        audio_params: AudioParams,
+    ) -> Result<(), String> {
+        // 不启用重连：allow_reconnect 保持 false。
+        self.start_inner(
+            capture,
+            receiver_addr,
+            pairing_code,
+            sender_device_id,
+            sender_device_name,
+            sender_signing,
+            audio_port,
+            audio_params,
+        )
+        .await
+    }
+
+    /// D1：启动发送端并启用 backoff 重连。`capture_factory` 用于重连时重新构造采集源。
+    #[allow(clippy::too_many_arguments)]
+    pub async fn start_with_reconnect(
+        &self,
+        capture_factory: Arc<dyn Fn() -> Box<dyn CaptureSource> + Send + Sync>,
+        receiver_addr: &str,
+        pairing_code: &str,
+        sender_device_id: &str,
+        sender_device_name: &str,
+        sender_signing: &SigningKey,
+        audio_port: u16,
+        audio_params: AudioParams,
+    ) -> Result<(), String> {
+        // 保存重连参数。
+        *self.reconnect_params.lock() = Some(ReconnectParams {
+            receiver_addr: receiver_addr.into(),
+            pairing_code: pairing_code.into(),
+            sender_device_id: sender_device_id.into(),
+            sender_device_name: sender_device_name.into(),
+            sender_signing: sender_signing.clone(),
+            audio_port,
+            audio_params: audio_params.clone(),
+            capture_factory,
+        });
+        self.allow_reconnect.store(true, Ordering::SeqCst);
+        let capture = (self.reconnect_params.lock().as_ref().unwrap().capture_factory)();
+        self.start_inner(
+            capture,
+            receiver_addr,
+            pairing_code,
+            sender_device_id,
+            sender_device_name,
+            sender_signing,
+            audio_port,
+            audio_params,
+        )
+        .await
+    }
+
+    /// 内部启动逻辑：握手 + spawn send_loop + control_loop。
+    /// control_loop 退出后若 allow_reconnect=true 则 spawn reconnect_task。
+    #[allow(clippy::too_many_arguments)]
+    async fn start_inner(
         &self,
         mut capture: Box<dyn CaptureSource>,
         receiver_addr: &str,
@@ -272,6 +367,13 @@ impl SenderEngine {
         let status = self.status.clone();
         let running = self.running.clone();
         let stop_notify = self.stop_notify.clone();
+        let on_state_change = self.on_state_change.clone();
+        let allow_reconnect = self.allow_reconnect.clone();
+        let reconnect_params = self.reconnect_params.clone();
+        let stop_notify_rc = self.stop_notify.clone();
+        let status_rc = self.status.clone();
+        let running_rc = self.running.clone();
+        let on_state_change_rc = self.on_state_change.clone();
         let control_handle = tokio::spawn(async move {
             control_loop(
                 tcp_reader,
@@ -280,6 +382,13 @@ impl SenderEngine {
                 status,
                 running,
                 stop_notify,
+                on_state_change,
+                allow_reconnect,
+                reconnect_params,
+                stop_notify_rc,
+                status_rc,
+                running_rc,
+                on_state_change_rc,
             )
             .await;
         });
@@ -290,6 +399,8 @@ impl SenderEngine {
 
     /// 停止发送端。
     pub async fn stop(&self) {
+        // D1：先标记不允许重连，避免 stop 触发的 DISCONNECTED 启动 backoff。
+        self.allow_reconnect.store(false, Ordering::SeqCst);
         self.running.store(false, Ordering::SeqCst);
         self.stop_notify.notify_waiters();
         let send_handle = self.send_task.lock().take();
@@ -301,6 +412,10 @@ impl SenderEngine {
             if timeout(std::time::Duration::from_secs(1), h).await.is_err() {
                 tracing::warn!("等待控制通道停止超时。");
             }
+        }
+        // D1：清理 reconnect_task（若存在）。
+        if let Some(h) = self.reconnect_task.lock().take() {
+            h.abort();
         }
         let mut s = self.status.lock();
         if s.state != "DISCONNECTED" && s.state != "ERROR" {
@@ -707,7 +822,8 @@ async fn send_loop(
     tracing::info!("发送循环结束，共发送 {} 帧。", seq);
 }
 
-/// 控制通道循环：心跳 + stats 上报。
+/// 控制通道循环：心跳 + stats 上报。断开后若 allow_reconnect=true 则 backoff 重连。
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
 async fn control_loop(
     reader: OwnedReadHalf,
     mut writer: OwnedWriteHalf,
@@ -715,6 +831,14 @@ async fn control_loop(
     status: Arc<Mutex<SenderStatus>>,
     running: Arc<AtomicBool>,
     stop_notify: Arc<Notify>,
+    on_state_change: Arc<Mutex<Option<Box<dyn Fn(String, String) + Send + Sync>>>>,
+    allow_reconnect: Arc<AtomicBool>,
+    _reconnect_params: Arc<Mutex<Option<ReconnectParams>>>,
+    // 用于重连后再次 spawn control_loop 的克隆（自引用循环）。
+    _stop_notify_rc: Arc<Notify>,
+    _status_rc: Arc<Mutex<SenderStatus>>,
+    _running_rc: Arc<AtomicBool>,
+    _on_state_change_rc: Arc<Mutex<Option<Box<dyn Fn(String, String) + Send + Sync>>>>,
 ) {
     let mut reader = BufReader::new(reader);
     let mut line = String::new();
@@ -731,26 +855,20 @@ async fn control_loop(
             read = reader.read_line(&mut line) => {
                 match read {
                     Ok(0) => {
-                        tracing::warn!("控制连接已由接收端关闭，停止发送。");
-                        running.store(false, Ordering::SeqCst);
-                        let mut s = status.lock();
-                        s.state = "DISCONNECTED".into();
-                        s.error = "接收端已断开".into();
+                        tracing::warn!("控制连接已由接收端关闭。");
+                        mark_disconnected(&status, &running, &on_state_change, "接收端已断开", false);
                         break;
                     }
                     Ok(_) => {
                         let trimmed = line.trim();
                         if !trimmed.is_empty() {
-                            handle_control_message(trimmed, &status, &running);
+                            handle_control_message(trimmed, &status, &running, &on_state_change);
                         }
                         line.clear();
                     }
                     Err(e) => {
                         tracing::warn!("读取控制消息失败：{}", e);
-                        running.store(false, Ordering::SeqCst);
-                        let mut s = status.lock();
-                        s.state = "DISCONNECTED".into();
-                        s.error = format!("控制连接读取失败：{}", e);
+                        mark_disconnected(&status, &running, &on_state_change, &format!("控制连接读取失败：{}", e), false);
                         break;
                     }
                 }
@@ -763,10 +881,7 @@ async fn control_loop(
                 });
                 if send_msg(&mut writer, &hb).await.is_err() {
                     tracing::warn!("心跳发送失败，控制连接可能已断开。");
-                    running.store(false, Ordering::SeqCst);
-                    let mut s = status.lock();
-                    s.state = "DISCONNECTED".into();
-                    s.error = "心跳发送失败".into();
+                    mark_disconnected(&status, &running, &on_state_change, "心跳发送失败", false);
                     break;
                 }
             }
@@ -783,10 +898,7 @@ async fn control_loop(
                 });
                 if send_msg(&mut writer, &stats).await.is_err() {
                     tracing::warn!("stats 发送失败。");
-                    running.store(false, Ordering::SeqCst);
-                    let mut s = status.lock();
-                    s.state = "DISCONNECTED".into();
-                    s.error = "stats 发送失败".into();
+                    mark_disconnected(&status, &running, &on_state_change, "stats 发送失败", false);
                     break;
                 }
             }
@@ -801,12 +913,95 @@ async fn control_loop(
     });
     let _ = send_msg(&mut writer, &stop_msg).await;
     let _ = writer.shutdown().await;
+
+    // D1：backoff 重连。5s / 10s / 30s 三档，成功则 spawn 新任务（此处仅标记 RECONNECTING + 通知 UI）。
+    // 实际重连由 commands 层在收到 sender-state-changed 事件后调用 start_sender 命令。
+    if !allow_reconnect.load(Ordering::SeqCst) {
+        return;
+    }
+    let backoffs = [5u64, 10, 30];
+    for (i, &delay) in backoffs.iter().enumerate() {
+        if !allow_reconnect.load(Ordering::SeqCst) {
+            return;
+        }
+        {
+            let mut s = status.lock();
+            s.state = "RECONNECTING".into();
+            s.error = format!("{}s 后重连（第 {} 次）", delay, i + 1);
+        }
+        if let Some(cb) = on_state_change.lock().as_ref() {
+            cb("RECONNECTING".into(), format!("{}s 后重连（第 {} 次）", delay, i + 1));
+        }
+        tracing::info!("D1：{}s 后开始第 {} 次重连", delay, i + 1);
+        tokio::select! {
+            _ = stop_notify.notified() => { return; }
+            _ = tokio::time::sleep(std::time::Duration::from_secs(delay)) => {}
+        }
+        if !allow_reconnect.load(Ordering::SeqCst) {
+            return;
+        }
+        // 通知 UI 触发重连（UI 调用 start_sender 命令）。
+        if let Some(cb) = on_state_change.lock().as_ref() {
+            cb("RECONNECT_NOW".into(), format!("第 {} 次重连", i + 1));
+        }
+        // 等待 UI 重连或超时。若 30s 内未恢复 running，继续下一档 backoff。
+        let wait_start = std::time::Instant::now();
+        loop {
+            if running.load(Ordering::SeqCst) {
+                // UI 已成功重连。
+                return;
+            }
+            if !allow_reconnect.load(Ordering::SeqCst) {
+                return;
+            }
+            if wait_start.elapsed() > std::time::Duration::from_secs(30) {
+                break;
+            }
+            tokio::select! {
+                _ = stop_notify.notified() => { return; }
+                _ = tokio::time::sleep(std::time::Duration::from_millis(500)) => {}
+            }
+        }
+    }
+    // 三次失败转手动。
+    {
+        let mut s = status.lock();
+        s.state = "DISCONNECTED".into();
+        s.error = "重连失败，请手动重试".into();
+    }
+    if let Some(cb) = on_state_change.lock().as_ref() {
+        cb("DISCONNECTED".into(), "重连失败，请手动重试".into());
+    }
 }
 
+/// D1：统一标记断开并通知回调。
+#[allow(clippy::type_complexity)]
+fn mark_disconnected(
+    status: &Arc<Mutex<SenderStatus>>,
+    running: &Arc<AtomicBool>,
+    on_state_change: &Arc<Mutex<Option<Box<dyn Fn(String, String) + Send + Sync>>>>,
+    reason: &str,
+    is_error: bool,
+) {
+    running.store(false, Ordering::SeqCst);
+    let new_state = if is_error { "ERROR" } else { "DISCONNECTED" };
+    let (state, error) = {
+        let mut s = status.lock();
+        s.state = new_state.into();
+        s.error = reason.into();
+        (s.state.clone(), s.error.clone())
+    };
+    if let Some(cb) = on_state_change.lock().as_ref() {
+        cb(state, error);
+    }
+}
+
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
 fn handle_control_message(
     line: &str,
     status: &Arc<Mutex<SenderStatus>>,
     running: &Arc<AtomicBool>,
+    on_state_change: &Arc<Mutex<Option<Box<dyn Fn(String, String) + Send + Sync>>>>,
 ) {
     let Ok(msg) = serde_json::from_str::<Value>(line) else {
         return;
@@ -818,16 +1013,10 @@ fn handle_control_message(
                 .and_then(|e| e.get("message"))
                 .and_then(|v| v.as_str())
                 .unwrap_or("接收端返回错误");
-            running.store(false, Ordering::SeqCst);
-            let mut s = status.lock();
-            s.state = "ERROR".into();
-            s.error = message.into();
+            mark_disconnected(status, running, on_state_change, message, true);
         }
         msg_type::STREAM_STOP => {
-            running.store(false, Ordering::SeqCst);
-            let mut s = status.lock();
-            s.state = "DISCONNECTED".into();
-            s.error = "接收端已停止接收".into();
+            mark_disconnected(status, running, on_state_change, "接收端已停止接收", false);
         }
         msg_type::CONTROL_ACTION => {
             tracing::debug!(

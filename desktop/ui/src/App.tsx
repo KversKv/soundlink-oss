@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import "./App.css";
 import SettingsPanel, { type AppSettings } from "./components/SettingsPanel";
+import Onboarding from "./components/Onboarding";
 import CloseDialog from "./components/CloseDialog";
 import { mapError } from "./utils/errorMap";
 
@@ -128,6 +129,18 @@ function StatCard({ label, value }: { label: string; value: string | number }) {
   );
 }
 
+/// E6：空状态占位卡片。
+function EmptyState({ hint }: { hint: string }) {
+  return (
+    <section className="panel-card stats-card empty-state-card">
+      <div className="empty-state-icon" aria-hidden="true" style={{ opacity: 0.4, fontSize: 28 }}>
+        ○
+      </div>
+      <p style={{ margin: 0, color: "#888", fontSize: 13 }}>{hint}</p>
+    </section>
+  );
+}
+
 export default function App() {
   const [role, setRole] = useState<Role>("receiver");
 
@@ -158,6 +171,16 @@ export default function App() {
   const [view, setView] = useState<"main" | "settings">("main");
   const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
   const [closeDialogOpen, setCloseDialogOpen] = useState(false);
+  // D4：配对锁定状态。null 表示未锁定；number>0 表示剩余锁定秒数。
+  const [pairingLockRemaining, setPairingLockRemaining] = useState<number | null>(null);
+  // E5：长任务进行中标记。空字符串表示无任务；非空时禁用所有动作按钮。
+  const [actionPending, setActionPending] = useState<string>("");
+  // E3：是否显示首次引导。
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  // F6：DRM 提示模态是否显示（首次点开始发送时弹）。
+  const [drmHintOpen, setDrmHintOpen] = useState(false);
+  // F6：DRM 提示确认后回调 pending（确认后再执行 startSender）。
+  const [drmPendingStart, setDrmPendingStart] = useState<() => void>(() => () => {});
 
   useEffect(() => {
     invoke<OutputDevice[]>("list_output_devices")
@@ -187,6 +210,16 @@ export default function App() {
     invoke<string>("get_role")
       .then((r) => setRole(r as Role))
       .catch(() => {});
+    // D4：启动时查询配对锁定状态，若已锁定则恢复倒计时显示。
+    invoke<{ is_locked: boolean; remaining_secs: number; attempts: number }>(
+      "get_pairing_lock_status"
+    )
+      .then((st) => {
+        if (st.is_locked && st.remaining_secs > 0) {
+          setPairingLockRemaining(st.remaining_secs);
+        }
+      })
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -198,17 +231,73 @@ export default function App() {
       .catch(() => {});
   }, []);
 
-  // 监听 Rust 端 emit 的事件：关闭请求 + 托盘「设置…」点击。
+  // 监听 Rust 端 emit 的事件：关闭请求 + 托盘「设置…」点击 + identity 加载失败（D5）+ sender 状态变化（D1）+ 配对锁定（D4）。
   useEffect(() => {
     const unlistenClose = listen("close-requested", () => setCloseDialogOpen(true));
     const unlistenTray = listen<{ kind: string }>("tray-menu-click", (e) => {
       if (e.payload.kind === "Settings") setView("settings");
     });
+    const unlistenIdentity = listen<{ message: string }>("identity-load-failed", (e) => {
+      setError(e.payload.message);
+    });
+    // D4：配对超限锁定，后端推送剩余秒数。
+    const unlistenPairingLock = listen<{ remaining_secs: number; remaining_attempts: number }>(
+      "pairing-locked",
+      (e) => {
+        setPairingLockRemaining(e.payload.remaining_secs);
+        setError(`配对已锁定，请在 ${e.payload.remaining_secs} 秒后重试`);
+      }
+    );
+    // D1：sender 状态变化（DISCONNECTED/RECONNECTING/RECONNECT_NOW）。
+    const unlistenSenderState = listen<{ state: string; error: string }>(
+      "sender-state-changed",
+      (e) => {
+        const { state, error } = e.payload;
+        if (state === "RECONNECTING") {
+          setError(`重连中：${error}`);
+        } else if (state === "RECONNECT_NOW") {
+          // 后端 backoff 倒计时结束，触发自动重连（用 last_receiver_addr + 空配对码走已信任路径）。
+          setError(`正在${error}…`);
+          invoke("start_sender", {
+            receiverAddr,
+            pairingCode: "",
+            captureSource: selectedSource,
+          })
+            .then(() => {
+              setSenderRunning(true);
+              setError("");
+            })
+            .catch((err) => {
+              setError(mapError(err));
+            });
+        } else if (state === "DISCONNECTED" || state === "ERROR") {
+          setSenderRunning(false);
+          setError(error);
+        }
+      }
+    );
     return () => {
       unlistenClose.then((fn) => fn());
       unlistenTray.then((fn) => fn());
+      unlistenIdentity.then((fn) => fn());
+      unlistenPairingLock.then((fn) => fn());
+      unlistenSenderState.then((fn) => fn());
     };
-  }, []);
+  }, [receiverAddr, selectedSource]);
+
+  // D4：配对锁定倒计时。每秒减 1，到 0 时清空锁定状态并清除错误提示。
+  useEffect(() => {
+    if (pairingLockRemaining === null) return;
+    if (pairingLockRemaining <= 0) {
+      setPairingLockRemaining(null);
+      setError("");
+      return;
+    }
+    const timer = setInterval(() => {
+      setPairingLockRemaining((prev) => (prev === null ? null : prev - 1));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [pairingLockRemaining]);
 
   // 自启动后自动收发（前端驱动）：mount 时读 AppSettings，按需触发既有命令。
   useEffect(() => {
@@ -218,6 +307,11 @@ export default function App() {
         const s = await invoke<AppSettings>("get_app_settings");
         if (cancelled) return;
         setAppSettings(s);
+        // E3：未完成首次引导则显示 Onboarding。
+        if (!s.onboarding_completed) {
+          setShowOnboarding(true);
+          return; // 不进入自启动逻辑，等引导完成。
+        }
         // 仅在用户开启对应开关时尝试自动启动；失败仅打日志不阻塞。
         if (s.auto_receive_on_start) {
           try {
@@ -284,6 +378,7 @@ export default function App() {
 
   async function start() {
     setError("");
+    setActionPending("start");
     try {
       const r = await invoke<StartResult>("start_receiver");
       setPairingCode(r.pairing_code);
@@ -291,17 +386,22 @@ export default function App() {
       setRunning(true);
     } catch (e) {
       setError(mapError(e));
+    } finally {
+      setActionPending("");
     }
   }
 
   async function stop() {
     setError("");
+    setActionPending("stop");
     try {
       await invoke("stop_receiver");
       setRunning(false);
       setStatus(null);
     } catch (e) {
       setError(mapError(e));
+    } finally {
+      setActionPending("");
     }
   }
 
@@ -409,6 +509,18 @@ export default function App() {
       setError("请输入或选择 Receiver 地址");
       return;
     }
+    // F6：首次开始发送时弹 DRM 提示；确认后再实际启动。
+    if (appSettings && !appSettings.sender_drm_hint_seen) {
+      setDrmPendingStart(() => () => doStartSender());
+      setDrmHintOpen(true);
+      return;
+    }
+    doStartSender();
+  }
+
+  async function doStartSender() {
+    setError("");
+    setActionPending("startSender");
     try {
       await invoke("start_sender", {
         receiverAddr,
@@ -419,11 +531,14 @@ export default function App() {
       loadTrustedReceivers();
     } catch (e) {
       setError(mapError(e));
+    } finally {
+      setActionPending("");
     }
   }
 
   async function stopSender() {
     setError("");
+    setActionPending("stopSender");
     try {
       await invoke("stop_sender");
       setSenderRunning(false);
@@ -431,6 +546,8 @@ export default function App() {
       loadTrustedReceivers();
     } catch (e) {
       setError(mapError(e));
+    } finally {
+      setActionPending("");
     }
   }
 
@@ -452,6 +569,7 @@ export default function App() {
     const addr = `${dev.host}:${dev.control_port}`;
     setReceiverAddr(addr);
     setSenderPairingCode("");
+    setActionPending("connectTrusted");
     try {
       await invoke("connect_trusted_receiver", {
         deviceId: dev.device_id,
@@ -461,6 +579,8 @@ export default function App() {
       loadTrustedReceivers();
     } catch (e) {
       setError(mapError(e));
+    } finally {
+      setActionPending("");
     }
   }
 
@@ -520,7 +640,22 @@ export default function App() {
           )}
         </header>
 
-        {view === "settings" ? (
+        {showOnboarding ? (
+          <Onboarding
+            role={role}
+            onRoleChange={(r) => setRole(r)}
+            selectedDevice={selectedDevice}
+            onSelectDevice={(idx) => setSelectedDevice(idx)}
+            selectedCaptureSource={selectedSource}
+            onSelectCaptureSource={(id) => setSelectedSource(id)}
+            onFinish={async () => {
+              // 刷新 appSettings（onboarding 内已设 onboarding_completed=true）。
+              const s = await invoke<AppSettings>("get_app_settings");
+              setAppSettings(s);
+              setShowOnboarding(false);
+            }}
+          />
+        ) : view === "settings" ? (
           <SettingsPanel
             settings={appSettings}
             onChange={async (next) => {
@@ -529,6 +664,8 @@ export default function App() {
                 autoStart: next.auto_start ?? null,
                 autoReceiveOnStart: next.auto_receive_on_start ?? null,
                 autoSendOnStart: next.auto_send_on_start ?? null,
+                onboardingCompleted: next.onboarding_completed ?? null,
+                senderDrmHintSeen: next.sender_drm_hint_seen ?? null,
               });
               setAppSettings(saved);
             }}
@@ -561,6 +698,23 @@ export default function App() {
                 <span>{formatPairingCode(pairingCode)}</span>
                 <small>设备 ID：{deviceId || "—"}</small>
               </div>
+              {pairingLockRemaining !== null && pairingLockRemaining > 0 && (
+                <div
+                  className="pairing-locked-card"
+                  role="alert"
+                  style={{
+                    marginTop: 8,
+                    padding: "8px 12px",
+                    border: "1px solid #d33",
+                    borderRadius: 6,
+                    background: "#fff0f0",
+                    color: "#a00",
+                    fontSize: 13,
+                  }}
+                >
+                  配对已锁定，请在 {pairingLockRemaining} 秒后重试。
+                </div>
+              )}
               <div className="pairing-settings">
                 <label>
                   <span>模式</span>
@@ -673,12 +827,17 @@ export default function App() {
               className={`primary-action ${activeReceiver ? "danger" : "success"}`}
               onClick={activeReceiver ? stop : start}
               type="button"
+              disabled={!!actionPending}
             >
-              <span aria-hidden="true">{activeReceiver ? "□" : "▷"}</span>
-              {activeReceiver ? "停止接收" : "开始接收"}
+              <span aria-hidden="true">{actionPending ? "…" : activeReceiver ? "□" : "▷"}</span>
+              {actionPending === "start" || actionPending === "stop"
+                ? "处理中…"
+                : activeReceiver
+                ? "停止接收"
+                : "开始接收"}
             </button>
 
-            {status && (
+            {status ? (
               <section className="panel-card stats-card">
                 <h2>状态</h2>
                 <div className="stats-grid">
@@ -696,6 +855,8 @@ export default function App() {
                   <StatCard label="Jitter 模式" value={status.jitter_mode} />
                 </div>
               </section>
+            ) : (
+              <EmptyState hint={running ? "等待音频流…" : "点击上方按钮开始接收"} />
             )}
           </div>
         )}
@@ -799,6 +960,23 @@ export default function App() {
                   disabled={senderRunning}
                 />
               </label>
+              {pairingLockRemaining !== null && pairingLockRemaining > 0 && (
+                <div
+                  className="pairing-locked-card"
+                  role="alert"
+                  style={{
+                    marginTop: 8,
+                    padding: "8px 12px",
+                    border: "1px solid #d33",
+                    borderRadius: 6,
+                    background: "#fff0f0",
+                    color: "#a00",
+                    fontSize: 13,
+                  }}
+                >
+                  配对已锁定，请在 {pairingLockRemaining} 秒后重试。
+                </div>
+              )}
             </section>
 
             <section className="panel-card settings-card">
@@ -835,12 +1013,19 @@ export default function App() {
               className={`primary-action ${activeSender ? "danger" : "send"}`}
               onClick={activeSender ? stopSender : startSender}
               type="button"
+              disabled={!!actionPending}
             >
-              <span aria-hidden="true">{activeSender ? "□" : "▷"}</span>
-              {activeSender ? "停止发送" : "开始发送"}
+              <span aria-hidden="true">{actionPending ? "…" : activeSender ? "□" : "▷"}</span>
+              {actionPending === "startSender" ||
+              actionPending === "stopSender" ||
+              actionPending === "connectTrusted"
+                ? "处理中…"
+                : activeSender
+                ? "停止发送"
+                : "开始发送"}
             </button>
 
-            {senderStatus && (
+            {senderStatus ? (
               <section className="panel-card stats-card">
                 <h2>发送端状态</h2>
                 <div className="stats-grid">
@@ -853,6 +1038,8 @@ export default function App() {
                   {senderStatus.error && <StatCard label="错误" value={senderStatus.error} />}
                 </div>
               </section>
+            ) : (
+              <EmptyState hint={senderRunning ? "正在连接…" : "点击上方按钮开始发送"} />
             )}
           </div>
         )}
@@ -872,6 +1059,55 @@ export default function App() {
               await invoke("quit_app");
             }}
           />
+        )}
+
+        {/* F6：DRM 受保护内容提示模态（首次开始发送时弹）。 */}
+        {drmHintOpen && (
+          <div
+            className="close-dialog-overlay"
+            role="dialog"
+            aria-modal="true"
+            style={{
+              position: "fixed",
+              inset: 0,
+              background: "rgba(0,0,0,0.4)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              zIndex: 1000,
+            }}
+          >
+            <div
+              className="panel-card"
+              style={{ maxWidth: 380, padding: 20, textAlign: "center" }}
+            >
+              <h3 style={{ marginTop: 0 }}>DRM 受保护内容提示</h3>
+              <p style={{ fontSize: 13, color: "#555", lineHeight: 1.6 }}>
+                部分受 DRM 保护的应用音频可能无法采集，这是 Windows 系统限制，非软件问题。
+              </p>
+              <button
+                type="button"
+                className="primary-action success"
+                onClick={async () => {
+                  setDrmHintOpen(false);
+                  // 标记已展示，避免后续重复弹窗。
+                  const saved = await invoke<AppSettings>("set_app_settings", {
+                    closeAction: null,
+                    autoStart: null,
+                    autoReceiveOnStart: null,
+                    autoSendOnStart: null,
+                    onboardingCompleted: null,
+                    senderDrmHintSeen: true,
+                  });
+                  setAppSettings(saved);
+                  // 执行 pending 启动。
+                  drmPendingStart();
+                }}
+              >
+                我已了解
+              </button>
+            </div>
+          </div>
         )}
 
         {error && <div className="error-banner">错误：{error}</div>}
