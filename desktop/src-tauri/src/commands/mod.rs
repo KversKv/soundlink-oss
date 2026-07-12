@@ -436,14 +436,22 @@ pub fn list_output_devices(_state: State<'_, AppState>) -> Result<Vec<OutputDevi
 }
 
 /// 选择输出设备（索引，对应 list_output_devices 的顺序）。
+/// `index=None`（前端传 null）时清除选择，回退到系统默认设备。
+/// 防御性设计：避免前端意外传 null 时反序列化失败阻断 onboarding 等流程。
 #[tauri::command]
-pub fn select_output_device(state: State<'_, AppState>, index: usize) -> Result<(), String> {
+pub fn select_output_device(
+    state: State<'_, AppState>,
+    index: Option<usize>,
+) -> Result<(), String> {
     let s = state.inner();
-    *s.selected_device.lock() = Some(index);
-    s.config.lock().default_output_device = Some(index);
+    *s.selected_device.lock() = index;
+    s.config.lock().default_output_device = index;
     save_config(s)?;
     if s.engine.is_running() {
-        tracing::info!("输出设备切换：{}（下个流生效）", index);
+        match index {
+            Some(i) => tracing::info!("输出设备切换：{}（下个流生效）", i),
+            None => tracing::info!("输出设备已重置为默认"),
+        }
     }
     Ok(())
 }

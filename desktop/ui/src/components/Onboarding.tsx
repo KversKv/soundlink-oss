@@ -46,6 +46,8 @@ export default function Onboarding({
   const [busy, setBusy] = useState(false);
   // F6：DRM 提示已展示（sender 模式步骤 1 自动标记）。
   const [drmHintSeen, setDrmHintSeen] = useState(false);
+  // 完成失败时显示的错误信息（如配置写入失败）。
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     invoke<OutputDeviceInfo[]>("list_output_devices")
@@ -68,6 +70,7 @@ export default function Onboarding({
 
   const finish = async () => {
     setBusy(true);
+    setError(null);
     try {
       // 持久化角色。
       await invoke("set_role", { role });
@@ -85,6 +88,8 @@ export default function Onboarding({
         senderDrmHintSeen: role === "sender" ? true : drmHintSeen,
       });
       onFinish();
+    } catch (e) {
+      setError(typeof e === "string" ? e : "保存设置失败，请重试或查看日志。");
     } finally {
       setBusy(false);
     }
@@ -235,6 +240,25 @@ export default function Onboarding({
           </button>
         )}
       </div>
+
+      {/* 错误提示：完成失败时显示，避免用户误以为软件卡死 */}
+      {error && (
+        <div
+          role="alert"
+          style={{
+            marginTop: 12,
+            padding: "8px 12px",
+            border: "1px solid #e8a8a8",
+            borderRadius: 6,
+            background: "#fdeaea",
+            color: "#8a2222",
+            fontSize: 13,
+            lineHeight: 1.5,
+          }}
+        >
+          {error}
+        </div>
+      )}
     </div>
   );
 }

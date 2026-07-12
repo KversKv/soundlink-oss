@@ -1,4 +1,5 @@
 //! 配对码生成与校验。8 位数字，有效期 120s，尝试 5 次后失效。
+//! 长期配对码（fixed 模式）永不过期，校验成功后保留可复用，仍受错误锁定约束。
 //! 对齐 `docs/First/11-implementation-spec.md` §1 / §5。
 
 use crate::constants::{
@@ -16,6 +17,8 @@ pub struct PairingCode {
     pub attempts: u32,
     /// D4：超限锁定到期时刻。None 表示未锁定；Some(t) 表示在 t 之前不可重试。
     pub locked_until: Option<Instant>,
+    /// 是否为长期配对码（fixed 模式）。长期码永不过期，verify 成功后保留可复用。
+    pub is_long_term: bool,
 }
 
 impl PairingCode {
@@ -28,10 +31,15 @@ impl PairingCode {
             created_at: Instant::now(),
             attempts: 0,
             locked_until: None,
+            is_long_term: false,
         }
     }
 
     pub fn is_expired(&self) -> bool {
+        // 长期配对码永不过期。
+        if self.is_long_term {
+            return false;
+        }
         self.created_at.elapsed() > Duration::from_secs(PAIRING_CODE_TTL_SECS)
     }
 
@@ -128,6 +136,7 @@ impl PairingCodeManager {
                 created_at: Instant::now(),
                 attempts: 0,
                 locked_until: None,
+                is_long_term: true,
             };
             let code = pc.code.clone();
             *self.current.lock() = Some(pc);
@@ -139,6 +148,7 @@ impl PairingCodeManager {
                 created_at: Instant::now(),
                 attempts: 0,
                 locked_until: None,
+                is_long_term: false,
             };
             let code = pc.code.clone();
             *self.current.lock() = Some(pc);
@@ -172,8 +182,15 @@ impl PairingCodeManager {
             return PairingCodeState::Expired;
         }
         if pc.code == input {
-            // 校验通过，作废当前码（一次性）。
-            *guard = None;
+            // 长期配对码校验通过后保留可复用：重置尝试次数与创建时间，不清空 current。
+            if pc.is_long_term {
+                pc.created_at = Instant::now();
+                pc.attempts = 0;
+                pc.locked_until = None;
+            } else {
+                // 随机码一次性：校验通过后作废。
+                *guard = None;
+            }
             return PairingCodeState::Ok;
         }
         pc.attempts += 1;
@@ -215,7 +232,7 @@ mod tests {
         let c = m.issue();
         assert_eq!(c.len(), PAIRING_CODE_DIGITS);
         assert_eq!(m.verify(&c), PairingCodeState::Ok);
-        // 一次性：再次校验同码应过期（已作废）
+        // 随机码一次性：再次校验同码应过期（已作废）
         assert_eq!(m.verify(&c), PairingCodeState::Expired);
     }
 
@@ -233,7 +250,7 @@ mod tests {
     fn debug_mode_issues_fixed_code() {
         let m = PairingCodeManager::with_debug(true);
         assert_eq!(m.issue(), "12345678");
-        // 固定码同样可被校验通过。
+        // debug 固定码（非 long_term）同样可被校验通过，且一次性消费。
         assert_eq!(m.verify("12345678"), PairingCodeState::Ok);
     }
 
@@ -251,6 +268,36 @@ mod tests {
         let m = PairingCodeManager::new();
         assert!(m.set_fixed_code(Some("1234".into())).is_err());
         assert!(m.set_fixed_code(Some("abcdefgh".into())).is_err());
+    }
+
+    /// 长期配对码校验成功后保留可复用：连续多次校验均返回 Ok。
+    #[test]
+    fn long_term_code_reusable_after_verify() {
+        let m = PairingCodeManager::new();
+        m.set_fixed_code(Some("87654321".into())).unwrap();
+        let c = m.issue();
+        assert_eq!(c, "87654321");
+        // 同一长期码可被多次校验通过
+        for _ in 0..3 {
+            assert_eq!(m.verify("87654321"), PairingCodeState::Ok);
+        }
+        // current 仍存在且未过期（长期码永不过期）
+        assert_eq!(m.current().as_deref(), Some("87654321"));
+    }
+
+    /// 长期配对码错误尝试触发锁定后，锁定状态下仍不可校验通过。
+    #[test]
+    fn long_term_code_lock_after_max_attempts() {
+        let m = PairingCodeManager::new();
+        m.set_fixed_code(Some("87654321".into())).unwrap();
+        let _ = m.issue();
+        for _ in 0..(PAIRING_CODE_MAX_ATTEMPTS - 1) {
+            assert_eq!(m.verify("00000000"), PairingCodeState::Wrong);
+        }
+        // 第 5 次错误触发锁定
+        assert_eq!(m.verify("00000000"), PairingCodeState::Locked);
+        // 锁定期间，即便输入正确码也返回 Locked
+        assert_eq!(m.verify("87654321"), PairingCodeState::Locked);
     }
 
     /// D4：超限锁定后 lock_status 返回锁定状态与剩余秒数。

@@ -467,7 +467,7 @@ export default function App() {
   async function savePairingSettings(nextMode = pairingMode, nextCode = fixedPairingCode) {
     setError("");
     if (nextMode === "fixed" && !/^\d{8}$/.test(nextCode)) {
-      setError("固定配对码需要 8 位数字");
+      setError("长期配对码需要 8 位数字");
       return;
     }
     try {
@@ -760,11 +760,11 @@ export default function App() {
                     }}
                   >
                     <option value="random">随机配对码</option>
-                    <option value="fixed">固定配对码</option>
+                    <option value="fixed">长期配对码</option>
                   </select>
                 </label>
                 <label>
-                  <span>固定码</span>
+                  <span>长期码</span>
                   <input
                     value={fixedPairingCode}
                     onChange={(e) => setFixedPairingCode(e.target.value.replace(/\D/g, "").slice(0, 8))}
@@ -773,7 +773,7 @@ export default function App() {
                     disabled={pairingMode !== "fixed"}
                   />
                 </label>
-                <small>固定码会保存在本机配置文件中，仍遵守有效期与尝试次数限制。</small>
+                <small>长期码会保存在本机配置中，可重复使用且不受 120 秒有效期限制；错误 5 次仍会触发 60 秒锁定。</small>
               </div>
             </section>
 

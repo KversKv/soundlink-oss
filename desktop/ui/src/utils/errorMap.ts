@@ -44,7 +44,8 @@ const ERROR_MAP: ErrorMapEntry[] = [
   { match: "创建配置目录失败", message: "配置目录创建失败，可能权限不足" },
   { match: "写入配置失败", message: "配置保存失败，可能权限不足或磁盘已满" },
   // 输入校验类
-  { match: "固定配对码需要 8 位数字", message: "固定配对码需要 8 位数字" },
+  { match: "固定配对码需要 8 位数字", message: "长期配对码需要 8 位数字" },
+  { match: "长期配对码需要 8 位数字", message: "长期配对码需要 8 位数字" },
   { match: "请输入或选择 Receiver 地址", message: "请输入或选择 Receiver 地址" },
   { match: "已信任设备缺少连接信息", message: "已信任设备缺少连接信息，请重新配对" },
 ];
