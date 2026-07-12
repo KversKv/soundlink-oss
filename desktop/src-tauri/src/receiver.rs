@@ -33,9 +33,11 @@ use tokio::task::JoinHandle;
 
 /// 调试保存器：把接收链路各阶段数据落盘，便于诊断杂音/错位问题。
 ///
-/// 启用条件（任一成立）：
+/// 启用条件（任一成立，**仅 debug 构建有效**）：
 /// - `dump_enable = true`（来自 main.rs 的 `DUMP_ENABLE`）
 /// - 环境变量 `SOUNDLINK_DUMP=1`（兼容旧用法）
+///
+/// release 构建通过 `#[cfg(debug_assertions)]` 完全剪除，避免环境变量后门。
 ///
 /// 保存三类文件（覆盖写）：
 /// - `soundlink_opus.bin`：原始 Opus 帧，每帧前 4 字节小端长度前缀
@@ -67,7 +69,12 @@ enum DumpMsg {
 
 impl DebugDumper {
     fn new(dump_enable: bool) -> Option<Self> {
-        let env_on = std::env::var("SOUNDLINK_DUMP").ok().as_deref() == Some("1");
+        // release 构建完全剪除环境变量后门：仅 debug 构建允许通过环境变量强制开启。
+        let env_on = if cfg!(debug_assertions) {
+            std::env::var("SOUNDLINK_DUMP").ok().as_deref() == Some("1")
+        } else {
+            false
+        };
         if !dump_enable && !env_on {
             return None;
         }
@@ -278,7 +285,7 @@ impl ReceiverEngine {
     }
 
     /// `dump_enable = true` 时启用音频各阶段 RAW Data 转储。
-    /// 仍可用环境变量 `SOUNDLINK_DUMP=1` 强制开启（兼容旧用法）。
+    /// 环境变量 `SOUNDLINK_DUMP=1` 仅在 debug 构建生效（release 完全剪除后门）。
     pub fn with_dump(dump_enable: bool) -> Self {
         Self {
             status: Arc::new(Mutex::new(ReceiverStatus::default())),

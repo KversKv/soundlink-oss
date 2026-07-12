@@ -22,12 +22,14 @@ pub const DEBUG: bool = false;
 /// 发送端把采集 PCM / Opus 帧写到 `soundlink_sender_pcm.raw` / `soundlink_sender_opus.bin`。
 ///
 /// 默认跟随 [DEBUG]；如需在非 DEBUG 模式下独立开启转储，改为显式 `true`。
-/// 仍可用环境变量 `SOUNDLINK_DUMP=1` 强制开启（兼容旧用法）。
+/// 环境变量 `SOUNDLINK_DUMP=1` 仅在 debug 构建生效（release 构建通过 `cfg!(debug_assertions)`
+/// 完全剪除，避免环境变量后门绕过）。
 pub const DUMP_ENABLE: bool = DEBUG;
 
 #[cfg(feature = "tauri_app")]
 fn main() {
     soundlink_lib::logging::init();
+    install_panic_hook();
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_autostart::init(
@@ -84,6 +86,51 @@ fn main() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+/// 安装 panic hook：panic 时把消息与调用栈写到 `%APPDATA%\soundlink\crash-<ts>.log`。
+/// P0 安全红线修复（NF-01 B6）：原 `.expect(...)` panic 后无堆栈收集。
+#[cfg(feature = "tauri_app")]
+fn install_panic_hook() {
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let payload = info.payload();
+        let msg = if let Some(s) = payload.downcast_ref::<&str>() {
+            (*s).to_string()
+        } else if let Some(s) = payload.downcast_ref::<String>() {
+            s.clone()
+        } else {
+            "<non-string panic payload>".to_string()
+        };
+        let location = info
+            .location()
+            .map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()))
+            .unwrap_or_else(|| "<unknown>".into());
+        let backtrace = std::backtrace::Backtrace::force_capture();
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let dir = dirs::config_dir()
+            .map(|mut p| {
+                p.push("soundlink");
+                let _ = std::fs::create_dir_all(&p);
+                p
+            })
+            .unwrap_or_else(|| std::path::PathBuf::from("."));
+        let crash_path = dir.join(format!("crash-{}.log", timestamp));
+        let log = format!(
+            "SoundLink Crash Report\nTimestamp: {}\nMessage: {}\nLocation: {}\n\nBacktrace:\n{}\n",
+            timestamp, msg, location, backtrace
+        );
+        if let Err(e) = std::fs::write(&crash_path, &log) {
+            eprintln!("写入崩溃日志失败：{} -> {:?}", e, crash_path);
+        } else {
+            eprintln!("崩溃日志已写入：{:?}", crash_path);
+        }
+        // 调用默认 hook 保持默认行为（打印到 stderr）。
+        default_hook(info);
+    }));
 }
 
 // 无 Tauri 外壳时：打印用法提示。

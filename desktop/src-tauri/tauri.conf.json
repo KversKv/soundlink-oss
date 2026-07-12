@@ -22,12 +22,27 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self'; script-src 'self'; connect-src 'self' ipc: http://ipc.localhost; img-src 'self' data:; style-src 'self' 'unsafe-inline'"
     }
   },
   "bundle": {
     "active": true,
     "targets": "all",
-    "icon": ["icons/icon.png"]
+    "icon": ["icons/icon.png", "icons/icon.ico", "icons/icon.icns"],
+    "publisher": "SoundLink",
+    "copyright": "Copyright © 2026 SoundLink",
+    "category": "AudioVideo",
+    "shortDescription": "局域网音频流转",
+    "longDescription": "SoundLink 是面向头戴式耳机用户的局域网音频流转软件，支持手机音频通过局域网传输到电脑音频设备，以及电脑到电脑互传。",
+    "windows": {
+      "nsis": {
+        "installerIcon": "icons/icon.ico",
+        "languages": ["SimpChinese", "English"],
+        "displayLanguageSelector": true,
+        "installMode": "perMachine"
+      },
+      "certificateThumbprint": null,
+      "timestampUrl": "http://timestamp.digicert.com"
+    }
   }
 }

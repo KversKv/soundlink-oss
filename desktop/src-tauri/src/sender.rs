@@ -464,34 +464,43 @@ impl SenderEngine {
             .to_string();
 
         // 身份一致性校验：若本地已信任该 Receiver，核对公钥是否匹配。
+        // P0 安全红线修复（NF-01 A5）：公钥不一致直接拒绝，阻断中间人攻击。
         if let Some(saved_pub) = &locally_trusted_pub {
             if !saved_pub.is_empty() && saved_pub.as_str() != receiver_identity_pub_b64.as_str() {
-                tracing::warn!(
-                    "Receiver 身份公钥与已保存的不匹配！可能中间人攻击。saved={} recv={}",
+                tracing::error!(
+                    "Receiver 身份公钥与已保存的不匹配，拒绝连接（疑似中间人攻击）。saved={} recv={}",
                     saved_pub,
                     receiver_identity_pub_b64
                 );
+                return Err(format!(
+                    "Receiver 身份公钥与已保存的不匹配（疑似中间人攻击），请删除该已信任设备后重新配对。saved={} recv={}",
+                    saved_pub,
+                    receiver_identity_pub_b64
+                ));
             }
         }
 
         // 校验 receiver_proof（防中间人）。
-        if let Some(rp_b64) = pair_resp["proof"].as_str() {
-            let rp_bytes = STANDARD
-                .decode(rp_b64)
-                .map_err(|e| format!("解码 receiver proof 失败：{}", e))?;
-            if rp_bytes.len() == 32 {
-                let mut rp_arr = [0u8; 32];
-                rp_arr.copy_from_slice(&rp_bytes);
-                if !verify_receiver_proof(
-                    &pairing_secret,
-                    &receiver_pub,
-                    &send_kp.public,
-                    &receiver_device_id,
-                    &rp_arr,
-                ) {
-                    return Err("receiver_proof 校验失败（可能中间人）".into());
-                }
-            }
+        // P0 安全红线修复（NF-01 A5）：proof 缺失或长度异常视为不可信，要求重新配对。
+        let rp_b64 = pair_resp["proof"]
+            .as_str()
+            .ok_or_else(|| "pair_response 缺少 proof 字段（不可信，请重新配对）".to_string())?;
+        let rp_bytes = STANDARD
+            .decode(rp_b64)
+            .map_err(|e| format!("解码 receiver proof 失败：{}", e))?;
+        if rp_bytes.len() != 32 {
+            return Err("receiver_proof 长度非 32 字节（不可信，请重新配对）".into());
+        }
+        let mut rp_arr = [0u8; 32];
+        rp_arr.copy_from_slice(&rp_bytes);
+        if !verify_receiver_proof(
+            &pairing_secret,
+            &receiver_pub,
+            &send_kp.public,
+            &receiver_device_id,
+            &rp_arr,
+        ) {
+            return Err("receiver_proof 校验失败（可能中间人，请重新配对）".into());
         }
 
         // 派生会话密钥。
@@ -590,6 +599,8 @@ async fn send_loop(
     let mut ticker = interval(std::time::Duration::from_millis(10));
 
     // 调试：开启时把采集 PCM / Opus 帧写到当前工作目录（覆盖写）。
+    // 注意：release 构建下 dump_enable 始终为 false（由 main.rs DUMP_ENABLE 控制，
+    // 且环境变量后门已在 receiver.rs 中通过 cfg!(debug_assertions) 剪除）。
     let mut pcm_dump: Option<std::fs::File> = None;
     let mut opus_dump: Option<std::fs::File> = None;
     if dump_enable {
@@ -895,11 +906,11 @@ mod tests {
         assert_eq!(e.status().state, "IDLE");
     }
 
-    #[test]
-    fn stop_sets_idle() {
+    #[tokio::test]
+    async fn stop_sets_idle() {
         let e = SenderEngine::new();
         e.running.store(true, Ordering::SeqCst);
-        e.stop();
+        e.stop().await;
         assert!(!e.is_running());
         assert_eq!(e.status().state, "IDLE");
     }

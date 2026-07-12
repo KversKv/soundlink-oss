@@ -1,10 +1,20 @@
 //! 本机设备身份：首次运行生成 Ed25519 密钥对与稳定 device_id。
-//! 用于发现 TXT 与配对信任。私钥本地安全存储（第一版文件存储，后续升级 OS keyring）。
+//! 用于发现 TXT 与配对信任。私钥通过 OS keyring（Windows Credential Manager /
+//! macOS Keychain / Linux Secret Service）安全存储。
+//!
+//! P0 安全红线修复（NF-01 A3）：原 `identity.bin` 明文落盘迁移到 OS keyring。
+//! 保留 `device_id.txt` 明文（device_id 是公开标识，非密钥）。
+//! 旧 `identity.bin` 在 keyring 迁移成功后自动删除。
 
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use rand::rngs::OsRng;
 use std::fs;
 use std::path::PathBuf;
+
+/// OS keyring 服务名（统一标识 SoundLink）。
+const KEYRING_SERVICE: &str = "soundlink";
+/// Ed25519 私钥在 keyring 中的账号名。
+const KEYRING_ACCOUNT_IDENTITY: &str = "device_identity_ed25519";
 
 /// 设备身份。
 #[derive(Debug)]
@@ -26,10 +36,29 @@ impl DeviceIdentity {
     }
 
     /// 加载或生成并持久化。
+    ///
+    /// 优先从 OS keyring 读取私钥；若 keyring 不可用或不存在，回退检查旧 `identity.bin`
+    /// 并迁移到 keyring；都没有则生成新身份并写入 keyring。
     pub fn load_or_create(dir: &PathBuf) -> std::io::Result<Self> {
         fs::create_dir_all(dir)?;
         let key_path = dir.join("identity.bin");
         let id_path = dir.join("device_id.txt");
+
+        // 1. 优先从 keyring 读取。
+        if let Some((key_bytes, id)) = load_from_keyring(&id_path) {
+            if key_bytes.len() == 32 && !id.trim().is_empty() {
+                let mut arr = [0u8; 32];
+                arr.copy_from_slice(&key_bytes);
+                let signing_key = SigningKey::from_bytes(&arr);
+                tracing::info!("设备身份从 OS keyring 加载成功");
+                return Ok(Self {
+                    device_id: id.trim().to_string(),
+                    signing_key,
+                });
+            }
+        }
+
+        // 2. 回退：从旧 identity.bin 迁移。
         if key_path.exists() && id_path.exists() {
             let key_bytes = fs::read(&key_path)?;
             let id = fs::read_to_string(&id_path)?;
@@ -37,23 +66,56 @@ impl DeviceIdentity {
                 let mut arr = [0u8; 32];
                 arr.copy_from_slice(&key_bytes);
                 let signing_key = SigningKey::from_bytes(&arr);
+                // 尝试迁移到 keyring；失败则保留文件作为兜底。
+                if save_to_keyring(&key_bytes).is_ok() {
+                    tracing::info!("设备身份已从 identity.bin 迁移到 OS keyring");
+                    // 迁移成功后删除明文私钥文件。
+                    let _ = fs::remove_file(&key_path);
+                } else {
+                    tracing::warn!("keyring 写入失败，保留 identity.bin 作为兜底");
+                }
                 return Ok(Self {
                     device_id: id.trim().to_string(),
                     signing_key,
                 });
             }
         }
-        // 生成新身份。
+
+        // 3. 生成新身份。
         let mut csprng = OsRng;
         let signing_key = SigningKey::generate(&mut csprng);
         let device_id = format!("pc-{}", hex_short(&signing_key.verifying_key().to_bytes()));
-        fs::write(&key_path, signing_key.to_bytes())?;
+        let key_bytes = signing_key.to_bytes();
+
+        // 优先写 keyring；失败则回退到文件存储（保证可用性）。
+        if save_to_keyring(&key_bytes).is_err() {
+            tracing::warn!("keyring 写入失败，回退到 identity.bin 文件存储");
+            fs::write(&key_path, key_bytes)?;
+        }
         fs::write(&id_path, &device_id)?;
         Ok(Self {
             device_id,
             signing_key,
         })
     }
+}
+
+/// 从 keyring 读取私钥；同时从 `device_id.txt` 读取 device_id。
+/// keyring 不可用时返回 None。
+fn load_from_keyring(id_path: &PathBuf) -> Option<(Vec<u8>, String)> {
+    let entry = keyring::Entry::new(KEYRING_SERVICE, KEYRING_ACCOUNT_IDENTITY).ok()?;
+    let secret = entry.get_secret().ok()?;
+    let id = fs::read_to_string(id_path).ok()?;
+    Some((secret.to_vec(), id))
+}
+
+/// 写入私钥到 keyring。返回 io::Result 以便调用方统一错误处理。
+fn save_to_keyring(key_bytes: &[u8]) -> std::io::Result<()> {
+    let entry = keyring::Entry::new(KEYRING_SERVICE, KEYRING_ACCOUNT_IDENTITY)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("keyring entry 创建失败：{}", e)))?;
+    entry
+        .set_secret(key_bytes)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("keyring 写入失败：{}", e)))
 }
 
 fn hex_short(b: &[u8]) -> String {

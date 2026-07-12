@@ -402,12 +402,24 @@ async fn handle_pair_request(msg: &Value, state: &ControlState, addr: SocketAddr
     let recv_kp = EphemeralKeyPair::generate();
 
     // 是否已信任？
+    // P0 安全红线修复（NF-01 A5）：公钥不匹配视为不可信，强制走配对路径，阻断 MITM。
     let trusted_match = {
         let trust = state.trust.lock();
-        trust
-            .get(&sender_device_id)
-            .map(|td| td.identity_pub_b64 == sender_identity_pub_b64)
-            .unwrap_or(false)
+        match trust.get(&sender_device_id) {
+            Some(td) => {
+                if td.identity_pub_b64 == sender_identity_pub_b64 {
+                    true
+                } else {
+                    tracing::error!(
+                        "Sender 身份公钥与已保存的不匹配，强制重新配对（疑似中间人）。saved={} recv={}",
+                        td.identity_pub_b64,
+                        sender_identity_pub_b64
+                    );
+                    false
+                }
+            }
+            None => false,
+        }
     };
 
     // 同时产出会话密钥与 receiver 回证用的 pairing_secret。

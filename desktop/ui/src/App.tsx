@@ -4,6 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import "./App.css";
 import SettingsPanel, { type AppSettings } from "./components/SettingsPanel";
 import CloseDialog from "./components/CloseDialog";
+import { mapError } from "./utils/errorMap";
 
 interface OutputDevice {
   id: string;
@@ -112,9 +113,6 @@ const DEFAULT_AUDIO_PARAMS: AudioParams = {
   jitter_mode: "balanced",
 };
 
-const SAMPLE_RATE_OPTIONS = [48000];
-const CHANNEL_OPTIONS = [2];
-const FRAME_DURATION_OPTIONS = [10];
 const BITRATE_OPTIONS = [64000, 96000, 128000, 160000, 192000];
 
 function formatPairingCode(code: string) {
@@ -164,7 +162,7 @@ export default function App() {
   useEffect(() => {
     invoke<OutputDevice[]>("list_output_devices")
       .then(setDevices)
-      .catch((e) => setError(String(e)));
+      .catch((e) => setError(mapError(e)));
     invoke<CaptureSourceInfo[]>("list_capture_sources")
       .then((srcs) => {
         setCaptureSources(srcs);
@@ -264,7 +262,7 @@ export default function App() {
     const id = setInterval(() => {
       invoke<ReceiverStatus>("get_status")
         .then(setStatus)
-        .catch((e) => setError(String(e)));
+        .catch((e) => setError(mapError(e)));
     }, 500);
     return () => clearInterval(id);
   }, [running]);
@@ -274,7 +272,7 @@ export default function App() {
     const id = setInterval(() => {
       invoke<SenderStatus>("get_sender_status")
         .then(setSenderStatus)
-        .catch((e) => setError(String(e)));
+        .catch((e) => setError(mapError(e)));
     }, 500);
     return () => clearInterval(id);
   }, [senderRunning]);
@@ -292,7 +290,7 @@ export default function App() {
       setDeviceId(r.device_id);
       setRunning(true);
     } catch (e) {
-      setError(String(e));
+      setError(mapError(e));
     }
   }
 
@@ -303,7 +301,7 @@ export default function App() {
       setRunning(false);
       setStatus(null);
     } catch (e) {
-      setError(String(e));
+      setError(mapError(e));
     }
   }
 
@@ -312,7 +310,7 @@ export default function App() {
       const c = await invoke<string>("get_pairing_code");
       setPairingCode(c);
     } catch (e) {
-      setError(String(e));
+      setError(mapError(e));
     }
   }
 
@@ -321,7 +319,7 @@ export default function App() {
     try {
       await invoke("select_output_device", { index: idx });
     } catch (e) {
-      setError(String(e));
+      setError(mapError(e));
     }
   }
 
@@ -331,7 +329,7 @@ export default function App() {
     try {
       await invoke("set_jitter_mode", { mode });
     } catch (e) {
-      setError(String(e));
+      setError(mapError(e));
     }
   }
 
@@ -350,7 +348,7 @@ export default function App() {
       setFixedPairingCode(settings.fixed_code);
       if (running) await refreshCode();
     } catch (e) {
-      setError(String(e));
+      setError(mapError(e));
     }
   }
 
@@ -362,7 +360,7 @@ export default function App() {
       setAudioParamsState(saved);
       setJitterMode(saved.jitter_mode);
     } catch (e) {
-      setError(String(e));
+      setError(mapError(e));
     }
   }
 
@@ -374,7 +372,7 @@ export default function App() {
       setJitterMode(detected.jitter_mode);
       setError(`自动探测完成：已推荐 ${detected.bitrate / 1000}kbps / Jitter ${detected.jitter_mode}。当前版本采样率、声道和帧长固定为 48kHz/Stereo/10ms。`);
     } catch (e) {
-      setError(String(e));
+      setError(mapError(e));
     }
   }
 
@@ -383,7 +381,7 @@ export default function App() {
     try {
       await invoke("set_volume", { volume: v / 100 });
     } catch (e) {
-      setError(String(e));
+      setError(mapError(e));
     }
   }
 
@@ -399,7 +397,7 @@ export default function App() {
         setReceiverAddr(list[0].control_addr);
       }
     } catch (e) {
-      setError(String(e));
+      setError(mapError(e));
     } finally {
       setDiscovering(false);
     }
@@ -420,7 +418,7 @@ export default function App() {
       setSenderRunning(true);
       loadTrustedReceivers();
     } catch (e) {
-      setError(String(e));
+      setError(mapError(e));
     }
   }
 
@@ -432,7 +430,7 @@ export default function App() {
       setSenderStatus(null);
       loadTrustedReceivers();
     } catch (e) {
-      setError(String(e));
+      setError(mapError(e));
     }
   }
 
@@ -462,7 +460,7 @@ export default function App() {
       setSenderRunning(true);
       loadTrustedReceivers();
     } catch (e) {
-      setError(String(e));
+      setError(mapError(e));
     }
   }
 
@@ -472,7 +470,7 @@ export default function App() {
       await invoke("remove_trusted_receiver", { deviceId });
       loadTrustedReceivers();
     } catch (e) {
-      setError(String(e));
+      setError(mapError(e));
     }
   }
 
@@ -561,7 +559,7 @@ export default function App() {
               </div>
               <div className="pairing-display">
                 <span>{formatPairingCode(pairingCode)}</span>
-                <small>设备 ID：{deviceId || "RCV-9819"}</small>
+                <small>设备 ID：{deviceId || "—"}</small>
               </div>
               <div className="pairing-settings">
                 <label>
@@ -651,21 +649,15 @@ export default function App() {
               <div className="audio-options-grid">
                 <label>
                   <span>采样率</span>
-                  <select value={audioParams.sample_rate} onChange={(e) => setAudioParams({ ...audioParams, sample_rate: Number(e.target.value) })}>
-                    {SAMPLE_RATE_OPTIONS.map((v) => <option key={v} value={v}>{v} Hz</option>)}
-                  </select>
+                  <span className="readonly-value">{audioParams.sample_rate} Hz</span>
                 </label>
                 <label>
                   <span>声道</span>
-                  <select value={audioParams.channels} onChange={(e) => setAudioParams({ ...audioParams, channels: Number(e.target.value) })}>
-                    {CHANNEL_OPTIONS.map((v) => <option key={v} value={v}>{v === 1 ? "Mono" : "Stereo"}</option>)}
-                  </select>
+                  <span className="readonly-value">{audioParams.channels === 1 ? "Mono" : "Stereo"}</span>
                 </label>
                 <label>
                   <span>帧长</span>
-                  <select value={audioParams.frame_duration_ms} onChange={(e) => setAudioParams({ ...audioParams, frame_duration_ms: Number(e.target.value) })}>
-                    {FRAME_DURATION_OPTIONS.map((v) => <option key={v} value={v}>{v} ms</option>)}
-                  </select>
+                  <span className="readonly-value">{audioParams.frame_duration_ms} ms</span>
                 </label>
                 <label>
                   <span>码率</span>
@@ -674,7 +666,7 @@ export default function App() {
                   </select>
                 </label>
               </div>
-              <small className="settings-note">当前版本运行时真正生效：Opus 码率、Jitter 模式、音量。采样率/声道/帧长暂固定为 48kHz/Stereo/10ms，避免 UI 与实际音频链路不一致。</small>
+              <small className="settings-note">当前版本运行时真正生效：Opus 码率、Jitter 模式、音量。采样率/声道/帧长固定为 48kHz/Stereo/10ms。</small>
             </section>
 
             <button
@@ -819,21 +811,15 @@ export default function App() {
               <div className="audio-options-grid">
                 <label>
                   <span>采样率</span>
-                  <select value={audioParams.sample_rate} disabled={senderRunning} onChange={(e) => setAudioParams({ ...audioParams, sample_rate: Number(e.target.value) })}>
-                    {SAMPLE_RATE_OPTIONS.map((v) => <option key={v} value={v}>{v} Hz</option>)}
-                  </select>
+                  <span className="readonly-value">{audioParams.sample_rate} Hz</span>
                 </label>
                 <label>
                   <span>声道</span>
-                  <select value={audioParams.channels} disabled={senderRunning} onChange={(e) => setAudioParams({ ...audioParams, channels: Number(e.target.value) })}>
-                    {CHANNEL_OPTIONS.map((v) => <option key={v} value={v}>{v === 1 ? "Mono" : "Stereo"}</option>)}
-                  </select>
+                  <span className="readonly-value">{audioParams.channels === 1 ? "Mono" : "Stereo"}</span>
                 </label>
                 <label>
                   <span>帧长</span>
-                  <select value={audioParams.frame_duration_ms} disabled={senderRunning} onChange={(e) => setAudioParams({ ...audioParams, frame_duration_ms: Number(e.target.value) })}>
-                    {FRAME_DURATION_OPTIONS.map((v) => <option key={v} value={v}>{v} ms</option>)}
-                  </select>
+                  <span className="readonly-value">{audioParams.frame_duration_ms} ms</span>
                 </label>
                 <label>
                   <span>码率</span>
@@ -842,7 +828,7 @@ export default function App() {
                   </select>
                 </label>
               </div>
-              <small className="settings-note">当前版本发送端真正生效：Opus 码率。采样率/声道/帧长暂固定为 48kHz/Stereo/10ms，运行中发送时不允许改参数。</small>
+              <small className="settings-note">当前版本发送端真正生效：Opus 码率。采样率/声道/帧长固定为 48kHz/Stereo/10ms，运行中发送时不允许改参数。</small>
             </section>
 
             <button
@@ -891,7 +877,7 @@ export default function App() {
         {error && <div className="error-banner">错误：{error}</div>}
 
         <footer className="stage-footer">
-          阶段 5：桌面发送端（双电脑互传）。运行 <code>cargo run --example phase5_loopback</code> 自测。
+          SoundLink · 局域网音频流转
         </footer>
       </section>
     </main>
