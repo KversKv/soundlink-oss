@@ -2,7 +2,7 @@
 
 本目录（`docs/user/`）面向**开发者与使用者**，提供环境搭建、调试、编译、使用等实操指南。设计与架构决策请见 [`docs/First/`](../First/SoundLinkStructrue.md)。
 
-> 当前仓库处于**骨架 + 占位**阶段，尚未完成脚手架初始化（Tauri / Xcode / Gradle）。本目录文档描述的是**目标工作流**，随各阶段落地会持续补全，实际命令以脚手架就绪后为准。开发阶段见 [`docs/First/09-roadmap.md`](../First/09-roadmap.md)。
+> 当前仓库**多平台并行开发**：桌面端 Windows 可用（接收 + WASAPI Loopback 发送）；Android 可用；iOS 工程就绪待真机验收；macOS 发送端采集未实装。本目录文档随各阶段落地持续补全。开发阶段见 [`docs/First/09-roadmap.md`](../First/09-roadmap.md)。
 
 ## 文档一览
 
@@ -16,6 +16,7 @@
 | [06-debug.md](./06-debug.md) | 各平台调试方式与日志 |
 | [07-usage.md](./07-usage.md) | 使用操作手册（配对、连接、播放） |
 | [08-troubleshooting.md](./08-troubleshooting.md) | 常见问题与排查 |
+| [desktop-guide.md](./desktop-guide.md) | 桌面端终端用户使用指南（安装/配对/收发/设置/常见问题/卸载） |
 
 ## 平台矩阵速览
 
