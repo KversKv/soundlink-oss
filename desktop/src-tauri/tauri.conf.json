@@ -43,6 +43,19 @@
       },
       "certificateThumbprint": null,
       "timestampUrl": "http://timestamp.digicert.com"
+    },
+    "macOS": {
+      "signingIdentity": null,
+      "entitlements": null,
+      "exceptionDomain": "",
+      "frameworks": [],
+      "minimumSystemVersion": "10.15",
+      "dmg": {
+        "windowPosition": { "x": 100, "y": 100 },
+        "windowSize": { "width": 600, "height": 500 },
+        "appPosition": { "x": 180, "y": 170 },
+        "applicationFolderPosition": { "x": 360, "y": 170 }
+      }
     }
   }
 }

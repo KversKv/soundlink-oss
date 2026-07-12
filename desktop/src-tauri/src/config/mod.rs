@@ -230,3 +230,211 @@ fn backup_corrupt_config(dir: &Path, raw: &str) {
         tracing::info!("已备份损坏配置文件：{:?}", backup_path);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::constants::{OPUS_BITRATE, SAMPLE_RATE, FRAME_DURATION_MS};
+    use std::fs;
+    use tempfile::tempdir;
+
+    #[test]
+    fn default_values_are_sane() {
+        let cfg = AppConfig::default();
+        assert_eq!(cfg.role, "receiver");
+        assert_eq!(cfg.pairing_code_mode, "random");
+        assert_eq!(cfg.jitter_mode, "balanced");
+        assert_eq!(cfg.close_action, "ask");
+        assert_eq!(cfg.volume, 1.0);
+        assert!(!cfg.auto_start);
+        assert!(!cfg.onboarding_completed);
+        assert!(!cfg.sender_drm_hint_seen);
+        assert_eq!(cfg.selected_capture_source, "sine");
+        assert_eq!(cfg.audio_params.sample_rate, SAMPLE_RATE);
+        assert_eq!(cfg.audio_params.channels, 2);
+        assert_eq!(cfg.audio_params.frame_duration_ms, FRAME_DURATION_MS);
+        assert_eq!(cfg.audio_params.bitrate, OPUS_BITRATE);
+        assert_eq!(cfg.audio_params.jitter_mode, "balanced");
+    }
+
+    #[test]
+    fn normalized_fixes_invalid_role() {
+        let cfg = AppConfig {
+            role: "foo".into(),
+            ..AppConfig::default()
+        };
+        assert_eq!(cfg.normalized().role, "receiver");
+    }
+
+    #[test]
+    fn normalized_fixes_invalid_pairing_mode() {
+        let cfg = AppConfig {
+            pairing_code_mode: "bar".into(),
+            ..AppConfig::default()
+        };
+        assert_eq!(cfg.normalized().pairing_code_mode, "random");
+    }
+
+    #[test]
+    fn normalized_fixes_invalid_jitter_mode() {
+        let cfg = AppConfig {
+            jitter_mode: "xyz".into(),
+            ..AppConfig::default()
+        };
+        assert_eq!(cfg.normalized().jitter_mode, "balanced");
+    }
+
+    #[test]
+    fn normalized_fixes_invalid_close_action() {
+        let cfg = AppConfig {
+            close_action: "abc".into(),
+            ..AppConfig::default()
+        };
+        assert_eq!(cfg.normalized().close_action, "ask");
+    }
+
+    #[test]
+    fn normalized_clamps_volume() {
+        let high = AppConfig {
+            volume: 1.5,
+            ..AppConfig::default()
+        };
+        assert_eq!(high.normalized().volume, 1.0);
+        let neg = AppConfig {
+            volume: -0.3,
+            ..AppConfig::default()
+        };
+        assert_eq!(neg.normalized().volume, 0.0);
+    }
+
+    #[test]
+    fn normalized_fixes_invalid_bitrate() {
+        let cfg = AppConfig {
+            audio_params: AudioParams {
+                bitrate: 123_456,
+                ..AudioParams::default()
+            },
+            ..AppConfig::default()
+        };
+        assert_eq!(cfg.normalized().audio_params.bitrate, OPUS_BITRATE);
+    }
+
+    #[test]
+    fn audio_params_normalized_chain() {
+        let cfg = AppConfig {
+            audio_params: AudioParams {
+                jitter_mode: "bad".into(),
+                bitrate: 99_999,
+                ..AudioParams::default()
+            },
+            ..AppConfig::default()
+        };
+        let n = cfg.normalized();
+        assert_eq!(n.audio_params.jitter_mode, "balanced");
+        assert_eq!(n.audio_params.bitrate, OPUS_BITRATE);
+    }
+
+    #[test]
+    fn load_or_default_missing_file_returns_default() {
+        let dir = tempdir().unwrap();
+        let cfg = AppConfig::load_or_default(dir.path());
+        assert_eq!(cfg.role, "receiver");
+        assert_eq!(cfg.close_action, "ask");
+    }
+
+    #[test]
+    fn load_or_default_corrupt_json_backs_up_and_returns_default() {
+        let dir = tempdir().unwrap();
+        let cfg_path = dir.path().join("app_config.json");
+        fs::write(&cfg_path, "{invalid json").unwrap();
+        let cfg = AppConfig::load_or_default(dir.path());
+        assert_eq!(cfg.role, "receiver");
+        assert_eq!(cfg.close_action, "ask");
+        // 备份文件应存在
+        let mut found_backup = false;
+        for entry in fs::read_dir(dir.path()).unwrap() {
+            let entry = entry.unwrap();
+            let name = entry.file_name();
+            if name.to_string_lossy().starts_with("app_config.json.corrupt-") {
+                found_backup = true;
+                break;
+            }
+        }
+        assert!(found_backup, "损坏文件应生成 corrupt- 备份");
+    }
+
+    #[test]
+    fn load_or_default_valid_json_loads_fields() {
+        let dir = tempdir().unwrap();
+        let cfg_path = dir.path().join("app_config.json");
+        let raw = serde_json::json!({
+            "audio_port": 47811,
+            "jitter_ms": 80,
+            "default_output_device": null,
+            "device_name": "TestReceiver",
+            "role": "sender",
+            "pairing_code_mode": "fixed",
+            "jitter_mode": "stable",
+            "volume": 0.7,
+            "audio_params": {
+                "sample_rate": 48000,
+                "channels": 2,
+                "frame_duration_ms": 10,
+                "bitrate": 96000,
+                "jitter_mode": "stable"
+            },
+            "last_receiver_addr": "192.168.1.100:47810",
+            "selected_capture_source": "sine",
+            "close_action": "minimize",
+            "auto_start": true,
+            "auto_receive_on_start": false,
+            "auto_send_on_start": true,
+            "onboarding_completed": true,
+            "sender_drm_hint_seen": false
+        });
+        fs::write(&cfg_path, raw.to_string()).unwrap();
+        let cfg = AppConfig::load_or_default(dir.path());
+        assert_eq!(cfg.role, "sender");
+        assert_eq!(cfg.pairing_code_mode, "fixed");
+        assert_eq!(cfg.jitter_mode, "stable");
+        assert_eq!(cfg.close_action, "minimize");
+        assert_eq!(cfg.volume, 0.7);
+        assert!(cfg.auto_start);
+        assert!(cfg.auto_send_on_start);
+        assert!(cfg.onboarding_completed);
+        assert_eq!(cfg.audio_params.bitrate, 96_000);
+        assert_eq!(cfg.audio_params.jitter_mode, "stable");
+    }
+
+    #[test]
+    fn save_then_load_roundtrip() {
+        let dir = tempdir().unwrap();
+        let mut cfg = AppConfig::default();
+        cfg.role = "sender".into();
+        cfg.close_action = "quit".into();
+        cfg.volume = 0.5;
+        cfg.device_name = "Roundtrip".into();
+        cfg.audio_params.bitrate = 160_000;
+        cfg.audio_params.jitter_mode = "low".into();
+        cfg.save(dir.path()).unwrap();
+        let loaded = AppConfig::load_or_default(dir.path());
+        assert_eq!(loaded.role, "sender");
+        assert_eq!(loaded.close_action, "quit");
+        assert_eq!(loaded.volume, 0.5);
+        assert_eq!(loaded.device_name, "Roundtrip");
+        assert_eq!(loaded.audio_params.bitrate, 160_000);
+        assert_eq!(loaded.audio_params.jitter_mode, "low");
+        // fixed_pairing_code 为 None，JSON 中不出现该字段
+        let raw = fs::read_to_string(dir.path().join("app_config.json")).unwrap();
+        assert!(!raw.contains("fixed_pairing_code"));
+    }
+
+    #[test]
+    fn jitter_mode_from_ms_mapping() {
+        assert_eq!(jitter_mode_from_ms(40), "low");
+        assert_eq!(jitter_mode_from_ms(150), "stable");
+        assert_eq!(jitter_mode_from_ms(80), "balanced");
+        assert_eq!(jitter_mode_from_ms(0), "balanced");
+        assert_eq!(jitter_mode_from_ms(999), "balanced");
+    }
+}

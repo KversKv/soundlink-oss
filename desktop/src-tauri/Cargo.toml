@@ -21,8 +21,10 @@ opus = ["dep:libopus_sys"]
 # 启用 Tauri 应用外壳（需 MSVC Build Tools + WebView2）。
 # 自动启用 opus（生产环境必须用真实 libopus，否则解码回退 passthrough 产生噪声）。
 # 自动启用 wasapi：Windows GUI 模式下发送端默认用 WASAPI Loopback 采集系统音频
-# （非 Windows 平台 wasapi feature 为 no-op，windows crate 有 target 门控）。
-tauri_app = ["dep:tauri", "dep:tauri-build", "dep:dirs", "dep:tauri-plugin-opener", "dep:tauri-plugin-autostart", "dep:tauri-plugin-single-instance", "dep:tauri-plugin-window-state", "opus", "wasapi"]
+# （非 Windows 平台 wasapi feature 为 no-op，windows crate 有 target 门控。
+#   Windows 端 `cargo check --no-default-features --features tauri_app` 已验证；
+#   macOS/Linux 真机构建待 G1/G2/G3 阶段验证）。
+tauri_app = ["dep:tauri", "dep:tauri-build", "dep:dirs", "dep:tauri-plugin-opener", "dep:tauri-plugin-autostart", "dep:tauri-plugin-single-instance", "dep:tauri-plugin-window-state", "dep:tauri-plugin-global-shortcut", "opus", "wasapi"]
 # 启用 Windows WASAPI Loopback 采集（阶段 5，仅 Windows）。
 wasapi = ["dep:windows"]
 
@@ -53,6 +55,7 @@ tauri-plugin-opener = { version = "2", optional = true }
 tauri-plugin-autostart = { version = "2", optional = true }
 tauri-plugin-single-instance = { version = "2", optional = true }
 tauri-plugin-window-state = { version = "2", optional = true }
+tauri-plugin-global-shortcut = { version = "2", optional = true }
 dirs = { version = "5", optional = true }
 # OS keyring：Ed25519 私钥 / 固定配对码安全存储（阶段 A 安全红线修复）。
 keyring = "3"
@@ -73,6 +76,7 @@ tauri-build = { version = "2", optional = true , features = [] }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 
 [dev-dependencies]
+tempfile = "3"
 
 [[example]]
 name = "loopback_sender"

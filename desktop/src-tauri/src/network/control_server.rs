@@ -594,7 +594,9 @@ async fn handle_stream_start(msg: &Value, state: &ControlState) -> Value {
             return error_msg(msg, ErrorCode::Internal, &format!("启动接收器失败：{}", e));
         }
     } else {
-        tracing::info!("stream_start：audio_key 未变，跳过引擎重启（重连场景）");
+        // I4：同 key 重连跳过引擎重启，但仍需重置 latency_state，避免码率/漂移统计残留旧值。
+        state.engine.reset_latency_state();
+        tracing::info!("stream_start：audio_key 未变，跳过引擎重启（重连场景，已重置 latency_state）");
     }
 
     json!({

@@ -447,4 +447,85 @@ mod tests {
         let out_frames = out.len() / 2;
         assert!(out_frames > 430 && out_frames < 450, "got {}", out_frames);
     }
+
+    // ───────────────── H4：ring buffer 边界单测 ─────────────────
+
+    #[test]
+    fn poll_frame_none_when_empty() {
+        let mut c = WasapiLoopbackCapture::new();
+        assert!(c.poll_frame().is_none());
+    }
+
+    #[test]
+    fn poll_frame_none_when_partial() {
+        let mut c = WasapiLoopbackCapture::new();
+        // 推入不足一帧的样本
+        c.ring.lock().extend(0..(FRAME_SAMPLES_TOTAL as i16 - 1));
+        assert!(c.poll_frame().is_none());
+    }
+
+    #[test]
+    fn poll_frame_exact_when_just_enough() {
+        let mut c = WasapiLoopbackCapture::new();
+        let samples: Vec<i16> = (0..FRAME_SAMPLES_TOTAL as i16).collect();
+        c.ring.lock().extend(samples.iter().copied());
+        let frame = c.poll_frame().expect("恰好一帧应返回 Some");
+        assert_eq!(frame.len(), FRAME_SAMPLES_TOTAL);
+        assert_eq!(frame, samples);
+        // ring 应被清空
+        assert!(c.ring.lock().is_empty());
+    }
+
+    #[test]
+    fn poll_frame_drains_one_from_multi() {
+        let mut c = WasapiLoopbackCapture::new();
+        let total = FRAME_SAMPLES_TOTAL * 3;
+        let samples: Vec<i16> = (0..total as i16).collect();
+        c.ring.lock().extend(samples.iter().copied());
+        // 连续 3 次应返回 Some
+        for _ in 0..3 {
+            let f = c.poll_frame().expect("多帧场景应返回 Some");
+            assert_eq!(f.len(), FRAME_SAMPLES_TOTAL);
+        }
+        // 第 4 次应为 None
+        assert!(c.poll_frame().is_none());
+    }
+
+    #[test]
+    fn ring_does_not_grow_beyond_cap() {
+        let cap = CAPTURE_RING_FRAMES * FRAME_SAMPLES_TOTAL;
+        let c = WasapiLoopbackCapture::new();
+        // 推入超 cap 的样本，模拟 run_capture_loop 的写边界逻辑
+        {
+            let mut rb = c.ring.lock();
+            rb.extend((0..(cap + 100) as i16).map(|i| i));
+            // 与 run_capture_loop L249-258 同款逻辑：超 cap 时丢最旧
+            while rb.len() > cap {
+                rb.pop_front();
+            }
+        }
+        assert!(c.ring.lock().len() <= cap);
+    }
+
+    #[test]
+    fn new_does_not_start_thread() {
+        let c = WasapiLoopbackCapture::new();
+        assert!(c.thread.lock().is_none());
+        assert!(!c.running.load(Ordering::SeqCst));
+        assert!(!c.is_running());
+    }
+
+    #[test]
+    fn name_returns_wasapi_loopback() {
+        let c = WasapiLoopbackCapture::new();
+        assert_eq!(c.name(), "WASAPI Loopback");
+    }
+
+    #[test]
+    fn stop_without_start_is_noop() {
+        let mut c = WasapiLoopbackCapture::new();
+        // 不应 panic / 不应阻塞
+        c.stop();
+        assert!(!c.is_running());
+    }
 }

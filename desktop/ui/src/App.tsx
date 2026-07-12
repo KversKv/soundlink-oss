@@ -181,6 +181,14 @@ export default function App() {
   const [drmHintOpen, setDrmHintOpen] = useState(false);
   // F6：DRM 提示确认后回调 pending（确认后再执行 startSender）。
   const [drmPendingStart, setDrmPendingStart] = useState<() => void>(() => () => {});
+  // I5：公钥不一致提示模态。后端检测到 MITM 时 emit `pubkey-mismatch` 事件。
+  const [pubkeyMismatchOpen, setPubkeyMismatchOpen] = useState(false);
+  const [pubkeyMismatchInfo, setPubkeyMismatchInfo] = useState<{
+    device_id: string;
+    device_name: string;
+    saved_pub_b64: string;
+    recv_pub_b64: string;
+  } | null>(null);
 
   useEffect(() => {
     invoke<OutputDevice[]>("list_output_devices")
@@ -276,14 +284,37 @@ export default function App() {
         }
       }
     );
+    // I5：公钥不一致提示（后端已拒绝连接，仅 UI 告知）。
+    const unlistenPubkeyMismatch = listen<{
+      device_id: string;
+      device_name: string;
+      saved_pub_b64: string;
+      recv_pub_b64: string;
+    }>("pubkey-mismatch", (e) => {
+      setPubkeyMismatchInfo(e.payload);
+      setPubkeyMismatchOpen(true);
+    });
+    // I2：全局快捷键。toggle-role 切换角色、show-window 显示主窗口。
+    const unlistenShortcut = listen<{ kind: string }>("global-shortcut", (e) => {
+      if (e.payload.kind === "toggle-role") {
+        const next = role === "receiver" ? "sender" : "receiver";
+        invoke("set_role", { role: next })
+          .then(() => setRole(next))
+          .catch((err) => setError(mapError(err)));
+      } else if (e.payload.kind === "show-window") {
+        invoke("show_main_window").catch(() => {});
+      }
+    });
     return () => {
       unlistenClose.then((fn) => fn());
       unlistenTray.then((fn) => fn());
       unlistenIdentity.then((fn) => fn());
       unlistenPairingLock.then((fn) => fn());
       unlistenSenderState.then((fn) => fn());
+      unlistenPubkeyMismatch.then((fn) => fn());
+      unlistenShortcut.then((fn) => fn());
     };
-  }, [receiverAddr, selectedSource]);
+  }, [receiverAddr, selectedSource, role]);
 
   // D4：配对锁定倒计时。每秒减 1，到 0 时清空锁定状态并清除错误提示。
   useEffect(() => {
@@ -1106,6 +1137,71 @@ export default function App() {
               >
                 我已了解
               </button>
+            </div>
+          </div>
+        )}
+
+        {/* I5：公钥不一致提示模态（后端检测到 MITM 已拒绝连接，UI 告知并提供「删除并重配对」入口）。 */}
+        {pubkeyMismatchOpen && pubkeyMismatchInfo && (
+          <div
+            className="close-dialog-overlay"
+            role="dialog"
+            aria-modal="true"
+            style={{
+              position: "fixed",
+              inset: 0,
+              background: "rgba(0,0,0,0.4)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              zIndex: 1000,
+            }}
+          >
+            <div
+              className="panel-card"
+              style={{ maxWidth: 400, padding: 20, textAlign: "center" }}
+            >
+              <h3 style={{ marginTop: 0, color: "#d33" }}>检测到对端身份变化</h3>
+              <p style={{ fontSize: 13, color: "#555", lineHeight: 1.6 }}>
+                设备 <strong>{pubkeyMismatchInfo.device_name || "(未知)"}</strong> 的身份公钥与本地保存的不一致，可能存在中间人攻击。已自动拒绝连接。
+              </p>
+              <p style={{ fontSize: 11, color: "#888", lineHeight: 1.4, wordBreak: "break-all" }}>
+                设备 ID：{pubkeyMismatchInfo.device_id}
+                <br />
+                本地公钥：{pubkeyMismatchInfo.saved_pub_b64.slice(0, 24)}…
+                <br />
+                对端公钥：{pubkeyMismatchInfo.recv_pub_b64.slice(0, 24)}…
+              </p>
+              <div style={{ display: "flex", gap: 8, justifyContent: "center", marginTop: 12 }}>
+                <button
+                  type="button"
+                  className="primary-action"
+                  style={{ background: "#d33" }}
+                  onClick={async () => {
+                    // 删除已信任设备后关闭模态，由用户主动重新发起 start_sender。
+                    try {
+                      await invoke("remove_trusted_receiver", { deviceId: pubkeyMismatchInfo.device_id });
+                      setTrustedReceivers((prev) => prev.filter((r) => r.device_id !== pubkeyMismatchInfo.device_id));
+                    } catch (e) {
+                      setError(mapError(e));
+                    }
+                    setPubkeyMismatchOpen(false);
+                    setPubkeyMismatchInfo(null);
+                  }}
+                >
+                  删除并重配对
+                </button>
+                <button
+                  type="button"
+                  className="text-button"
+                  onClick={() => {
+                    setPubkeyMismatchOpen(false);
+                    setPubkeyMismatchInfo(null);
+                  }}
+                >
+                  取消
+                </button>
+              </div>
             </div>
           </div>
         )}

@@ -22,6 +22,26 @@ pub enum TrayMenuEvent {
     Settings,
 }
 
+/// 关闭窗口决策（H2：从 `handle_close_requested` 抽出的纯函数结果）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CloseDecision {
+    /// 阻止关闭 + 隐藏窗口。
+    Minimize,
+    /// 异步 cleanup + 退出应用。
+    Quit,
+    /// 阻止关闭 + emit `close-requested` 给前端弹窗询问。
+    Ask,
+}
+
+/// 根据 `config.close_action` 决定关闭窗口行为（H2：纯函数，便于单测）。
+pub(crate) fn decide_close_action(action: &str) -> CloseDecision {
+    match action {
+        "minimize" => CloseDecision::Minimize,
+        "quit" => CloseDecision::Quit,
+        _ => CloseDecision::Ask,
+    }
+}
+
 /// 在 setup 钩子中调用：构建托盘图标 + 菜单。
 pub fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
     let show = MenuItem::with_id(app, "show", "显示主窗口", true, None::<&str>)?;
@@ -107,12 +127,13 @@ pub fn handle_close_requested(window: &tauri::Window, event: &WindowEvent) {
         let app = window.app_handle();
         let state: State<'_, AppState> = app.state();
         let action = state.config.lock().close_action.clone();
-        match action.as_str() {
-            "minimize" => {
+        // H2：决策逻辑抽到纯函数 `decide_close_action`，便于单测。
+        match decide_close_action(&action) {
+            CloseDecision::Minimize => {
                 api.prevent_close();
                 let _ = window.hide();
             }
-            "quit" => {
+            CloseDecision::Quit => {
                 // D3：异步调 cleanup_before_quit 再 exit。
                 let app_handle = app.clone();
                 tauri::async_runtime::spawn(async move {
@@ -121,10 +142,47 @@ pub fn handle_close_requested(window: &tauri::Window, event: &WindowEvent) {
                     app_handle.exit(0);
                 });
             }
-            _ => {
+            CloseDecision::Ask => {
                 api.prevent_close();
                 let _ = app.emit("close-requested", ());
             }
         }
+    }
+}
+
+#[cfg(all(test, feature = "tauri_app"))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn decide_minimize() {
+        assert_eq!(decide_close_action("minimize"), CloseDecision::Minimize);
+    }
+
+    #[test]
+    fn decide_quit() {
+        assert_eq!(decide_close_action("quit"), CloseDecision::Quit);
+    }
+
+    #[test]
+    fn decide_ask() {
+        assert_eq!(decide_close_action("ask"), CloseDecision::Ask);
+    }
+
+    #[test]
+    fn decide_unknown_falls_back_to_ask() {
+        assert_eq!(decide_close_action("foo"), CloseDecision::Ask);
+    }
+
+    #[test]
+    fn decide_empty_falls_back_to_ask() {
+        assert_eq!(decide_close_action(""), CloseDecision::Ask);
+    }
+
+    #[test]
+    fn tray_menu_event_settings_serializes() {
+        let e = TrayMenuEvent::Settings;
+        let s = serde_json::to_string(&e).unwrap();
+        assert_eq!(s, "{\"kind\":\"Settings\"}");
     }
 }

@@ -324,8 +324,8 @@ impl ReceiverEngine {
             *s = ReceiverStatus::default();
             s.jitter_mode = mode;
         }
-        self.latency_state.lock().first_recv_instant = None;
-        self.latency_state.lock().bitrate_start = None;
+        // I4：一次性全量重置 latency_state（10 字段），避免遗漏导致重连后码率/漂移统计残留。
+        *self.latency_state.lock() = LatencyState::default();
         self.running.store(true, Ordering::SeqCst);
 
         // cpal 输出。
@@ -537,6 +537,11 @@ impl ReceiverEngine {
     /// 当前会话的 audio_key（用于重连时判断 key 是否变化）。
     pub fn current_audio_key(&self) -> [u8; 32] {
         *self.current_audio_key.lock()
+    }
+
+    /// 重置延迟统计状态（I4：用于同 audio_key 重连场景，避免码率/漂移统计残留旧值）。
+    pub fn reset_latency_state(&self) {
+        *self.latency_state.lock() = LatencyState::default();
     }
 }
 

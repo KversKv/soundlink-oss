@@ -57,6 +57,19 @@ export default function SettingsPanel({ settings, onChange }: Props) {
   const [logPath, setLogPath] = useState("");
   const [logPreview, setLogPreview] = useState("");
   const [logPreviewOpen, setLogPreviewOpen] = useState(false);
+  // I7：日志面板增强 —— 手动刷新、自动刷新、关键字过滤。
+  const [autoRefresh, setAutoRefresh] = useState(false);
+  const [logFilter, setLogFilter] = useState("");
+
+  useEffect(() => {
+    if (!autoRefresh || !logPreviewOpen) return;
+    const id = setInterval(() => {
+      invoke<string>("get_log_preview", { maxLines: 200 })
+        .then(setLogPreview)
+        .catch(() => {});
+    }, 5000);
+    return () => clearInterval(id);
+  }, [autoRefresh, logPreviewOpen]);
 
   useEffect(() => {
     invoke<AppVersionInfo>("get_app_version")
@@ -261,7 +274,32 @@ export default function SettingsPanel({ settings, onChange }: Props) {
             if (open && !logPreview) loadLogPreview();
           }}
         >
-          <summary>查看日志预览（最近 200 行）</summary>
+          <summary style={{ display: "inline-block" }}>查看日志预览（最近 200 行）</summary>
+          <button
+            type="button"
+            className="text-button"
+            onClick={loadLogPreview}
+            disabled={!logPreviewOpen}
+            style={{ marginLeft: 8 }}
+          >
+            ↻ 刷新
+          </button>
+          <label style={{ display: "block", marginTop: 8 }}>
+            <input
+              type="checkbox"
+              checked={autoRefresh}
+              onChange={(e) => setAutoRefresh(e.target.checked)}
+              disabled={!logPreviewOpen}
+            />{" "}
+            自动刷新（5s）
+          </label>
+          <input
+            type="text"
+            value={logFilter}
+            onChange={(e) => setLogFilter(e.target.value)}
+            placeholder="按关键字过滤（大小写不敏感）"
+            style={{ width: "100%", marginTop: 4, padding: "4px 6px" }}
+          />
           <pre
             className="log-preview"
             style={{
@@ -276,9 +314,39 @@ export default function SettingsPanel({ settings, onChange }: Props) {
               wordBreak: "break-word",
             }}
           >
-            {logPreviewOpen ? logPreview || "加载中…" : ""}
+            {logPreviewOpen
+              ? (logFilter
+                  ? logPreview
+                      .split("\n")
+                      .filter((l) => l.toLowerCase().includes(logFilter.toLowerCase()))
+                      .join("\n")
+                  : logPreview) || "加载中…"
+              : ""}
           </pre>
         </details>
+      </section>
+
+      <section className="panel-card settings-card">
+        <h2>使用帮助</h2>
+        <div className="about-row">
+          <button
+            type="button"
+            className="text-button"
+            onClick={() => openExternal("https://github.com/KversKv/SoundLink/tree/main/docs/First")}
+          >
+            查看使用文档
+          </button>
+          <button
+            type="button"
+            className="text-button"
+            onClick={() => openExternal("https://github.com/KversKv/SoundLink/issues")}
+          >
+            反馈问题
+          </button>
+        </div>
+        <small style={{ display: "block", marginTop: 8, color: "#60718d", lineHeight: 1.6 }}>
+          快速上手：接收模式点「开始接收」→ 手机输入配对码；发送模式选采集源 → 输入 Receiver 地址 → 点「开始发送」。
+        </small>
       </section>
 
       <section className="panel-card settings-card">

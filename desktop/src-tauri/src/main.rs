@@ -46,10 +46,34 @@ fn main() {
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             Some(vec!["--autostarted"]),
         ))
+        // I2：全局快捷键。Ctrl+Shift+P 切换角色、Ctrl+Shift+S 显示主窗口。
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(|app, shortcut, event| {
+                    if event.state == tauri_plugin_global_shortcut::ShortcutState::Pressed {
+                        use tauri::Emitter;
+                        let kind = match shortcut.to_string().as_str() {
+                            "Ctrl+Shift+P" => "toggle-role",
+                            "Ctrl+Shift+S" => "show-window",
+                            _ => return,
+                        };
+                        let _ = app.emit("global-shortcut", serde_json::json!({ "kind": kind }));
+                    }
+                })
+                .build(),
+        )
         .manage(soundlink_lib::commands::AppState::new(DEBUG, DUMP_ENABLE))
         .setup(|app| {
             if let Err(e) = soundlink_lib::commands::tray::setup_tray(app) {
                 tracing::warn!("托盘初始化失败：{}（应用继续启动）", e);
+            }
+            // I2：注册全局快捷键。
+            use tauri_plugin_global_shortcut::GlobalShortcutExt;
+            let shortcuts = ["Ctrl+Shift+P", "Ctrl+Shift+S"];
+            for sc in shortcuts {
+                if let Err(e) = app.global_shortcut().register(sc) {
+                    tracing::warn!("注册全局快捷键 {} 失败：{}", sc, e);
+                }
             }
             // D5：identity 加载失败时通知前端提示用户重新配对。
             let state: tauri::State<soundlink_lib::commands::AppState> = app.state();

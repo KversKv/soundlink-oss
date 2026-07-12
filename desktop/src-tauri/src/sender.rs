@@ -90,6 +90,10 @@ pub struct SenderEngine {
     reconnect_task: Mutex<Option<JoinHandle<()>>>,
     /// 状态变化回调（D1）：注入后 control_loop 退出时调用，通知 UI。
     on_state_change: Arc<Mutex<Option<Box<dyn Fn(String, String) + Send + Sync>>>>,
+    /// I5：公钥不一致回调（注入后 handshake 检测到 MITM 时调用，通知 UI 弹窗）。
+    /// 回调参数：(receiver_device_id, receiver_device_name, saved_pub_b64, recv_pub_b64)。
+    #[allow(clippy::type_complexity)]
+    on_pubkey_mismatch: Arc<Mutex<Option<Box<dyn Fn(String, String, String, String) + Send + Sync>>>>,
     /// 重连参数（D1）：start 时保存，backoff 重连时复用。
     /// capture_factory 闭包用于每次重连重新构造采集源（WASAPI 不可重用）。
     reconnect_params: Arc<Mutex<Option<ReconnectParams>>>,
@@ -127,6 +131,7 @@ impl SenderEngine {
             allow_reconnect: Arc::new(AtomicBool::new(false)),
             reconnect_task: Mutex::new(None),
             on_state_change: Arc::new(Mutex::new(None)),
+            on_pubkey_mismatch: Arc::new(Mutex::new(None)),
             reconnect_params: Arc::new(Mutex::new(None)),
         }
     }
@@ -144,6 +149,7 @@ impl SenderEngine {
             allow_reconnect: Arc::new(AtomicBool::new(false)),
             reconnect_task: Mutex::new(None),
             on_state_change: Arc::new(Mutex::new(None)),
+            on_pubkey_mismatch: Arc::new(Mutex::new(None)),
             reconnect_params: Arc::new(Mutex::new(None)),
         }
     }
@@ -151,6 +157,15 @@ impl SenderEngine {
     /// D1：注入状态变化回调（commands 层调用，回调内 app.emit）。
     pub fn set_on_state_change(&self, cb: Box<dyn Fn(String, String) + Send + Sync>) {
         *self.on_state_change.lock() = Some(cb);
+    }
+
+    /// I5：注入公钥不一致回调（commands 层调用，回调内 app.emit `pubkey-mismatch` 事件）。
+    /// 回调参数：(receiver_device_id, receiver_device_name, saved_pub_b64, recv_pub_b64)。
+    pub fn set_on_pubkey_mismatch(
+        &self,
+        cb: Box<dyn Fn(String, String, String, String) + Send + Sync>,
+    ) {
+        *self.on_pubkey_mismatch.lock() = Some(cb);
     }
 
     /// 启动发送端：握手 + 采集 + 发送（不启用重连，向后兼容）。
@@ -587,6 +602,16 @@ impl SenderEngine {
                     saved_pub,
                     receiver_identity_pub_b64
                 );
+                // I5：通知 UI 弹窗（不阻塞拒绝，仍 return Err）。
+                // 安全语义不变：公钥不匹配时仍立即拒绝连接，回调仅作事后告知。
+                if let Some(cb) = self.on_pubkey_mismatch.lock().as_ref() {
+                    cb(
+                        receiver_device_id.clone(),
+                        receiver_device_name.clone(),
+                        saved_pub.clone(),
+                        receiver_identity_pub_b64.clone(),
+                    );
+                }
                 return Err(format!(
                     "Receiver 身份公钥与已保存的不匹配（疑似中间人攻击），请删除该已信任设备后重新配对。saved={} recv={}",
                     saved_pub,

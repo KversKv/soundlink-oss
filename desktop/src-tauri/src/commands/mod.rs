@@ -672,6 +672,19 @@ pub async fn start_sender(
             serde_json::json!({ "state": state, "error": error }),
         );
     }));
+    // I5：注入公钥不一致回调（公钥不匹配时仍 return Err，回调仅作 UI 告知）。
+    let app_for_pkm = app.clone();
+    s.sender.set_on_pubkey_mismatch(Box::new(move |device_id, device_name, saved_pub, recv_pub| {
+        let _ = app_for_pkm.emit(
+            "pubkey-mismatch",
+            serde_json::json!({
+                "device_id": device_id,
+                "device_name": device_name,
+                "saved_pub_b64": saved_pub,
+                "recv_pub_b64": recv_pub,
+            }),
+        );
+    }));
     // D1：capture_factory 闭包，重连时重新构造采集源。
     let source_id_for_factory = source_id.clone();
     let capture_factory: Arc<dyn Fn() -> Box<dyn CaptureSource> + Send + Sync> =
@@ -980,5 +993,102 @@ fn sync_autostart(app: &tauri::AppHandle, enabled: bool) -> Result<(), String> {
     } else {
         let _ = mgr.disable();
         Ok(())
+    }
+}
+
+#[cfg(all(test, feature = "tauri_app"))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_role_valid() {
+        assert_eq!(parse_role("receiver"), Some(Role::Receiver));
+        assert_eq!(parse_role("sender"), Some(Role::Sender));
+    }
+
+    #[test]
+    fn parse_role_invalid() {
+        assert_eq!(parse_role("foo"), None);
+        assert_eq!(parse_role(""), None);
+    }
+
+    #[test]
+    fn role_as_str_roundtrip() {
+        assert_eq!(role_as_str(Role::Receiver), "receiver");
+        assert_eq!(role_as_str(Role::Sender), "sender");
+    }
+
+    #[test]
+    fn parse_jitter_mode_all_variants() {
+        assert_eq!(parse_jitter_mode("low"), Some(JitterMode::Low));
+        assert_eq!(parse_jitter_mode("balanced"), Some(JitterMode::Balanced));
+        assert_eq!(parse_jitter_mode("stable"), Some(JitterMode::Stable));
+        assert_eq!(parse_jitter_mode("auto"), Some(JitterMode::Auto));
+    }
+
+    #[test]
+    fn parse_jitter_mode_invalid() {
+        assert_eq!(parse_jitter_mode("foo"), None);
+        assert_eq!(parse_jitter_mode(""), None);
+    }
+
+    #[test]
+    fn nearest_bitrate_exact() {
+        assert_eq!(nearest_bitrate(128_000), 128_000);
+        assert_eq!(nearest_bitrate(64_000), 64_000);
+        assert_eq!(nearest_bitrate(192_000), 192_000);
+    }
+
+    #[test]
+    fn nearest_bitrate_round_down() {
+        // 70000 距 64000(6000) 比 96000(26000) 更近
+        assert_eq!(nearest_bitrate(70_000), 64_000);
+    }
+
+    #[test]
+    fn nearest_bitrate_round_up() {
+        // 110000 距 96000(14000) 比 128000(18000) 更近
+        assert_eq!(nearest_bitrate(110_000), 96_000);
+    }
+
+    #[test]
+    fn nearest_bitrate_above_max_clamps() {
+        assert_eq!(nearest_bitrate(999_999), 192_000);
+    }
+
+    #[test]
+    fn nearest_bitrate_below_min_clamps() {
+        assert_eq!(nearest_bitrate(1_000), 64_000);
+    }
+
+    #[test]
+    fn nearest_bitrate_midpoint_picks_lower() {
+        // 112000 是 96000 与 128000 的中点，min_by_key 平局取首个（96000）
+        assert_eq!(nearest_bitrate(112_000), 96_000);
+    }
+
+    #[test]
+    fn make_capture_source_sine_returns_default_test_source() {
+        let mut src = make_capture_source("sine").unwrap();
+        assert!(!src.name().is_empty());
+        assert!(src.start().is_ok());
+        let frame = src.poll_frame();
+        assert!(frame.is_some());
+        assert!(!frame.unwrap().is_empty());
+        src.stop();
+    }
+
+    #[test]
+    fn make_capture_source_empty_falls_back_to_sine() {
+        let src = make_capture_source("").unwrap();
+        assert!(!src.name().is_empty());
+    }
+
+    #[test]
+    fn make_capture_source_unknown_returns_err() {
+        let r = make_capture_source("foobar");
+        assert!(r.is_err());
+        let e = r.err().unwrap();
+        assert!(e.contains("未知采集源"), "错误信息应含「未知采集源」，got: {}", e);
     }
 }
