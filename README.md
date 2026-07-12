@@ -76,6 +76,7 @@ SoundLink/
 └── docs/               # 设计文档与用户文档
     ├── First/          # 架构/协议/安全/延迟/选型/合规/阶段/目录/规格/计划
     ├── NewFunctions/   # 发布就绪度规划（P0/P1/P2）
+    │   └── release-readiness/  # 分级路线图文档
     ├── user/           # 用户与开发文档
     └── privacy.md      # 隐私政策
 ```
@@ -93,7 +94,7 @@ SoundLink/
 | 配对与安全 | [`docs/First/05-pairing-security.md`](docs/First/05-pairing-security.md) |
 | 实现规格（编码依据） | [`docs/First/11-implementation-spec.md`](docs/First/11-implementation-spec.md) |
 | 开发计划与进度 | [`docs/First/12-plan.md`](docs/First/12-plan.md) |
-| 发布就绪度 | [`docs/NewFunctions/00-release-overview.md`](docs/NewFunctions/00-release-overview.md) |
+| 发布就绪度 | [`docs/NewFunctions/release-readiness/00-release-overview.md`](docs/NewFunctions/release-readiness/00-release-overview.md) |
 | 用户使用指南 | [`docs/user/desktop-guide.md`](docs/user/desktop-guide.md) |
 | 隐私政策 | [`docs/privacy.md`](docs/privacy.md) |
 | 协作规则 | [`AGENTS.md`](AGENTS.md)、[`.trae/rules/project-rules.md`](.trae/rules/project-rules.md) |
@@ -106,7 +107,7 @@ SoundLink/
 - 阶段 2 移动端 🟡 进行中：Android ✅ 可用；iOS 工程就绪，待真机验收。
 - 阶段 5 桌面发送端 🟡 进行中：Windows WASAPI Loopback ✅；macOS 采集未实装；双电脑真机未验收。
 - P0 阻塞发布红线 ✅ 完成（2026-07-12）。
-- P1 Beta 前补强 🟡 进行中（参考 [`docs/NewFunctions/02-p1-important-improvements.md`](docs/NewFunctions/02-p1-important-improvements.md)）。
+- P1 Beta 前补强 🟡 进行中（参考 [`docs/NewFunctions/release-readiness/02-p1-important-improvements.md`](docs/NewFunctions/release-readiness/02-p1-important-improvements.md)）。
 
 详细进度以 [`docs/First/12-plan.md`](docs/First/12-plan.md) 为准。
 

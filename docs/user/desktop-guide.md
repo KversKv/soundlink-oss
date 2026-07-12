@@ -242,5 +242,5 @@ SoundLink 是一款局域网音频流转软件，支持把手机或电脑的音�
 
 - 隐私政策：[`docs/privacy.md`](../privacy.md)
 - 开发计划：[`docs/First/12-plan.md`](../First/12-plan.md)
-- 发布就绪度：[`docs/NewFunctions/00-release-overview.md`](../NewFunctions/00-release-overview.md)
+- 发布就绪度：[`docs/NewFunctions/release-readiness/00-release-overview.md`](../NewFunctions/release-readiness/00-release-overview.md)
 - 开发环境搭建：[`docs/user/02-dev-env-desktop.md`](./02-dev-env-desktop.md)

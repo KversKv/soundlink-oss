@@ -115,8 +115,8 @@ test result: ok. 95 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
 
 ## 关联文档
 
-- 总览：[00-release-overview.md](../../NewFunctions/00-release-overview.md)
-- P2 详情：[03-p2-future-optimizations.md](../../NewFunctions/03-p2-future-optimizations.md)
+- 总览：[00-release-overview.md](../../NewFunctions/release-readiness/00-release-overview.md)
+- P2 详情：[03-p2-future-optimizations.md](../../NewFunctions/release-readiness/03-p2-future-optimizations.md)
 - 实现规格：`docs/First/11-implementation-spec.md`
 - 关联 P0 A5（公钥阻断基础）：本次 I5 在其之上增加 UI 弹窗
 - 关联 D1（sender 重连）：本次 I4 修复同 key 重连路径的 latency_state 残留
