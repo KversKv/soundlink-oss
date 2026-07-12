@@ -56,6 +56,22 @@ pub struct AppConfig {
     pub audio_params: AudioParams,
     pub last_receiver_addr: String,
     pub selected_capture_source: String,
+    /// 关闭窗口行为："ask" | "minimize" | "quit"
+    #[serde(default = "default_close_action")]
+    pub close_action: String,
+    /// 开机自启动（注册表项）
+    #[serde(default)]
+    pub auto_start: bool,
+    /// 自启动后自动开启接收（仅 role=receiver 有意义）
+    #[serde(default)]
+    pub auto_receive_on_start: bool,
+    /// 自启动后自动开启发送（仅 role=sender 有意义）
+    #[serde(default)]
+    pub auto_send_on_start: bool,
+}
+
+fn default_close_action() -> String {
+    "ask".into()
 }
 
 impl Default for AppConfig {
@@ -76,6 +92,10 @@ impl Default for AppConfig {
             },
             last_receiver_addr: String::new(),
             selected_capture_source: "sine".into(),
+            close_action: "ask".into(),
+            auto_start: false,
+            auto_receive_on_start: false,
+            auto_send_on_start: false,
         }
     }
 }
@@ -107,6 +127,9 @@ impl AppConfig {
         }
         if !["low", "balanced", "stable", "auto"].contains(&self.jitter_mode.as_str()) {
             self.jitter_mode = "balanced".into();
+        }
+        if !["ask", "minimize", "quit"].contains(&self.close_action.as_str()) {
+            self.close_action = "ask".into();
         }
         self.volume = self.volume.clamp(0.0, 1.0);
         self.audio_params = self.audio_params.normalized();

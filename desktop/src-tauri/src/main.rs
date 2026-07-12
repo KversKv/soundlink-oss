@@ -30,7 +30,20 @@ fn main() {
     soundlink_lib::logging::init();
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            Some(vec!["--autostarted"]),
+        ))
         .manage(soundlink_lib::commands::AppState::new(DEBUG, DUMP_ENABLE))
+        .setup(|app| {
+            if let Err(e) = soundlink_lib::commands::tray::setup_tray(app) {
+                tracing::warn!("托盘初始化失败：{}（应用继续启动）", e);
+            }
+            Ok(())
+        })
+        .on_window_event(|window, event| {
+            soundlink_lib::commands::tray::handle_close_requested(window, event);
+        })
         .invoke_handler(tauri::generate_handler![
             soundlink_lib::commands::start_receiver,
             soundlink_lib::commands::stop_receiver,
@@ -60,6 +73,14 @@ fn main() {
             soundlink_lib::commands::list_trusted_receivers,
             soundlink_lib::commands::remove_trusted_receiver,
             soundlink_lib::commands::connect_trusted_receiver,
+            soundlink_lib::commands::quit_app,
+            soundlink_lib::commands::minimize_to_tray,
+            soundlink_lib::commands::show_main_window,
+            soundlink_lib::commands::get_app_settings,
+            soundlink_lib::commands::set_app_settings,
+            soundlink_lib::commands::set_close_action,
+            soundlink_lib::commands::set_auto_start,
+            soundlink_lib::commands::get_auto_start,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

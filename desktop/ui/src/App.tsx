@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import "./App.css";
+import SettingsPanel, { type AppSettings } from "./components/SettingsPanel";
+import CloseDialog from "./components/CloseDialog";
 
 interface OutputDevice {
   id: string;
@@ -154,6 +157,10 @@ export default function App() {
 
   const [error, setError] = useState<string>("");
 
+  const [view, setView] = useState<"main" | "settings">("main");
+  const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
+  const [closeDialogOpen, setCloseDialogOpen] = useState(false);
+
   useEffect(() => {
     invoke<OutputDevice[]>("list_output_devices")
       .then(setDevices)
@@ -191,6 +198,65 @@ export default function App() {
     invoke<number>("get_volume")
       .then((v) => setVolume(Math.round(v * 100)))
       .catch(() => {});
+  }, []);
+
+  // 监听 Rust 端 emit 的事件：关闭请求 + 托盘「设置…」点击。
+  useEffect(() => {
+    const unlistenClose = listen("close-requested", () => setCloseDialogOpen(true));
+    const unlistenTray = listen<{ kind: string }>("tray-menu-click", (e) => {
+      if (e.payload.kind === "Settings") setView("settings");
+    });
+    return () => {
+      unlistenClose.then((fn) => fn());
+      unlistenTray.then((fn) => fn());
+    };
+  }, []);
+
+  // 自启动后自动收发（前端驱动）：mount 时读 AppSettings，按需触发既有命令。
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const s = await invoke<AppSettings>("get_app_settings");
+        if (cancelled) return;
+        setAppSettings(s);
+        // 仅在用户开启对应开关时尝试自动启动；失败仅打日志不阻塞。
+        if (s.auto_receive_on_start) {
+          try {
+            const r = await invoke<StartResult>("start_receiver");
+            if (cancelled) return;
+            setPairingCode(r.pairing_code);
+            setDeviceId(r.device_id);
+            setRunning(true);
+          } catch (e) {
+            console.warn("自启动接收失败：", String(e));
+          }
+        }
+        if (s.auto_send_on_start) {
+          try {
+            const list = await invoke<TrustedReceiver[]>("list_trusted_receivers");
+            if (cancelled) return;
+            const first = list.find((t) => t.host && t.control_port);
+            if (first) {
+              await invoke("connect_trusted_receiver", {
+                deviceId: first.device_id,
+                captureSource: selectedSource,
+              });
+              if (cancelled) return;
+              setSenderRunning(true);
+            }
+          } catch (e) {
+            console.warn("自启动发送失败：", String(e));
+          }
+        }
+      } catch (e) {
+        console.warn("加载 AppSettings 失败：", String(e));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -430,20 +496,59 @@ export default function App() {
           </div>
           <h1>SoundLink</h1>
           <p>局域网音频流转</p>
-        </header>
-
-        <nav className="role-tabs" aria-label="模式切换">
-          {(["receiver", "sender"] as Role[]).map((r) => (
+          {view === "main" ? (
             <button
-              key={r}
-              className={role === r ? "active" : ""}
-              onClick={() => switchRole(r)}
+              className="settings-entry"
+              onClick={() => setView("settings")}
+              type="button"
+              aria-label="设置"
+            >
+              <svg viewBox="0 0 24 24" role="img" aria-hidden="true">
+                <path
+                  fill="currentColor"
+                  d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm9.4 4l1.7-1.3-1.7-2.9-2 .8a7.6 7.6 0 0 0-1.5-.9l-.3-2.1h-3.4l-.3 2.1c-.5.2-1 .5-1.5.9l-2-.8-1.7 2.9L9.6 12c0 .5 0 1 .1 1.5l-1.7 1.3 1.7 2.9 2-.8c.5.4 1 .7 1.5.9l.3 2.1h3.4l.3-2.1c.5-.2 1-.5 1.5-.9l2 .8 1.7-2.9-1.7-1.3c.1-.5.1-1 .1-1.5z"
+                />
+              </svg>
+              <span>设置</span>
+            </button>
+          ) : (
+            <button
+              className="back-button"
+              onClick={() => setView("main")}
               type="button"
             >
-              {r === "receiver" ? "接收模式" : "发送模式"}
+              ← 返回
             </button>
-          ))}
-        </nav>
+          )}
+        </header>
+
+        {view === "settings" ? (
+          <SettingsPanel
+            settings={appSettings}
+            onChange={async (next) => {
+              const saved = await invoke<AppSettings>("set_app_settings", {
+                closeAction: next.close_action ?? null,
+                autoStart: next.auto_start ?? null,
+                autoReceiveOnStart: next.auto_receive_on_start ?? null,
+                autoSendOnStart: next.auto_send_on_start ?? null,
+              });
+              setAppSettings(saved);
+            }}
+          />
+        ) : (
+          <>
+            <nav className="role-tabs" aria-label="模式切换">
+              {(["receiver", "sender"] as Role[]).map((r) => (
+                <button
+                  key={r}
+                  className={role === r ? "active" : ""}
+                  onClick={() => switchRole(r)}
+                  type="button"
+                >
+                  {r === "receiver" ? "接收模式" : "发送模式"}
+                </button>
+              ))}
+            </nav>
 
         {role === "receiver" && (
           <div className="mode-panel">
@@ -764,6 +869,23 @@ export default function App() {
               </section>
             )}
           </div>
+        )}
+          </>
+        )}
+
+        {closeDialogOpen && (
+          <CloseDialog
+            onClose={() => setCloseDialogOpen(false)}
+            onMinimize={async (remember) => {
+              if (remember) await invoke("set_close_action", { action: "minimize" });
+              await invoke("minimize_to_tray");
+              setCloseDialogOpen(false);
+            }}
+            onQuit={async (remember) => {
+              if (remember) await invoke("set_close_action", { action: "quit" });
+              await invoke("quit_app");
+            }}
+          />
         )}
 
         {error && <div className="error-banner">错误：{error}</div>}

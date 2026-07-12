@@ -28,7 +28,7 @@ use parking_lot::Mutex;
 use serde::Serialize;
 use std::path::PathBuf;
 use std::sync::Arc;
-use tauri::State;
+use tauri::{Manager, State};
 
 /// 应用角色。
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
@@ -702,4 +702,129 @@ pub async fn connect_trusted_receiver(
             audio_params,
         )
         .await
+}
+
+// ────────────────────────────────────────────────────────────────────
+//  系统托盘 / 关闭窗口行为 / 设置面板
+// ────────────────────────────────────────────────────────────────────
+
+pub mod tray;
+
+/// 设置面板专用：返回 `close_action` / `auto_start` / 自动收发开关。
+#[derive(Debug, Clone, Serialize)]
+pub struct AppSettings {
+    pub close_action: String,
+    pub auto_start: bool,
+    pub auto_receive_on_start: bool,
+    pub auto_send_on_start: bool,
+}
+
+/// 退出整个应用（非仅关闭窗口）。
+#[tauri::command]
+pub fn quit_app(app: tauri::AppHandle) {
+    app.exit(0);
+}
+
+/// 最小化到托盘：隐藏主窗口。
+#[tauri::command]
+pub fn minimize_to_tray(app: tauri::AppHandle) -> Result<(), String> {
+    let w = app
+        .get_webview_window("main")
+        .ok_or_else(|| "主窗口未找到".to_string())?;
+    w.hide().map_err(|e| e.to_string())
+}
+
+/// 显示主窗口并聚焦。
+#[tauri::command]
+pub fn show_main_window(app: tauri::AppHandle) -> Result<(), String> {
+    let w = app
+        .get_webview_window("main")
+        .ok_or_else(|| "主窗口未找到".to_string())?;
+    w.show().map_err(|e| e.to_string())?;
+    w.set_focus().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_app_settings(state: State<'_, AppState>) -> Result<AppSettings, String> {
+    let cfg = state.config.lock();
+    Ok(AppSettings {
+        close_action: cfg.close_action.clone(),
+        auto_start: cfg.auto_start,
+        auto_receive_on_start: cfg.auto_receive_on_start,
+        auto_send_on_start: cfg.auto_send_on_start,
+    })
+}
+
+/// 批量保存设置：写入 config + 同步 autostart 注册表项（仅当 `auto_start` 被显式设置）。
+#[tauri::command]
+pub async fn set_app_settings(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    close_action: Option<String>,
+    auto_start: Option<bool>,
+    auto_receive_on_start: Option<bool>,
+    auto_send_on_start: Option<bool>,
+) -> Result<AppSettings, String> {
+    {
+        let mut cfg = state.config.lock();
+        if let Some(v) = close_action {
+            if !["ask", "minimize", "quit"].contains(&v.as_str()) {
+                return Err(format!("非法 close_action：{}", v));
+            }
+            cfg.close_action = v;
+        }
+        if let Some(v) = auto_start {
+            cfg.auto_start = v;
+        }
+        if let Some(v) = auto_receive_on_start {
+            cfg.auto_receive_on_start = v;
+        }
+        if let Some(v) = auto_send_on_start {
+            cfg.auto_send_on_start = v;
+        }
+    }
+    save_config(state.inner())?;
+    if let Some(v) = auto_start {
+        sync_autostart(&app, v)?;
+    }
+    get_app_settings(state)
+}
+
+/// 仅设置关闭行为（关闭对话框「记住选择」时调用）。
+#[tauri::command]
+pub fn set_close_action(state: State<'_, AppState>, action: String) -> Result<(), String> {
+    if !["ask", "minimize", "quit"].contains(&action.as_str()) {
+        return Err(format!("非法 close_action：{}", action));
+    }
+    state.config.lock().close_action = action;
+    save_config(state.inner())
+}
+
+#[tauri::command]
+pub fn set_auto_start(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    enabled: bool,
+) -> Result<bool, String> {
+    state.config.lock().auto_start = enabled;
+    save_config(state.inner())?;
+    sync_autostart(&app, enabled)?;
+    Ok(enabled)
+}
+
+#[tauri::command]
+pub fn get_auto_start(state: State<'_, AppState>) -> Result<bool, String> {
+    Ok(state.config.lock().auto_start)
+}
+
+/// 同步 autostart 插件注册表项与配置中的 `auto_start` 字段一致。
+fn sync_autostart(app: &tauri::AppHandle, enabled: bool) -> Result<(), String> {
+    use tauri_plugin_autostart::ManagerExt;
+    let mgr = app.autolaunch();
+    if enabled {
+        mgr.enable().map_err(|e| format!("启用自启动失败：{}", e))
+    } else {
+        let _ = mgr.disable();
+        Ok(())
+    }
 }

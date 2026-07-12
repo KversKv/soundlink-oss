@@ -1,10 +1,16 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "SoundLink 主窗口默认能力：核心命令 + opener 插件。",
+  "description": "SoundLink 主窗口默认能力：核心命令 + opener + autostart 插件 + 事件 + 托盘。",
   "windows": ["main"],
   "permissions": [
     "core:default",
-    "opener:default"
+    "core:window:allow-hide",
+    "core:window:allow-show",
+    "core:window:allow-set-focus",
+    "core:window:allow-close",
+    "core:event:default",
+    "opener:default",
+    "autostart:default"
   ]
 }
