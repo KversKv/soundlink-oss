@@ -95,6 +95,7 @@ fn main() {
             soundlink_lib::commands::start_receiver,
             soundlink_lib::commands::stop_receiver,
             soundlink_lib::commands::get_pairing_code,
+            soundlink_lib::commands::get_local_addresses,
             soundlink_lib::commands::get_pairing_lock_status,
             soundlink_lib::commands::get_app_version,
             soundlink_lib::commands::get_log_path,

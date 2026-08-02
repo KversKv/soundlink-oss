@@ -72,6 +72,12 @@ interface CaptureSourceInfo {
   available: boolean;
 }
 
+interface LocalAddressInfo {
+  ip: string;
+  control_port: number;
+  audio_port: number;
+}
+
 type JitterMode = "low" | "balanced" | "stable" | "auto";
 type PairingMode = "random" | "fixed";
 type Role = "receiver" | "sender";
@@ -173,6 +179,8 @@ export default function App() {
   const [closeDialogOpen, setCloseDialogOpen] = useState(false);
   // D4：配对锁定状态。null 表示未锁定；number>0 表示剩余锁定秒数。
   const [pairingLockRemaining, setPairingLockRemaining] = useState<number | null>(null);
+  // 本机局域网 IP 地址列表（配对码卡片显示，便于对端手动连接）。
+  const [localAddresses, setLocalAddresses] = useState<LocalAddressInfo[]>([]);
   // E5：长任务进行中标记。空字符串表示无任务；非空时禁用所有动作按钮。
   const [actionPending, setActionPending] = useState<string>("");
   // E3：是否显示首次引导。
@@ -227,6 +235,10 @@ export default function App() {
           setPairingLockRemaining(st.remaining_secs);
         }
       })
+      .catch(() => {});
+    // 加载本机局域网 IP 地址列表（配对码卡片显示用）。
+    invoke<LocalAddressInfo[]>("get_local_addresses")
+      .then(setLocalAddresses)
       .catch(() => {});
   }, []);
 
@@ -415,6 +427,10 @@ export default function App() {
       setPairingCode(r.pairing_code);
       setDeviceId(r.device_id);
       setRunning(true);
+      // 启动接收器后刷新本机 IP（覆盖启动时网络未就绪场景）。
+      invoke<LocalAddressInfo[]>("get_local_addresses")
+        .then(setLocalAddresses)
+        .catch(() => {});
     } catch (e) {
       setError(mapError(e));
     } finally {
@@ -729,6 +745,21 @@ export default function App() {
                 <span>{formatPairingCode(pairingCode)}</span>
                 <small>设备 ID：{deviceId || "—"}</small>
               </div>
+              {localAddresses.length > 0 && (
+                <div className="local-address-list" aria-label="本机局域网地址">
+                  <small className="local-address-title">本机地址（供对端手动连接）</small>
+                  <ul>
+                    {localAddresses.map((addr) => (
+                      <li key={addr.ip}>
+                        <code>{addr.ip}</code>
+                        <span className="local-address-ports">
+                          控制 {addr.control_port} · 音频 {addr.audio_port}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               {pairingLockRemaining !== null && pairingLockRemaining > 0 && (
                 <div
                   className="pairing-locked-card"

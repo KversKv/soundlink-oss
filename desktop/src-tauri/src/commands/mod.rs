@@ -287,6 +287,30 @@ pub fn get_pairing_code(state: State<'_, AppState>) -> Result<String, String> {
     Ok(state.inner().pairing.issue())
 }
 
+/// 本机局域网 IP 地址（配对码卡片显示本机地址用）。
+/// `local_ip()` 返回系统默认路由出口的 IPv4，已天然排除回环与链路本地。
+#[derive(Debug, Serialize)]
+pub struct LocalAddressInfo {
+    pub ip: String,
+    pub control_port: u16,
+    pub audio_port: u16,
+}
+
+#[tauri::command]
+pub fn get_local_addresses() -> Result<Vec<LocalAddressInfo>, String> {
+    use local_ip_address::local_ip;
+    // 单个候选 IP（系统默认路由出口）。多网卡场景下足够覆盖大多数用户；
+    // 若需枚举全部接口，可后续扩展为 list_afinet_netifas。
+    match local_ip() {
+        Ok(ip) => Ok(vec![LocalAddressInfo {
+            ip: ip.to_string(),
+            control_port: DEFAULT_CONTROL_PORT,
+            audio_port: DEFAULT_AUDIO_PORT,
+        }]),
+        Err(e) => Err(format!("无法获取本机 IP：{}", e)),
+    }
+}
+
 /// D4：查询当前配对锁定状态。返回 { is_locked, remaining_secs, attempts }。
 #[derive(Debug, Serialize)]
 pub struct PairingLockStatus {
