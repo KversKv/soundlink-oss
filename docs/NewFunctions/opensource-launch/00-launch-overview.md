@@ -25,6 +25,7 @@
 | K · Release 发布流水线 | tag 触发构建、产物上传、Release Notes、校验和 | 必做 | 🟡 进行中 | 2026-08-03（K1/K2 完成，K3-K5 待人工执行） |
 | L · 代码质量对外门槛 | 全量 `cargo fmt`、CI 阻塞化、依赖审计 | 建议 | ⬜ 未开始 | — |
 | M · 市场定位与社区运营 | 竞品调研、差异化文案、推广渠道、Issue 运营 | 建议 | 🟡 进行中 | 2026-08-03（M1 完成） |
+| N · 产品官网 | 单页 landing（中英双语）+ GitHub Pages 部署，见 [`02-website-plan.md`](./02-website-plan.md) | 建议 | ⬜ 未开始 | 2026-08-03 完成规划，N1-N9 待实现 |
 
 状态取值：`⬜ 未开始` / `🟡 进行中` / `✅ 完成` / `⏸ 暂停`。
 
@@ -132,6 +133,7 @@ git push origin v0.1.0-beta
 ## 9. 关联文档
 
 - 市场调研与定位：[`01-market-research.md`](./01-market-research.md)
+- 产品官网规划：[`02-website-plan.md`](./02-website-plan.md)
 - 产品发布就绪度：[`../release-readiness/00-release-overview.md`](../release-readiness/00-release-overview.md)
 - 项目阶段进度：[`../../First/12-plan.md`](../../First/12-plan.md)
 - 贡献与安全：[`../../../CONTRIBUTING.md`](../../../CONTRIBUTING.md)、[`../../../SECURITY.md`](../../../SECURITY.md)
