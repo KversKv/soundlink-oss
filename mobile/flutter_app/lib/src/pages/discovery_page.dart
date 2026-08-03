@@ -1,21 +1,47 @@
-// 设备发现页：扫描局域网桌面 Receiver，列表选择；支持手动输入 IP。
+// 设备页：扫描局域网桌面 Receiver，列表选择；支持手动输入 IP。
 // 已信任设备可直接快速重连（跳过配对码）。
+// 页面底部内嵌配对区块：输入配对码连接所选设备，或停止广播。
 
 import 'package:flutter/material.dart';
 
 import '../../app.dart';
 import '../../main.dart' show DEBUG, DUMP_ENABLE;
+import '../models/connection_state.dart';
 import '../models/device.dart';
 import '../services/trust_store.dart';
 
-class DiscoveryPage extends StatelessWidget {
+class DiscoveryPage extends StatefulWidget {
   final AppState app;
   const DiscoveryPage({super.key, required this.app});
 
   @override
+  State<DiscoveryPage> createState() => _DiscoveryPageState();
+}
+
+class _DiscoveryPageState extends State<DiscoveryPage> {
+  final _codeCtrl = TextEditingController();
+  bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // DEBUG 模式下默认填充固定配对码（与桌面端 DEBUG 模式生成的码一致）。
+    if (DEBUG) {
+      _codeCtrl.text = '12345678';
+    }
+  }
+
+  @override
+  void dispose() {
+    _codeCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final app = widget.app;
     return Scaffold(
-      appBar: AppBar(title: const Text('设备发现')),
+      appBar: AppBar(title: const Text('设备')),
       body: ListenableBuilder(
         listenable: app,
         builder: (context, _) {
@@ -71,6 +97,8 @@ class DiscoveryPage extends StatelessWidget {
                   ],
                 ),
               ),
+              const Divider(),
+              _buildPairingSection(context, app),
               // 调试：采集 PCM 转储开关
               _DumpPcmTile(app: app),
             ],
@@ -80,6 +108,74 @@ class DiscoveryPage extends StatelessWidget {
     );
   }
 
+  /// 配对区块：显示目标设备、配对码输入与连接/停止按钮。
+  Widget _buildPairingSection(BuildContext context, AppState app) {
+    final device = app.selectedDevice;
+    return Padding(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('目标设备', style: Theme.of(context).textTheme.titleSmall),
+          const SizedBox(height: 4),
+          Text(device != null ? _deviceLabel(device) : '未选择（请在上方列表选择）'),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _codeCtrl,
+            decoration: const InputDecoration(
+              labelText: '配对码（8 位数字）',
+              hintText: '查看电脑端显示的配对码',
+              border: OutlineInputBorder(),
+            ),
+            keyboardType: TextInputType.number,
+            maxLength: 8,
+          ),
+          const SizedBox(height: 16),
+          FilledButton.icon(
+            onPressed: _busy || device == null
+                ? null
+                : () => _connect(app, trusted: false),
+            icon: const Icon(Icons.link),
+            label: const Text('配对并开始广播'),
+          ),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: _busy || device == null
+                ? null
+                : () => _connect(app, trusted: true),
+            icon: const Icon(Icons.history),
+            label: const Text('已信任设备直接连接'),
+          ),
+          const SizedBox(height: 16),
+          if (app.conn == LinkState.streaming)
+            FilledButton.tonalIcon(
+              onPressed: _busy ? null : () => app.stop(),
+              icon: const Icon(Icons.stop),
+              label: const Text('停止广播'),
+              style: FilledButton.styleFrom(
+                backgroundColor: Colors.red.shade100,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// 目标设备显示文案：手动添加的设备名称即 IP，避免名称与 host 重复成两行相同 IP。
+  static String _deviceLabel(DiscoveredDevice d) {
+    if (d.deviceName == d.host) return d.host;
+    return '${d.deviceName}\n${d.host}';
+  }
+
+  Future<void> _connect(AppState app, {required bool trusted}) async {
+    setState(() => _busy = true);
+    try {
+      await app.connectAndStart(pairingCode: trusted ? null : _codeCtrl.text);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   Widget _lastReceiverTile(BuildContext context, DiscoveredDevice d) {
     return ListTile(
       leading: const Icon(Icons.history, color: Colors.blue),
@@ -87,8 +183,8 @@ class DiscoveryPage extends StatelessWidget {
       subtitle: Text('${d.host}  ·  上次连接设备'),
       trailing: const Icon(Icons.play_arrow),
       onTap: () {
-        app.selectDevice(d);
-        app.connectAndStart(pairingCode: null);
+        widget.app.selectDevice(d);
+        widget.app.connectAndStart(pairingCode: null);
       },
     );
   }
@@ -100,7 +196,7 @@ class DiscoveryPage extends StatelessWidget {
       subtitle: Text('${t.host}  ·  已信任'),
       trailing: IconButton(
         icon: const Icon(Icons.delete_outline, size: 20),
-        onPressed: () => app.removeTrusted(t.deviceId),
+        onPressed: () => widget.app.removeTrusted(t.deviceId),
       ),
       onTap: () {
         final device = DiscoveredDevice(
@@ -115,14 +211,15 @@ class DiscoveryPage extends StatelessWidget {
           audioPort: t.audioPort,
           host: t.host,
         );
-        app.selectDevice(device);
+        widget.app.selectDevice(device);
         // 已信任设备直接连接（无配对码）。
-        app.connectAndStart(pairingCode: null);
+        widget.app.connectAndStart(pairingCode: null);
       },
     );
   }
 
   Widget _deviceTile(DiscoveredDevice d) {
+    final app = widget.app;
     final selected = d == app.selectedDevice;
     return ListTile(
       leading: const Icon(Icons.speaker),
@@ -136,6 +233,7 @@ class DiscoveryPage extends StatelessWidget {
   }
 
   void _showManualDialog(BuildContext context) {
+    final app = widget.app;
     // DEBUG 模式下默认填充调试机地址，省去手敲。
     final ipCtrl = TextEditingController(text: DEBUG ? '10.31.30.41' : '');
     showDialog(
