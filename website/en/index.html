@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SoundLink · Send your phone's audio to your computer's headphones</title>
+    <meta name="description" content="SoundLink is a LAN audio streaming app for headphone users. Phone audio is encrypted and sent over the LAN to your computer, which outputs to high-quality audio devices. Free, open source, zero telemetry." />
+    <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
+    <link rel="alternate" hreflang="zh-CN" href="/SoundLink/" />
+    <link rel="alternate" hreflang="en" href="/SoundLink/en/" />
+    <link rel="alternate" hreflang="x-default" href="/SoundLink/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="SoundLink · Send your phone's audio to your computer's headphones" />
+    <meta property="og:description" content="LAN audio streaming: encrypted phone audio to your computer's headphones. Free, open source, zero telemetry." />
+    <meta property="og:image" content="/SoundLink/og.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <script>
+      (function () {
+        try {
+          var saved = localStorage.getItem('soundlink-lang');
+          if (saved === 'zh') location.replace('/SoundLink/');
+          else if (!saved) localStorage.setItem('soundlink-lang', 'en');
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main-en.tsx"></script>
+  </body>
+</html>

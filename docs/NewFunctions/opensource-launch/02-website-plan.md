@@ -115,15 +115,15 @@ website/
 
 | 任务 | 说明 | 依赖 | 状态 |
 |---|---|---|---|
-| N1 · 脚手架 | `website/` 初始化 Vite + React + TS + Tailwind v4；多页入口；设计令牌落地 | 无 | [ ] |
-| N2 · 内容层 | `content/zh.ts` + `en.ts` 全量文案定稿（含 §3 所有分区、免责声明） | 无 | [ ] |
-| N3 · 素材采集 | A1-A6 截图与图标就位（A7/A8 可延后） | 需运行桌面端与 Android 端 | [ ] |
-| N4 · 分区实现 | 按 §3 顺序实现 10 个分区组件 + 移动端单列折叠 | N1-N3 | [ ] |
-| N5 · 动效层 | 入场与滚动进入动效 + `prefers-reduced-motion` 降级 | N4 | [ ] |
-| N6 · SEO 与元信息 | title/description/OG/Twitter card/`hreflang`/`sitemap.xml`/`robots.txt` | N2、A8 | [ ] |
-| N7 · 部署流水线 | `.github/workflows/pages.yml` + 仓库 Pages 设置（需用户在 GitHub 后台开启） | N1 | [ ] |
-| N8 · 验收 | 按 §7 清单逐项过 | N4-N7 | [ ] |
-| N9 · 交叉引用 | README 顶部加官网链接；`00-launch-overview.md` §2 回填 N 行状态；M2/M3 标注素材复用 | N8 | [ ] |
+| N1 · 脚手架 | `website/` 初始化 Vite + React + TS + Tailwind v4；多页入口；设计令牌落地 | 无 | [x] — 2026-08-04 完成，构建通过 |
+| N2 · 内容层 | `content/zh.ts` + `en.ts` 全量文案定稿（含 §3 所有分区、免责声明） | 无 | [x] — 2026-08-04 键名经类型对齐 |
+| N3 · 素材采集 | A1-A6 截图与图标就位（A7/A8 可延后） | 需运行桌面端与 Android 端 | [ ] — 代码已留 TODO 占位（`public/assets/placeholder.svg`），待真实截图替换；字体文件待放入 `public/fonts/` |
+| N4 · 分区实现 | 按 §3 顺序实现 10 个分区组件 + 移动端单列折叠 | N1-N3 | [x] — 2026-08-04 10 分区全部实现（素材用占位图） |
+| N5 · 动效层 | 入场与滚动进入动效 + `prefers-reduced-motion` 降级 | N4 | [x] — 2026-08-04 fade-up + IntersectionObserver reveal + reduced-motion 静态化 |
+| N6 · SEO 与元信息 | title/description/OG/Twitter card/`hreflang`/`sitemap.xml`/`robots.txt` | N2、A8 | [x] — 2026-08-04 已落地（OG 图 `og.png` 待补，A8） |
+| N7 · 部署流水线 | `.github/workflows/pages.yml` + 仓库 Pages 设置（需用户在 GitHub 后台开启） | N1 | [x] — 2026-08-04 workflow 已建；**需用户在仓库 Settings → Pages 选择 GitHub Actions 源** |
+| N8 · 验收 | 按 §7 清单逐项过 | N4-N7 | [ ] — 待真实素材与部署后实地验收 |
+| N9 · 交叉引用 | README 顶部加官网链接；`00-launch-overview.md` §2 回填 N 行状态；M2/M3 标注素材复用 | N8 | [ ] — 待 N8 通过后执行 |
 
 **回填约束**：完成任一任务即把 `[ ]` 改为 `[x]` 并补 `— YYYY-MM-DD 备注`；阶段完成后同步 [`00-launch-overview.md`](./00-launch-overview.md) §2 与 `docs/First/12-plan.md`。验收未过不得标完成。
 

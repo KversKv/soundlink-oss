@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SoundLink · 把手机的声音，送到电脑的耳机上</title>
+    <meta name="description" content="SoundLink 是面向头戴式耳机用户的局域网音频流转软件。手机音频经局域网加密发送到电脑，由电脑输出到高品质音频设备。免费、开源、零遥测。" />
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <link rel="alternate" hreflang="zh-CN" href="/SoundLink/" />
+    <link rel="alternate" hreflang="en" href="/SoundLink/en/" />
+    <link rel="alternate" hreflang="x-default" href="/SoundLink/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="SoundLink · 把手机的声音，送到电脑的耳机上" />
+    <meta property="og:description" content="局域网音频流转：手机音频加密送到电脑，输出到高品质耳机。免费、开源、零遥测。" />
+    <meta property="og:image" content="/SoundLink/og.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <script>
+      // 首访按浏览器语言建议跳转到英文入口（记住用户选择，不强制）
+      (function () {
+        try {
+          var saved = localStorage.getItem('soundlink-lang');
+          if (saved === 'en') location.replace('/SoundLink/en/');
+          else if (!saved && navigator.language && !navigator.language.toLowerCase().startsWith('zh')) {
+            localStorage.setItem('soundlink-lang', 'en');
+            location.replace('/SoundLink/en/');
+          }
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
