@@ -7,7 +7,9 @@ import 'package:soundlink/app.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets('SoundLink app renders home navigation', (WidgetTester tester) async {
+  testWidgets('SoundLink app renders home navigation', (
+    WidgetTester tester,
+  ) async {
     SharedPreferences.setMockInitialValues({});
 
     await tester.pumpWidget(const SoundLinkApp());

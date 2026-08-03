@@ -11,7 +11,11 @@ import 'package:soundlink/src/protocol/audio_packet.dart';
 void main() {
   group('AudioPacketHeader', () {
     test('头部 32 字节往返', () {
-      final h = AudioPacketHeader.baseline(streamId: 7, sequence: 42, timestamp: 480 * 42);
+      final h = AudioPacketHeader.baseline(
+        streamId: 7,
+        sequence: 42,
+        timestamp: 480 * 42,
+      );
       final bytes = h.toBytes();
       expect(bytes.length, headerLen);
 
@@ -26,24 +30,40 @@ void main() {
     });
 
     test('魔数错误被拒', () {
-      final bytes = AudioPacketHeader.baseline(streamId: 1, sequence: 1, timestamp: 0).toBytes();
+      final bytes = AudioPacketHeader.baseline(
+        streamId: 1,
+        sequence: 1,
+        timestamp: 0,
+      ).toBytes();
       bytes[0] = 0x00; // 破坏 magic
-      expect(() => AudioPacketHeader.fromBytes(bytes),
-          throwsA(isA<AudioPacketException>()));
+      expect(
+        () => AudioPacketHeader.fromBytes(bytes),
+        throwsA(isA<AudioPacketException>()),
+      );
     });
 
     test('版本不兼容被拒', () {
-      final bytes = AudioPacketHeader.baseline(streamId: 1, sequence: 1, timestamp: 0).toBytes();
+      final bytes = AudioPacketHeader.baseline(
+        streamId: 1,
+        sequence: 1,
+        timestamp: 0,
+      ).toBytes();
       bytes[2] = 99; // 破坏 version
-      expect(() => AudioPacketHeader.fromBytes(bytes),
-          throwsA(isA<AudioPacketException>()));
+      expect(
+        () => AudioPacketHeader.fromBytes(bytes),
+        throwsA(isA<AudioPacketException>()),
+      );
     });
   });
 
   group('AEAD packet roundtrip', () {
     test('编码→解码还原 Opus 帧', () async {
       final key = Uint8List.fromList(List.filled(aeadKeyLen, 0x42));
-      final header = AudioPacketHeader.baseline(streamId: 1, sequence: 5, timestamp: 2400);
+      final header = AudioPacketHeader.baseline(
+        streamId: 1,
+        sequence: 5,
+        timestamp: 2400,
+      );
       final opusFrame = Uint8List.fromList(List.filled(80, 0xAB));
 
       final packet = await encodePacket(key, header, opusFrame);
@@ -56,12 +76,22 @@ void main() {
 
     test('错误密钥解密失败', () async {
       final key = Uint8List.fromList(List.filled(aeadKeyLen, 0x42));
-      final header = AudioPacketHeader.baseline(streamId: 1, sequence: 5, timestamp: 2400);
-      final packet = await encodePacket(key, header, Uint8List.fromList([1, 2, 3, 4]));
+      final header = AudioPacketHeader.baseline(
+        streamId: 1,
+        sequence: 5,
+        timestamp: 2400,
+      );
+      final packet = await encodePacket(
+        key,
+        header,
+        Uint8List.fromList([1, 2, 3, 4]),
+      );
 
       final badKey = Uint8List.fromList(List.filled(aeadKeyLen, 0x99));
-      expect(() => decodePacket(badKey, packet),
-          throwsA(isA<AudioPacketException>()));
+      expect(
+        () => decodePacket(badKey, packet),
+        throwsA(isA<AudioPacketException>()),
+      );
     });
 
     test('nonce 构造：stream_id‖sequence‖0', () {
@@ -87,10 +117,18 @@ void main() {
       final aad = Uint8List.fromList([1, 2, 3]);
       final plain = Uint8List.fromList(List.generate(50, (i) => i));
       final ct = await chacha20Poly1305Encrypt(
-          key: key, nonce: nonce, plaintext: plain, aad: aad);
+        key: key,
+        nonce: nonce,
+        plaintext: plain,
+        aad: aad,
+      );
       expect(ct.length, plain.length + aeadTagLen);
       final back = await chacha20Poly1305Decrypt(
-          key: key, nonce: nonce, ciphertext: ct, aad: aad);
+        key: key,
+        nonce: nonce,
+        ciphertext: ct,
+        aad: aad,
+      );
       expect(back, plain);
     });
   });

@@ -1,0 +1,123 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  desktop-rust:
+    name: Desktop Rust (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    defaults:
+      run:
+        working-directory: desktop/src-tauri
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
+
+      # Tauri 在 Linux 上需要 GTK / WebKitGTK 与 ALSA 开发头文件
+      - name: Install Linux system deps
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev patchelf \
+            libayatana-appindicator3-dev libasound2-dev cmake
+        working-directory: .
+
+      - name: Check formatting
+        # 存量代码尚未统一执行 cargo fmt，先只报告不阻塞。
+        # 待 OSL-L1 完成全量格式化后移除 continue-on-error。
+        continue-on-error: true
+        run: cargo fmt --all -- --check
+
+      - name: Clippy (core)
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Clippy (tauri_app)
+        # tauri_app 聚合 opus + wasapi + 插件，需要前端产物存在才能过 tauri-build
+        run: |
+          mkdir -p ../ui/dist
+          [ -f ../ui/dist/index.html ] || echo '<!doctype html><title>ci</title>' > ../ui/dist/index.html
+          cargo clippy --features tauri_app --all-targets -- -D warnings
+        shell: bash
+
+      - name: Unit tests (core)
+        run: cargo test
+
+      - name: Unit tests (opus)
+        run: cargo test --features opus
+
+      - name: Unit tests (wasapi)
+        if: matrix.os == 'windows-latest'
+        run: cargo test --features wasapi
+
+  desktop-ui:
+    name: Desktop UI
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: desktop/ui
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: desktop/ui/.nvmrc
+          cache: npm
+          cache-dependency-path: desktop/ui/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check + build
+        run: npm run build
+
+  mobile-flutter:
+    name: Mobile Flutter
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile/flutter_app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Check formatting
+        # 限定 lib/test：仓库内 android/ 下含第三方 C 源码目录，`dart format .` 会异常退出
+        run: dart format --output=none --set-exit-if-changed lib test
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Unit tests
+        run: flutter test

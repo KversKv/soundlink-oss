@@ -1,20 +1,25 @@
 <!-- NF-00 -->
 # 桌面端发布就绪度规划总览
 
-> 评估时间：2026-07-12 · 评估对象：`desktop/` · 当前版本：`0.1.0`
+> 初次评估：2026-07-12 · 最近更新：2026-08-02 · 评估对象：`desktop/` · 当前版本：`0.1.0`
 > 阶段定位（参考 `docs/First/12-plan.md`）：阶段 1/3/4 ✅ 完成；阶段 5「桌面发送端」🟡 进行中；macOS 端未实装采集
 
 ---
 
 ## 1. 评估结论
 
-**当前不具备正式发布条件**。核心阻塞集中在三块：
+**当前具备 Windows 平台 Early Access（`v0.1.0-beta`）发布条件**，P0/P1 全部完成，Android → Windows 与 Windows → Windows 端到端已实测通过（2026-08-02）。
 
-1. **安全红线**：CSP 关闭、密钥/配对码明文落盘、调试后门可绕过
-2. **打包缺失**：无 NSIS 配置、无签名、无 LICENSE、无隐私政策
-3. **macOS 平台不完整**：阶段 5 macOS 采集完全占位，跨平台承诺无法兑现
+仍未具备**正式版（v1.0.0）**条件，剩余缺口：
 
-**已就绪** ✅：接收模式全链路、发送模式（Windows WASAPI Loopback）、系统托盘+设置面板、开机自启动、加密协议（ChaCha20-Poly1305/X25519/Ed25519）、核心单元测试。
+1. **跨平台不完整**：macOS 采集（G1）完全占位，Linux 输出（G2）未实装，macOS 接收链路未实测。
+2. **测试基建缺失**：无 CI 流水线（H6）、无 E2E（H5）、无长时压测（H7）。
+3. **分发未签名**：Windows 安装包无代码签名，SmartScreen 会告警；macOS 无公证。
+4. **i18n 缺失**：UI 仅中文（I3），面向国际用户需英文。
+
+**已就绪** ✅：接收模式全链路、发送模式（Windows WASAPI Loopback）、系统托盘+设置面板、开机自启动、单实例、断线重连、首次引导、关于页、加密协议（ChaCha20-Poly1305/X25519/Ed25519）、OS keyring 密钥存储、CSP 收紧、NSIS 打包、LICENSE、隐私政策、核心单元测试。
+
+> 开源发布本身的待办（仓库配套文件、Release 流程、市场调研）见 [`../opensource-launch/00-launch-overview.md`](../opensource-launch/00-launch-overview.md)。
 
 ---
 
@@ -25,6 +30,7 @@
 | 🔴 P0 | 阻塞发布的红线问题 | v0.1.0-beta 必修 | 中 | [01-p0-blocking-fixes.md](./01-p0-blocking-fixes.md) |
 | 🟠 P1 | Beta 发布前强烈建议补齐 | v0.2.0 前 | 中 | [02-p1-important-improvements.md](./02-p1-important-improvements.md) |
 | 🟡 P2 | 后续版本优化 | v1.0.0 前 | 大 | [03-p2-future-optimizations.md](./03-p2-future-optimizations.md) |
+| 🟢 OSL | 开源发布与社区运营 | v0.1.0-beta 发布时 | 中 | [../opensource-launch/00-launch-overview.md](../opensource-launch/00-launch-overview.md) |
 
 ---
 
@@ -35,7 +41,7 @@
 | A · 安全红线修复 | CSP / 密钥存储 / 调试后门 / 配对码加密 | P0 | ✅ 完成 | 2026-07-12 |
 | B · 打包发布配置 | NSIS / 签名 / profile.release / LICENSE | P0 | ✅ 完成 | 2026-07-12 |
 | C · 发布前 UI 清理 | 错误提示 / 开发残留 / 假占位 | P0 | ✅ 完成 | 2026-07-12 |
-| D · 健壮性补强 | 重连 / 单实例 / 退出清理 / 配置损坏 | P1 | 🟡 进行中 | 2026-07-12 D1-D5 完成，验收待真机 |
+| D · 健壮性补强 | 重连 / 单实例 / 退出清理 / 配置损坏 | P1 | ✅ 完成 | 2026-08-02 D1-D5 + 验收全部通过（Android→Windows 实测） |
 | E · 用户体验补全 | 关于页 / 窗口记忆 / 引导 / 文案 | P1 | ✅ 完成 | 2026-07-12 E1-E6 完成 |
 | F · 合规与文档 | LICENSE / 隐私政策 / README / AGENTS | P1 | ✅ 完成 | 2026-07-12 F1-F6 完成 |
 | G · 跨平台补全 | macOS 采集 / Linux 输出 | P2 | 🟡 进行中 | 2026-07-12（G4/G5 完成，G1/G2/G3 待真机） |
@@ -48,9 +54,9 @@
 
 | 版本 | 目标 | 范围 | 状态 |
 |---|---|---|---|
-| `v0.1.0-beta` | Windows Early Access | P0 全部 + P1 的 D/E/F 关键项 | ⬜ 未开始 |
-| `v0.2.0` | 跨平台 Beta | P1 全部 + macOS 采集初版 | ⬜ 未开始 |
-| `v1.0.0` | 正式发布 | P2 全部 + 长时压测 + 合规完善 | ⬜ 未开始 |
+| `v0.1.0-beta` | Windows Early Access | P0 全部 + P1 的 D/E/F 关键项 + 开源配套（OSL 阶段 J/K） | 🟡 进行中（研发就绪，待打 tag 发 Release） |
+| `v0.2.0` | 跨平台 Beta | P1 全部 + macOS 采集初版 + CI（H6）+ i18n（I3） | ⬜ 未开始 |
+| `v1.0.0` | 正式发布 | P2 全部 + 长时压测 + 代码签名 + 合规完善 | ⬜ 未开始 |
 
 ---
 

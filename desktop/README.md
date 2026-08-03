@@ -30,7 +30,7 @@
 | `wasapi` | Windows WASAPI Loopback 采集 | 否 | 仅 Windows；非 Windows 平台为 no-op |
 | `tauri_app` | Tauri 应用外壳（自动启用 `opus` + `wasapi`） | 否 | 生产构建必选 |
 
-`tauri_app` 自动聚合：`tauri` / `tauri-build` / `dirs` / `tauri-plugin-opener` / `tauri-plugin-autostart` / `tauri-plugin-single-instance` / `tauri-plugin-window-state` / `opus` / `wasapi`。
+`tauri_app` 自动聚合：`tauri` / `tauri-build` / `dirs` / `tauri-plugin-opener` / `tauri-plugin-autostart` / `tauri-plugin-single-instance` / `tauri-plugin-window-state` / `tauri-plugin-global-shortcut` / `opus` / `wasapi`。
 
 ---
 
@@ -39,17 +39,24 @@
 ### 开发模式
 
 ```powershell
-cd desktop
+cd desktop/ui
 npm install
-npm run tauri dev
+cd ..\src-tauri
+cargo tauri dev --features tauri_app
 ```
 
 ### 生产构建
 
 ```powershell
-cd desktop
-npm run tauri build
-# 产物：src-tauri/target/release/bundle/
+# 免安装 exe（推荐快速验证）
+cd desktop/ui
+npm run tauri:build:exe
+# 产物：../src-tauri/target/release/soundlink.exe
+
+# NSIS / MSI 安装包（需全局 cargo install tauri-cli）
+cd desktop/src-tauri
+cargo tauri build --features tauri_app
+# 产物：target/release/bundle/
 ```
 
 ### 仅构建 Rust 核心（无 Tauri 外壳，用于 examples / 单测）

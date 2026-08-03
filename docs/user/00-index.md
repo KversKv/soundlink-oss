@@ -2,7 +2,7 @@
 
 本目录（`docs/user/`）面向**开发者与使用者**，提供环境搭建、调试、编译、使用等实操指南。设计与架构决策请见 [`docs/First/`](../First/SoundLinkStructrue.md)。
 
-> 当前仓库**多平台并行开发**：桌面端 Windows 可用（接收 + WASAPI Loopback 发送）；Android 可用；iOS 工程就绪待真机验收；macOS 发送端采集未实装。本目录文档随各阶段落地持续补全。开发阶段见 [`docs/First/09-roadmap.md`](../First/09-roadmap.md)。
+> 当前仓库**多平台并行开发**。已端到端实测通过：Android → Windows、Windows → Windows。macOS 接收链路代码就绪但未实测；macOS 发送采集未实装；Linux 输出未实装；iOS 工程就绪待真机验收。本目录文档随各阶段落地持续补全。开发阶段见 [`docs/First/09-roadmap.md`](../First/09-roadmap.md)，进度真相源见 [`docs/First/12-plan.md`](../First/12-plan.md)。
 
 ## 文档一览
 

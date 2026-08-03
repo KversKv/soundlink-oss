@@ -1,5 +1,7 @@
 # Android Flutter Build Debug [CLOSED]
 
+> 结论归档见 [FT-0005](../FunctionTasks/0005-2026-07-07-android-flutter-run-target-fix.md)。
+
 ## Session
 
 - Session ID: android-flutter-build

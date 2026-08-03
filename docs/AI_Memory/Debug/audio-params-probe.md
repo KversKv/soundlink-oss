@@ -1,6 +1,6 @@
 # Debug Session: audio-params-probe
 
-Status: [OPEN]
+Status: [CLOSED] — 结论与实现清单见 [FT-0012](../FunctionTasks/0012-2026-07-07-audio-params-probe-fix.md)
 
 ## Hypotheses
 

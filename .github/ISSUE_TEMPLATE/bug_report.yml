@@ -1,0 +1,85 @@
+name: Bug 报告 / Bug Report
+description: 报告一个可复现的问题
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈。请先确认：
+        - 已阅读 [已知限制](https://github.com/KversKv/SoundLink#已知限制)与[排查手册](https://github.com/KversKv/SoundLink/blob/main/docs/user/08-troubleshooting.md)
+        - **安全漏洞请勿在此提交**，见 [SECURITY.md](https://github.com/KversKv/SoundLink/blob/main/SECURITY.md)
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: 前置确认
+      options:
+        - label: 我已搜索过现有 Issue，没有重复
+          required: true
+        - label: 我确认发送端与接收端在同一局域网，且路由器未开启 AP 隔离 / 访客网络
+          required: true
+        - label: 我确认问题不是 DRM 受保护内容导致的静音（这属于已知限制）
+          required: true
+
+  - type: dropdown
+    id: role
+    attributes:
+      label: 出问题的组合
+      options:
+        - Android 发送 → Windows 接收
+        - Windows 发送 → Windows 接收
+        - iOS 发送 → 桌面接收
+        - 桌面发送 → macOS 接收
+        - 其他 / 不确定
+    validations:
+      required: true
+
+  - type: input
+    id: desktop-env
+    attributes:
+      label: 桌面端环境
+      description: 操作系统版本 + SoundLink 版本（设置页「关于」可见）或 commit hash
+      placeholder: "Windows 11 23H2 / SoundLink 0.1.0"
+    validations:
+      required: true
+
+  - type: input
+    id: mobile-env
+    attributes:
+      label: 移动端环境（如涉及）
+      description: 机型 + 系统版本 + App 版本
+      placeholder: "Pixel 7 / Android 14 / 0.1.0"
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: 问题描述
+      description: 实际发生了什么？期望是什么？
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: 复现步骤
+      placeholder: |
+        1. 电脑端启动并开始接收
+        2. 手机端配对成功
+        3. 播放音乐
+        4. 出现 ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志
+      description: 日志位置与抓取方式见 docs/user/06-debug.md。请勿粘贴配对码或密钥。
+      render: text
+
+  - type: textarea
+    id: network
+    attributes:
+      label: 网络环境
+      description: 有线 / Wi-Fi 频段、路由器型号、是否使用手机热点、是否开启 VPN 或防火墙

@@ -43,10 +43,12 @@ SoundLink：面向头戴式耳机用户的**局域网音频流转**软件。手�
 
 ## 当前状态
 
-- 阶段：1/3/4 ✅ 完成；阶段 5「桌面发送端」🟡 进行中（Windows WASAPI Loopback ✅、macOS 采集未实装、双电脑真机未验收）；阶段 2 移动端 🟡 进行中（Android ✅、iOS 待实机）。
+- 阶段：1/3/4 ✅ 完成；阶段 5「桌面发送端」🟡 进行中（Windows WASAPI Loopback ✅ 实测、macOS 采集未实装）；阶段 2 移动端 🟡 进行中（Android ✅ 实测、iOS 待实机）。
+- 端到端实测通过组合（2026-08-02）：Android → Windows、Windows → Windows。
 - P0 阻塞发布红线 ✅ 完成（2026-07-12）：CSP / 密钥存储 / MITM / 打包 / UI 清理。
 - P1 Beta 前补强 ✅ 完成（2026-07-12）：D1-D5 / E1-E6 / F1-F6 全部完成。
 - P2 后续优化 🟡 进行中（参考 docs/NewFunctions/release-readiness/03-p2-future-optimizations.md）：G4/G5/H1-H4/I2/I4-I7 完成（Windows 端验证）；G1/G2/G3 跨平台实装、H5-H7 测试基建、I1/I3/I8 体验优化待后续会话。
+- 开源发布筹备 🟡 进行中：见 `docs/NewFunctions/opensource-launch/00-launch-overview.md`（J/K/L/M 阶段）。
 - Windows 桌面端可用；macOS 采集未实装。
 
 ## 常见任务指引

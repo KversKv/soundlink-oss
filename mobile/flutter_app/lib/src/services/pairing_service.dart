@@ -102,20 +102,22 @@ class PairingService {
     final audioSettings = _audioSettings!;
 
     // 1) hello
-    control.send(HelloMsg(
-      msgId: newMsgId('c'),
-      ts: nowMs(),
-      protocolVersion: protocolVersion,
-      deviceId: deviceId,
-      deviceName: deviceName,
-      role: 'sender',
-      platform: platformName,
-      capabilities: Capabilities(
-        codec: ['opus'],
-        sampleRate: audioSettings.sampleRate,
-        channels: audioSettings.channels,
+    control.send(
+      HelloMsg(
+        msgId: newMsgId('c'),
+        ts: nowMs(),
+        protocolVersion: protocolVersion,
+        deviceId: deviceId,
+        deviceName: deviceName,
+        role: 'sender',
+        platform: platformName,
+        capabilities: Capabilities(
+          codec: ['opus'],
+          sampleRate: audioSettings.sampleRate,
+          channels: audioSettings.channels,
+        ),
       ),
-    ));
+    );
     final helloAck = await control.waitFor((m) => m['type'] == 'hello_ack');
     _onState?.call(LinkState.connected);
 
