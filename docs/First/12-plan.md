@@ -23,6 +23,10 @@
 | 5 · 桌面发送端 | 双电脑互传 | Win / macOS | 🟡 进行中 | — |
 | 6 · 扩展（可选） | Linux / PAKE / 多端 | 全端 | ⬜ 未开始 | — |
 
+> **发布侧进度**（不属于上述研发阶段，单独跟踪）：
+> - 产品发布就绪度：[`../NewFunctions/release-readiness/00-release-overview.md`](../NewFunctions/release-readiness/00-release-overview.md) — P0/P1 ✅、P2 🟡
+> - 开源发布与社区运营：[`../NewFunctions/opensource-launch/00-launch-overview.md`](../NewFunctions/opensource-launch/00-launch-overview.md) — J ✅ 2026-08-03 / K 🟡（CI+Release 工作流就绪，待打首个 tag）/ L ⬜ / M 🟡
+
 ---
 
 ## 2. 阶段 1 · 桌面接收器 MVP

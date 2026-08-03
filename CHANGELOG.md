@@ -8,7 +8,8 @@
 
 - 开源发布配套：`CONTRIBUTING.md`、`SECURITY.md`、`CODE_OF_CONDUCT.md`、`CHANGELOG.md`、Issue / PR 模板、GitHub Actions CI 工作流。
 - 英文 README（`README.en.md`）。
-- 开源发布待办规划文档 `docs/NewFunctions/opensource-launch/`。
+- 开源发布待办规划文档 `docs/NewFunctions/opensource-launch/`：总览（OSL 阶段 J/K/L/M）与市场调研（竞品对比、差异化定位、推广渠道）。
+- Release 工作流 `.github/workflows/release.yml`：`v*` tag 触发，构建 Windows 免安装 exe / NSIS 安装包与 Android APK，生成 SHA256 校验文件并创建 Draft Release。
 
 ### 变更
 

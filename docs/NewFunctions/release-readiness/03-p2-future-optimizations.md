@@ -67,10 +67,10 @@
   - 当前：无 E2E
   - 目标：接入 Playwright 或 Tauri WebDriver，覆盖：启动 → 配对 → 收发 → 退出
   - 验证：CI 跑 E2E 通过
-- [ ] H6 · CI 流水线 — `.github/workflows/`
-  - 当前：无 CI
-  - 目标：GitHub Actions 跑 `cargo check/clippy/test --features tauri_app` + `npm run build` + E2E
-  - 验证：PR 触发 CI 全绿
+- [x] H6 · CI 流水线 — `.github/workflows/ci.yml` — 2026-07-12 已实装
+  - 现状：3 个 job — `desktop-rust`（windows/ubuntu 矩阵，clippy `-D warnings` + `--features tauri_app` + `cargo test` / `opus` / `wasapi`）、`desktop-ui`（`npm ci` + `npm run build`）、`mobile-flutter`（`dart format` 校验 + `analyze` + `test`）
+  - 遗留：`cargo fmt` 步骤为 `continue-on-error`，待 OSL-L1 全量格式化后阻塞化；E2E（H5）尚未接入 CI
+  - 验证：PR / push 触发 CI 全绿
 - [ ] H7 · 长时压测报告 — 新增 `docs/test/`
   - 当前：无
   - 目标：1h+ 连续收发测试，记录内存/CPU/丢包率曲线

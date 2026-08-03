@@ -1,0 +1,204 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "手动构建时使用的版本标识（仅影响产物命名，不会创建 tag）"
+        required: false
+        default: "manual"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  OPUS_VERSION: "1.5.2"
+
+jobs:
+  desktop-windows:
+    name: Desktop (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: ver
+        shell: bash
+        run: |
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            echo "version=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: desktop/ui/.nvmrc
+          cache: npm
+          cache-dependency-path: desktop/ui/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: desktop/ui
+        run: npm ci
+
+      # 生产构建必须启用 tauri_app feature，否则 Opus 解码回退 passthrough 会产生噪声。
+      - name: Build installer + portable exe
+        working-directory: desktop/src-tauri
+        run: npm exec --prefix ../ui tauri -- build --features tauri_app
+
+      - name: Collect artifacts
+        id: collect
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ steps.ver.outputs.version }}"
+          out="dist-release"
+          mkdir -p "$out"
+          cp desktop/src-tauri/target/release/soundlink.exe "$out/SoundLink-${version}-windows-x64-portable.exe"
+          # NSIS 安装包文件名含 tauri.conf.json 里的 version，用通配匹配。
+          nsis=$(ls desktop/src-tauri/target/release/bundle/nsis/*.exe | head -n 1)
+          cp "$nsis" "$out/SoundLink-${version}-windows-x64-setup.exe"
+          cd "$out"
+          sha256sum * > "SHA256SUMS-windows.txt"
+          ls -l
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-windows
+          path: dist-release/*
+          if-no-files-found: error
+
+  mobile-android:
+    name: Mobile (Android APK)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: ver
+        run: |
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            echo "version=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      # libopus 源码未纳入版本管理（见 OSL-L4），构建前按需下载解压到 JNI 目录。
+      - name: Fetch libopus source
+        run: |
+          set -euo pipefail
+          cpp="mobile/flutter_app/android/app/src/main/cpp"
+          if [ ! -f "$cpp/opus/CMakeLists.txt" ]; then
+            curl -fsSL "https://downloads.xiph.org/releases/opus/opus-${OPUS_VERSION}.tar.gz" -o /tmp/opus.tar.gz
+            mkdir -p /tmp/opus-extract
+            tar -xzf /tmp/opus.tar.gz -C /tmp/opus-extract
+            rm -rf "$cpp/opus"
+            mv "/tmp/opus-extract/opus-${OPUS_VERSION}" "$cpp/opus"
+          fi
+
+      - name: Install dependencies
+        working-directory: mobile/flutter_app
+        run: flutter pub get
+
+      # 注意：release 构建当前使用 debug 签名（android/app/build.gradle.kts），
+      # 产物仅供测试安装，正式签名列入后续版本目标。
+      - name: Build APK
+        working-directory: mobile/flutter_app
+        run: flutter build apk --release -t lib/main.dart --split-per-abi
+
+      - name: Collect artifacts
+        run: |
+          set -euo pipefail
+          version="${{ steps.ver.outputs.version }}"
+          out="dist-release"
+          mkdir -p "$out"
+          for apk in mobile/flutter_app/build/app/outputs/flutter-apk/app-*-release.apk; do
+            abi=$(basename "$apk" | sed -E 's/^app-(.*)-release\.apk$/\1/')
+            cp "$apk" "$out/SoundLink-${version}-android-${abi}.apk"
+          done
+          cd "$out"
+          sha256sum * > "SHA256SUMS-android.txt"
+          ls -l
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mobile-android
+          path: dist-release/*
+          if-no-files-found: error
+
+  draft-release:
+    name: Draft GitHub Release
+    if: github.ref_type == 'tag'
+    needs: [desktop-windows, mobile-android]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Flatten artifacts
+        run: |
+          mkdir -p upload
+          find artifacts -type f -exec cp {} upload/ \;
+          ls -l upload
+
+      - name: Create draft release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          prerelease: ${{ contains(github.ref_name, '-beta') || contains(github.ref_name, '-rc') || contains(github.ref_name, '-alpha') }}
+          name: SoundLink ${{ github.ref_name }}
+          files: upload/*
+          body: |
+            > 本 Release 由 CI 自动生成草稿，发布前请核对以下内容后再手动 Publish。
+
+            ## 实测范围
+
+            仅以下端到端组合经过实测：**Android → Windows**、**Windows → Windows**。
+            macOS 接收端代码就绪但未实测，macOS 发送端未实装，Linux 未实装，iOS 待真机验收。
+            其余组合请勿按「可用」预期使用。
+
+            ## 已知限制
+
+            - **Windows 安装包未代码签名**，首次运行 SmartScreen 会告警；请用下方 `SHA256SUMS-windows.txt` 校验产物完整性。
+            - **Android APK 使用 debug 签名**，仅供测试安装，与后续正式签名版本不可覆盖升级。
+            - 仅局域网内可用，不支持公网 / NAT 穿透；路由器 AP 隔离会阻断。
+            - DRM 保护内容不可采集（受系统策略约束，不绕过）。
+            - 桌面 UI 目前仅简体中文。
+            - 延迟面向听音乐 / 看视频，不适合游戏与连麦。
+
+            ## 校验方式
+
+            ```powershell
+            Get-FileHash .\SoundLink-*.exe -Algorithm SHA256
+            ```
+
+            ## 变更内容
+
+            详见 [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/${{ github.ref_name }}/CHANGELOG.md)。

@@ -106,6 +106,8 @@ iOS 需 macOS + Xcode，并先执行 [`mobile/flutter_app/ios/scripts/build_opus
 - **无全局虚拟声卡**：iOS/Android 只能采集系统允许被捕获的音频，不做后台静默全量捕获。
 - **延迟**：面向听音乐 / 看视频；建议电脑端使用有线 / USB / 2.4G 低延迟耳机。
 - **单接收端**：当前一个发送端对应一个接收端。
+- **桌面 UI 仅中文**：英文 i18n 在规划中。
+- **安装包未代码签名**：Windows SmartScreen 首次运行会告警，可用 Release 页提供的 SHA256 自行校验。
 
 ---
 
@@ -146,6 +148,7 @@ SoundLink/
 | 开发计划与进度 | [`docs/First/12-plan.md`](docs/First/12-plan.md) |
 | 发布就绪度 | [`docs/NewFunctions/release-readiness/00-release-overview.md`](docs/NewFunctions/release-readiness/00-release-overview.md) |
 | 开源发布待办 | [`docs/NewFunctions/opensource-launch/00-launch-overview.md`](docs/NewFunctions/opensource-launch/00-launch-overview.md) |
+| 市场调研与定位 | [`docs/NewFunctions/opensource-launch/01-market-research.md`](docs/NewFunctions/opensource-launch/01-market-research.md) |
 | 用户/开发文档索引 | [`docs/user/00-index.md`](docs/user/00-index.md) |
 | 桌面端使用指南 | [`docs/user/desktop-guide.md`](docs/user/desktop-guide.md) |
 | 隐私政策 | [`docs/privacy.md`](docs/privacy.md) |
@@ -159,7 +162,7 @@ SoundLink/
 - 阶段 2 移动端 🟡 进行中：Android ✅ 实测可用；iOS 工程就绪，待真机验收。
 - 阶段 5 桌面发送端 🟡 进行中：Windows WASAPI Loopback ✅ 实测可用；macOS 采集未实装。
 - 发布就绪度：P0 阻塞红线 ✅ 完成、P1 Beta 前补强 ✅ 完成、P2 后续优化 🟡 进行中。
-- 尚未发布正式 Release；跨平台补全（macOS/Linux）、CI 与 i18n 待做。
+- 尚未发布正式 Release；跨平台补全（macOS/Linux）与 UI i18n 待做（CI 已就绪）。
 
 详细进度以 [`docs/First/12-plan.md`](docs/First/12-plan.md) 为准，发布待办见 [`docs/NewFunctions/opensource-launch/00-launch-overview.md`](docs/NewFunctions/opensource-launch/00-launch-overview.md)。
 
