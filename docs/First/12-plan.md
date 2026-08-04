@@ -25,7 +25,7 @@
 
 > **发布侧进度**（不属于上述研发阶段，单独跟踪）：
 > - 产品发布就绪度：[`../NewFunctions/release-readiness/00-release-overview.md`](../NewFunctions/release-readiness/00-release-overview.md) — P0/P1 ✅、P2 🟡
-> - 开源发布与社区运营：[`../NewFunctions/opensource-launch/00-launch-overview.md`](../NewFunctions/opensource-launch/00-launch-overview.md) — J ✅ 2026-08-03 / K 🟡（CI+Release 工作流就绪；version-management V1-V5 + V12-V15 ✅ 2026-08-04 完成，K3 首个 tag 前置解除，待用户打 `v0.1.0-beta.1`）/ L ⬜ / M 🟡
+> - 开源发布与社区运营：[`../NewFunctions/opensource-launch/00-launch-overview.md`](../NewFunctions/opensource-launch/00-launch-overview.md) — J ✅ 2026-08-03 / K 🟡（CI+Release 工作流就绪；首版 `v0.1.0-beta.1` ✅ 2026-08-04 本地定版并打 tag，发布前清单除端到端复测外全通过，待用户 `git push origin v0.1.0-beta.1`）/ L ⬜ / M 🟡
 > - 版本管理体系：[`../NewFunctions/version-management/00-version-management-plan.md`](../NewFunctions/version-management/00-version-management-plan.md)（怎么改）+ [`01-versioning-policy.md`](../NewFunctions/version-management/01-versioning-policy.md)（何时改哪一位 + AI 版本维护义务）— V1-V5 / V12-V15 ✅ 2026-08-04；V6-V11 ⬜
 
 ---
