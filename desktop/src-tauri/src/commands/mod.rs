@@ -32,16 +32,13 @@ use tauri::{Manager, State};
 
 /// 应用角色。
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[derive(Default)]
 pub enum Role {
+    #[default]
     Receiver,
     Sender,
 }
 
-impl Default for Role {
-    fn default() -> Self {
-        Role::Receiver
-    }
-}
 
 /// 应用共享状态。
 pub struct AppState {
@@ -966,6 +963,8 @@ pub fn get_app_settings(state: State<'_, AppState>) -> Result<AppSettings, Strin
 }
 
 /// 批量保存设置：写入 config + 同步 autostart 注册表项（仅当 `auto_start` 被显式设置）。
+// Tauri command 的参数需与前端字段一一对应，无法折叠成结构体。
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn set_app_settings(
     app: tauri::AppHandle,

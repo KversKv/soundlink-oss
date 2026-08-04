@@ -89,6 +89,7 @@ pub struct SenderEngine {
     allow_reconnect: Arc<AtomicBool>,
     reconnect_task: Mutex<Option<JoinHandle<()>>>,
     /// 状态变化回调（D1）：注入后 control_loop 退出时调用，通知 UI。
+    #[allow(clippy::type_complexity)]
     on_state_change: Arc<Mutex<Option<Box<dyn Fn(String, String) + Send + Sync>>>>,
     /// I5：公钥不一致回调（注入后 handshake 检测到 MITM 时调用，通知 UI 弹窗）。
     /// 回调参数：(receiver_device_id, receiver_device_name, saved_pub_b64, recv_pub_b64)。
@@ -458,6 +459,8 @@ impl SenderEngine {
     ///
     /// 返回 (audio_key, stream_id, tcp_reader, tcp_writer,
     ///       receiver_device_id, receiver_device_name, trusted, receiver_identity_pub_b64)。
+    // 握手参数均为协议必需字段，聚合成结构体反而增加一层间接，暂保留位置参数。
+    #[allow(clippy::too_many_arguments)]
     async fn handshake(
         &self,
         receiver_addr: &str,
@@ -713,6 +716,8 @@ impl Drop for SenderEngine {
 }
 
 /// 发送循环：每 10ms 采集一帧 → Opus 编码 → 加密 → UDP 发送。
+// 参数为音频热路径所需的独立句柄与配置，避免额外包装带来的解引用开销。
+#[allow(clippy::too_many_arguments)]
 async fn send_loop(
     mut capture: Box<dyn CaptureSource>,
     audio_key: [u8; 32],

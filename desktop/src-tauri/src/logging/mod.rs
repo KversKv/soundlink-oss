@@ -55,7 +55,7 @@ pub fn init() {
 mod daily_writer {
     use std::fs::{File, OpenOptions};
     use std::io::Write;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
 
     /// E4：当前日期字符串 `YYYY-MM-DD`（UTC）。
     fn today_date() -> String {
@@ -85,7 +85,7 @@ mod daily_writer {
     }
 
     /// E4：当日日志文件路径。
-    fn today_log_path(log_dir: &PathBuf) -> PathBuf {
+    fn today_log_path(log_dir: &Path) -> PathBuf {
         log_dir.join(format!("soundlink-{}.log", today_date()))
     }
 

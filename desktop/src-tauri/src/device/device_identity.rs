@@ -131,10 +131,10 @@ fn load_from_keyring(id_path: &PathBuf) -> Option<(Vec<u8>, String)> {
 /// 写入私钥到 keyring。返回 io::Result 以便调用方统一错误处理。
 fn save_to_keyring(key_bytes: &[u8]) -> std::io::Result<()> {
     let entry = keyring::Entry::new(KEYRING_SERVICE, KEYRING_ACCOUNT_IDENTITY)
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("keyring entry 创建失败：{}", e)))?;
+        .map_err(|e| std::io::Error::other(format!("keyring entry 创建失败：{}", e)))?;
     entry
         .set_secret(key_bytes)
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("keyring 写入失败：{}", e)))
+        .map_err(|e| std::io::Error::other(format!("keyring 写入失败：{}", e)))
 }
 
 fn hex_short(b: &[u8]) -> String {

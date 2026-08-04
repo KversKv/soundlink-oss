@@ -122,18 +122,20 @@ impl AppConfig {
         let path = dir.join("app_config.json");
         let Ok(raw) = fs::read_to_string(path) else {
             // 无配置文件：尝试从 keyring 读取固定配对码。
-            let mut cfg = Self::default();
-            cfg.fixed_pairing_code = load_fixed_code_from_keyring();
-            return cfg;
+            return Self {
+                fixed_pairing_code: load_fixed_code_from_keyring(),
+                ..Self::default()
+            };
         };
         let mut cfg = match serde_json::from_str::<Self>(&raw) {
             Ok(c) => c.normalized(),
             Err(_) => {
                 // JSON 解析失败：备份损坏文件并回退默认。P0 修复 NF-01 C5。
                 backup_corrupt_config(dir, &raw);
-                let mut def = Self::default();
-                def.fixed_pairing_code = load_fixed_code_from_keyring();
-                return def;
+                return Self {
+                    fixed_pairing_code: load_fixed_code_from_keyring(),
+                    ..Self::default()
+                };
             }
         };
         // 兼容旧版明文迁移：若 JSON 中残留明文 fixed_pairing_code，迁移到 keyring 后清空。
@@ -426,11 +428,13 @@ mod tests {
     #[test]
     fn save_then_load_roundtrip() {
         let dir = tempdir().unwrap();
-        let mut cfg = AppConfig::default();
-        cfg.role = "sender".into();
-        cfg.close_action = "quit".into();
-        cfg.volume = 0.5;
-        cfg.device_name = "Roundtrip".into();
+        let mut cfg = AppConfig {
+            role: "sender".into(),
+            close_action: "quit".into(),
+            volume: 0.5,
+            device_name: "Roundtrip".into(),
+            ..AppConfig::default()
+        };
         cfg.audio_params.bitrate = 160_000;
         cfg.audio_params.jitter_mode = "low".into();
         cfg.save(dir.path()).unwrap();

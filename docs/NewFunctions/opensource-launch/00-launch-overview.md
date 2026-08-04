@@ -54,7 +54,7 @@
 |---|---|---|
 | K1 · CI 工作流 | `.github/workflows/ci.yml`：Rust clippy/test 矩阵 + 前端构建 + Flutter analyze/test | [x] — 2026-07-12 |
 | K2 · Release 工作流 | `.github/workflows/release.yml`：`v*` tag 触发，构建 Windows exe/NSIS + Android APK，产出 SHA256，创建 Draft Release | [x] — 2026-08-03 |
-| K3 · 首个 tag 与 Release | 打 `v0.1.0-beta.1`，核对 Draft 产物后发布为 Pre-release | [ ] 待人工执行（前置版本管理 V1–V5 已完成） |
+| K3 · 首个 tag 与 Release | 打 `v0.1.0-beta.1`，核对 Draft 产物后发布为 Pre-release | [~] 2026-08-04 本地 tag 已打，`git push origin v0.1.0-beta.1` 待人工执行 |
 | K4 · Release Notes 模板 | 从 CHANGELOG `[未发布]` 提炼；必须含「仅实测 Android→Windows / Windows→Windows」「未签名会触发 SmartScreen」「DRM 不可采」三条免责 | [ ] |
 | K5 · 产物可信度说明 | README/Release 页说明校验 SHA256 的方法；代码签名列为 `v1.0.0` 目标 | [ ] |
 
@@ -75,13 +75,15 @@ git push origin v0.1.0-beta.1
 
 ### 发布前必查清单
 
-- [ ] `cargo test --features tauri_app`、`cargo clippy --features tauri_app -- -D warnings` 通过
-- [ ] `npm run build`（`desktop/ui`）通过
-- [ ] `flutter analyze` + `flutter test`（`mobile/flutter_app`）通过
-- [ ] 用 Release 产物（而非本地 dev）重跑一次 Android → Windows 端到端
-- [ ] `CHANGELOG` 把 `[未发布]` 改为 `[0.1.0-beta.1] - YYYY-MM-DD`
-- [ ] `scripts/sync_version.py --check` 通过（替代原「手工核对 `tauri.conf.json` 与 `pubspec.yaml` 版本号」，CI `version-check` / `version-gate` 会再次拦截）
-- [ ] Android APK 构建依赖的 libopus 源码获取方式已在文档说明（见 §5 L4）
+> 首发（v0.1.0-beta.1）核验记录：2026-08-04，除端到端复测外全部通过。
+
+- [x] `cargo test --features tauri_app`、`cargo clippy --features tauri_app -- -D warnings` 通过 — 2026-08-04（test 63/64/76 全绿；clippy 修复 Rust 1.96 新 lint 后 core 与 tauri_app 两门均 EXIT=0）
+- [x] `npm run build`（`desktop/ui`）通过 — 2026-08-04
+- [x] `flutter analyze` + `flutter test`（`mobile/flutter_app`）通过 — 2026-08-04（No issues found；8 tests passed）
+- [ ] 用 Release 产物（而非本地 dev）重跑一次 Android → Windows 端到端 — 待 tag push 后用 Draft 产物执行
+- [x] `CHANGELOG` 把 `[未发布]` 改为 `[0.1.0-beta.1] - YYYY-MM-DD` — 2026-08-04
+- [x] `scripts/sync_version.py --check` 通过（替代原「手工核对 `tauri.conf.json` 与 `pubspec.yaml` 版本号」，CI `version-check` / `version-gate` 会再次拦截） — 2026-08-04
+- [x] Android APK 构建依赖的 libopus 源码获取方式已在文档说明（见 §5 L4）
 
 ---
 

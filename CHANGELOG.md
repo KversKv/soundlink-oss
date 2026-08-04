@@ -4,6 +4,10 @@
 
 ## [未发布]
 
+## [0.1.0-beta.1] - 2026-08-04
+
+首个公开内测版本（Pre-release）。仅实测通过 Android → Windows 与 Windows → Windows；macOS 采集未实装，iOS 待真机验收。产物未经代码签名，Windows 会触发 SmartScreen 提示。
+
 ### 新增
 
 - 开源发布配套：`CONTRIBUTING.md`、`SECURITY.md`、`CODE_OF_CONDUCT.md`、`CHANGELOG.md`、Issue / PR 模板、GitHub Actions CI 工作流。
@@ -25,13 +29,14 @@
 
 ### 修复
 
+- 修复 Rust 1.96 新增 clippy lint 导致 CI `Clippy (tauri_app)` 步骤失败：`Default::default()` 后字段赋值改为结构体更新语法、`&PathBuf` 参数改 `&Path`、`Option::map(identity)` 冗余调用移除；3 处协议/热路径函数与 Tauri command 的参数数量告警显式 `allow` 并注明原因。
 - 仓库清理：移除冗余的 `.gitignore 2`，取消跟踪 `desktop/ui/tsconfig.tsbuildinfo` 构建缓存，根目录调试文档归档至 `docs/AI_Memory/Debug/`。
 
 ---
 
-## 已完成的研发里程碑（尚未打 Release）
+## 0.1.0-beta.1 首发包含的研发里程碑
 
-以下能力已在 `main` 上实现并实测，将在首个 Release（`v0.1.0-beta`）中一并发布。
+以下能力在首个 Release（`v0.1.0-beta.1`）之前已在 `main` 上实现，随本版一并发布。
 
 ### 桌面端（Tauri 2 + Rust + React）
 

@@ -498,7 +498,7 @@ mod tests {
         // 推入超 cap 的样本，模拟 run_capture_loop 的写边界逻辑
         {
             let mut rb = c.ring.lock();
-            rb.extend((0..(cap + 100) as i16).map(|i| i));
+            rb.extend(0..(cap + 100) as i16);
             // 与 run_capture_loop L249-258 同款逻辑：超 cap 时丢最旧
             while rb.len() > cap {
                 rb.pop_front();
