@@ -168,6 +168,8 @@ website/
 ## 9. 关联文档
 
 - 发布总览与阶段表：[`00-launch-overview.md`](./00-launch-overview.md)
+- 官网本地调试：[`../../../website/docs/01-local-dev.md`](../../../website/docs/01-local-dev.md)
+- 官网部署：[`../../../website/docs/02-deploy-pages.md`](../../../website/docs/02-deploy-pages.md)
 - 定位与卖点文案来源：[`01-market-research.md`](./01-market-research.md) §3、§4
 - 平台矩阵与已知限制来源：[`../../../README.md`](../../../README.md)
 - 音频与协议基线：[`../../First/11-implementation-spec.md`](../../First/11-implementation-spec.md)
