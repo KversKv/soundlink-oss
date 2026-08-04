@@ -60,6 +60,7 @@ SoundLink：面向头戴式耳机用户的**局域网音频流转**软件。手�
 | iOS 采集 | `mobile/ios/BroadcastExtension` |
 | Android 采集 | `mobile/android/.../capture` |
 | 配对/安全 | 各端 `pairing` + `docs/First/05-pairing-security.md` |
+| 改版本号 | `VERSION` + `scripts/sync_version.py`（见 `docs/NewFunctions/version-management/`）；禁止手改各端清单中的 version 字段 |
 
 ## 触发式必读（按任务查文档）
 
@@ -71,9 +72,26 @@ SoundLink：面向头戴式耳机用户的**局域网音频流转**软件。手�
 - Android：MediaProjection + 前台 Service + 通知；标注部分应用不可采。
 - 产品文案明确：不保证所有应用/受保护内容可用。
 
-## 进度回填约束
+## 进度与版本回填约束
+
+### 进度回填
 
 完成任一阶段任务后，**必须回填** `docs/First/12-plan.md` 总表状态与对应阶段进度表（勾选任务、填写完成日期/备注）。规则详见该文件。
+
+### 版本维护义务（每次任务收尾必查）
+
+判定规则与完整说明见 **`docs/NewFunctions/version-management/01-versioning-policy.md`**（大小版本如何区分、何时该升哪一位）。代理必须遵守：
+
+| 义务 | 要求 |
+|---|---|
+| A · CHANGELOG 回填 | 用户可感知的变更、或**影响构建/发布/使用方式**的变更，必须写入 `CHANGELOG.md` 的 `[未发布]` 小节。存疑时一律写——漏记代价大于多记 |
+| B · bump 级别建议 | FunctionTasks 归档中显式写出「建议版本级别（MAJOR/MINOR/PATCH/不升）+ 理由」 |
+| C · 禁自行改 `VERSION` | 改 `VERSION` 等于宣布发版意图，属产品决策；代理只累积 `[未发布]` 并给建议，发版动作归人类（同「禁 `git commit`」原则）。用户明确要求时才可改，且须跑 `sync_version.py` + `--check` 自验 |
+| D · 禁手改清单 version | `Cargo.toml` / `tauri.conf.json` / `desktop/ui/package.json` / `pubspec.yaml` 的 version 字段一律走 `scripts/sync_version.py`，CI 门会拦截 |
+| E · 协议变更连带检查 | 改 `PROTOCOL_VERSION` 或报文格式时，须评估是否构成破坏性变更，并同步 `04-protocol.md` 与 `11-implementation-spec.md` |
+| F · 破坏性变更醒目标注 | `0.x` 阶段破坏性变更降级走 MINOR，但 CHANGELOG 条目**必须带 ⚠ 与用户需执行的动作**（如「需重新配对」「需卸载重装」）；版本号可宽松，告知不可以 |
+
+> **「不升版本」≠「不用记录」**，两者独立判断。例：版本管理系统落地本身不升版本，但必须写 CHANGELOG。
 
 ## 会话归档流程
 

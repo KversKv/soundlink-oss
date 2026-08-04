@@ -14,6 +14,22 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  version-check:
+    name: Version Sync (VERSION ↔ manifests)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # 校验 VERSION 与 4 个清单文件（Cargo.toml / tauri.conf.json /
+      # desktop/ui/package.json / pubspec.yaml versionName）一致；不一致非零退出。
+      - name: Verify version synchronization
+        run: python scripts/sync_version.py --check
+
   desktop-rust:
     name: Desktop Rust (${{ matrix.os }})
     runs-on: ${{ matrix.os }}

@@ -22,7 +22,7 @@
 | 阶段 | 目标 | 优先级 | 状态 | 完成日期 |
 |---|---|---|---|---|
 | J · 仓库对外配套 | README / 许可 / 模板 / 安全策略 / 英文文档 | 必做 | ✅ 完成 | 2026-08-03 |
-| K · Release 发布流水线 | tag 触发构建、产物上传、Release Notes、校验和 | 必做 | 🟡 进行中 | 2026-08-03（K1/K2 完成，K3-K5 待人工执行） |
+| K · Release 发布流水线 | tag 触发构建、产物上传、Release Notes、校验和 | 必做 | 🟡 进行中 | 2026-08-04（K1/K2 完成；版本管理 V1–V5/V13–V15 完成，K3 前置已解除，待人工打 tag） |
 | L · 代码质量对外门槛 | 全量 `cargo fmt`、CI 阻塞化、依赖审计 | 建议 | ⬜ 未开始 | — |
 | M · 市场定位与社区运营 | 竞品调研、差异化文案、推广渠道、Issue 运营 | 建议 | 🟡 进行中 | 2026-08-03（M1 完成） |
 | N · 产品官网 | 单页 landing（中英双语）+ GitHub Pages 部署，见 [`02-website-plan.md`](./02-website-plan.md) | 建议 | 🟡 进行中 | 2026-08-04 N1/N2/N4-N7 完成并本地构建通过；N3 素材、N8 验收、N9 交叉引用待办 |
@@ -54,7 +54,7 @@
 |---|---|---|
 | K1 · CI 工作流 | `.github/workflows/ci.yml`：Rust clippy/test 矩阵 + 前端构建 + Flutter analyze/test | [x] — 2026-07-12 |
 | K2 · Release 工作流 | `.github/workflows/release.yml`：`v*` tag 触发，构建 Windows exe/NSIS + Android APK，产出 SHA256，创建 Draft Release | [x] — 2026-08-03 |
-| K3 · 首个 tag 与 Release | 打 `v0.1.0-beta`，核对 Draft 产物后发布为 Pre-release | [ ] 待人工执行 |
+| K3 · 首个 tag 与 Release | 打 `v0.1.0-beta.1`，核对 Draft 产物后发布为 Pre-release | [ ] 待人工执行（前置版本管理 V1–V5 已完成） |
 | K4 · Release Notes 模板 | 从 CHANGELOG `[未发布]` 提炼；必须含「仅实测 Android→Windows / Windows→Windows」「未签名会触发 SmartScreen」「DRM 不可采」三条免责 | [ ] |
 | K5 · 产物可信度说明 | README/Release 页说明校验 SHA256 的方法；代码签名列为 `v1.0.0` 目标 | [ ] |
 
@@ -63,10 +63,12 @@
 ```powershell
 # 1. 确认工作区干净、CHANGELOG [未发布] 内容已定稿
 git status
-# 2. 打 tag（beta 用 -beta 后缀，release.yml 会自动标记 prerelease）
-git tag -a v0.1.0-beta -m "SoundLink v0.1.0-beta (Windows Early Access)"
-git push origin v0.1.0-beta
-# 3. 等 GitHub Actions 完成，到 Releases 页检查 Draft 产物与 Notes，再点 Publish
+# 2. 校验版本一致性（tag 名必须 = v + VERSION 内容，否则 release.yml 的 version-gate 会 fail）
+.venv\Scripts\python.exe scripts\sync_version.py --check
+# 3. 打 tag（beta 用 -beta 后缀，release.yml 会自动标记 prerelease）
+git tag -a v0.1.0-beta.1 -m "SoundLink v0.1.0-beta.1 (Windows Early Access)"
+git push origin v0.1.0-beta.1
+# 4. 等 GitHub Actions 完成，到 Releases 页检查 Draft 产物与 Notes，再点 Publish
 ```
 
 > 打 tag 与 push 由用户本人执行（项目规则禁止代理提交/推送）。
@@ -77,8 +79,8 @@ git push origin v0.1.0-beta
 - [ ] `npm run build`（`desktop/ui`）通过
 - [ ] `flutter analyze` + `flutter test`（`mobile/flutter_app`）通过
 - [ ] 用 Release 产物（而非本地 dev）重跑一次 Android → Windows 端到端
-- [ ] CHANGELOG 把 `[未发布]` 改为 `[0.1.0-beta] - YYYY-MM-DD`
-- [ ] `tauri.conf.json` 与 `pubspec.yaml` 版本号与 tag 一致
+- [ ] `CHANGELOG` 把 `[未发布]` 改为 `[0.1.0-beta.1] - YYYY-MM-DD`
+- [ ] `scripts/sync_version.py --check` 通过（替代原「手工核对 `tauri.conf.json` 与 `pubspec.yaml` 版本号」，CI `version-check` / `version-gate` 会再次拦截）
 - [ ] Android APK 构建依赖的 libopus 源码获取方式已在文档说明（见 §5 L4）
 
 ---

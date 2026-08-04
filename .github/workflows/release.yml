@@ -23,9 +23,40 @@ env:
   OPUS_VERSION: "1.5.2"
 
 jobs:
+  version-gate:
+    name: Version Gate (tag ↔ VERSION ↔ manifests)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # V5：tag 触发时校验 tag（去 v 前缀）必须等于 VERSION 文件内容；
+      # workflow_dispatch 手动构建跳过 tag 校验。避免 tag/内嵌版本/产物名三方不一致。
+      - name: Verify tag matches VERSION
+        if: github.ref_type == 'tag'
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag_version="${GITHUB_REF_NAME#v}"
+          repo_version="$(tr -d '\r\n' < VERSION)"
+          if [ "$tag_version" != "$repo_version" ]; then
+            echo "::error::Tag '${GITHUB_REF_NAME}' (=${tag_version}) does not match VERSION file (=${repo_version})"
+            exit 1
+          fi
+          echo "Tag matches VERSION: ${repo_version}"
+
+      # 校验 4 个清单文件已与 VERSION 一致（同 ci.yml 的 version-check）。
+      - name: Verify manifests match VERSION
+        run: python scripts/sync_version.py --check
+
   desktop-windows:
     name: Desktop (Windows)
     runs-on: windows-latest
+    needs: version-gate
     steps:
       - uses: actions/checkout@v4
 
@@ -71,8 +102,16 @@ jobs:
           out="dist-release"
           mkdir -p "$out"
           cp desktop/src-tauri/target/release/soundlink.exe "$out/SoundLink-${version}-windows-x64-portable.exe"
-          # NSIS 安装包文件名含 tauri.conf.json 里的 version，用通配匹配。
-          nsis=$(ls desktop/src-tauri/target/release/bundle/nsis/*.exe | head -n 1)
+          # V5：NSIS 安装包文件名由 tauri.conf.json 的 version 决定（已被 version-gate
+          # 校验为与 tag 一致），故 setup.exe 必有且仅有一个；多于一个视为构建异常。
+          nsis_dir="desktop/src-tauri/target/release/bundle/nsis"
+          nsis_count=$(find "$nsis_dir" -maxdepth 1 -name '*-setup.exe' | wc -l)
+          if [ "$nsis_count" -ne 1 ]; then
+            echo "::error::Expected exactly one NSIS *-setup.exe under $nsis_dir, found $nsis_count"
+            ls -l "$nsis_dir" || true
+            exit 1
+          fi
+          nsis=$(find "$nsis_dir" -maxdepth 1 -name '*-setup.exe' | head -n 1)
           cp "$nsis" "$out/SoundLink-${version}-windows-x64-setup.exe"
           cd "$out"
           sha256sum * > "SHA256SUMS-windows.txt"
@@ -87,6 +126,7 @@ jobs:
   mobile-android:
     name: Mobile (Android APK)
     runs-on: ubuntu-latest
+    needs: version-gate
     steps:
       - uses: actions/checkout@v4
 
@@ -121,6 +161,18 @@ jobs:
             rm -rf "$cpp/opus"
             mv "/tmp/opus-extract/opus-${OPUS_VERSION}" "$cpp/opus"
           fi
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # V15：pubspec 里的 build_number 固定为 1，多个 APK 的 versionCode 会重复，
+      # 导致无法覆盖安装。构建前用 run_number 覆盖（单调递增，满足 Android 唯一要求）。
+      # versionName 不受影响，仍由 VERSION 决定（version-gate 已校验一致性）。
+      # 必须在 pub get 之前执行，避免改完 pubspec 后包配置不同步。
+      - name: Inject monotonic build number
+        run: python scripts/sync_version.py --build-number "${{ github.run_number }}"
 
       - name: Install dependencies
         working-directory: mobile/flutter_app

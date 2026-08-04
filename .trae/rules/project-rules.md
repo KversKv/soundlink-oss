@@ -11,11 +11,13 @@
 - 音频基线不乱改：48kHz/Stereo、Opus 10ms/128kbps、默认 Jitter 80ms。
 - 移动端 Extension/Service 轻量；Rust 用 `tracing` 禁 `println!`。
 - 密钥/配对码禁明文落日志；中文→简体。
+- 版本：禁自行改 `VERSION`（发版属产品决策）；清单 version 一律走 `scripts/sync_version.py`。
 - 不臆改未读代码；最小改动；不擅自新建 `*.md`；禁 `git commit`（除非明确要求）；改完跑 lint。
 
 ## 流程
 - 按 `docs/First/09-roadmap.md` 分阶段推进，禁早期引入后期重依赖。
 - **完成阶段任务后，必须回填 `docs/First/12-plan.md` 及对应阶段进度表。**
+- **影响构建/发布/使用方式的变更须写 `CHANGELOG.md [未发布]`；规则见 `AGENTS.md` 版本维护义务。**
 - Windows/PowerShell；优先用 IDE 专用工具。
 
 细节（技术栈/结构/任务指引/合规清单）见 `AGENTS.md`。

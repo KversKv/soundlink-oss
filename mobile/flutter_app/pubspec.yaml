@@ -2,7 +2,7 @@ name: soundlink
 description: "SoundLink 移动端 — 局域网音频流转（采集发送端）。"
 publish_to: 'none'
 
-version: 1.0.0+1
+version: 0.1.0+100
 
 environment:
   sdk: ^3.12.0

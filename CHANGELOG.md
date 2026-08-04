@@ -10,9 +10,15 @@
 - 英文 README（`README.en.md`）。
 - 开源发布待办规划文档 `docs/NewFunctions/opensource-launch/`：总览（OSL 阶段 J/K/L/M）与市场调研（竞品对比、差异化定位、推广渠道）。
 - Release 工作流 `.github/workflows/release.yml`：`v*` tag 触发，构建 Windows 免安装 exe / NSIS 安装包与 Android APK，生成 SHA256 校验文件并创建 Draft Release。
+- 版本管理体系：仓库根 `VERSION` 作为版本号单一来源，`scripts/sync_version.py` 同步至 `Cargo.toml` / `tauri.conf.json` / `desktop/ui/package.json` / `pubspec.yaml`；CI 增加 `version-check` 一致性门，Release 增加 `version-gate`（校验 tag 与 `VERSION` 相等）。
+- 版本管理规划文档 `docs/NewFunctions/version-management/`：架构与实现计划（V1–V15）、版本号语义与递增判定规则（含大小版本区分、`0.x` 阶段规则、AI 协作代理的版本维护义务）。
 
 ### 变更
 
+- **改版本号方式变更**：不再手改各端清单，统一编辑根 `VERSION` 后执行 `python scripts/sync_version.py`；手改清单会被 CI 一致性门拦截。
+- 版本号统一为 `0.1.0-beta.1`：移动端 `pubspec.yaml` 此前为 Flutter 模板默认值 `1.0.0+1`，与桌面端 `0.1.0` 相差一个主版本，易被误认为已发布正式版，现已对齐。
+- Android APK 的 `versionCode` 改由 CI `run_number` 注入，保证单调递增（此前固定为 1，多个 APK 无法覆盖安装）。
+- `AGENTS.md` / `.trae/rules/project-rules.md` 增加版本维护约束：CHANGELOG 回填义务、禁止代理自行修改 `VERSION`、破坏性变更必须醒目标注。
 - README 重写：补充问题陈述、终端用户使用步骤、已知限制、贡献方向；功能矩阵区分「实测可用 / 代码就绪未实测 / 未实装」。
 - `mobile/README.md`、`mobile/ios/README.md`、`mobile/android/README.md` 去除过期的「占位骨架」描述，明确 `mobile/flutter_app` 为唯一构建入口。
 - 发布就绪度总览结论更新为「具备 Windows Early Access 条件」，阶段 D 标记完成。
