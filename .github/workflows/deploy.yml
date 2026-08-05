@@ -27,13 +27,14 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
+          cache-dependency-path: website/package-lock.json
 
 
       - name: Install dependencies
         working-directory: website
-        run: npm install
+        run: npm ci
 
 
       - name: Build
@@ -44,7 +45,7 @@ jobs:
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: ./website/dist
+          path: website/dist
 
 
 
