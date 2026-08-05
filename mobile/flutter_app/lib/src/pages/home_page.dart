@@ -1,5 +1,5 @@
-// 主页：底部导航（设备 / 广播引导 / 设置）。
-// 设备页内嵌配对区块（原配对页已合并）。
+// 主页：底部导航（设备 / 设置）。
+// 设备页内嵌配对区块与平台广播引导（原配对页/广播页已合并）。
 //
 // 创建 AppState 并显式注入各子页面，避免全局单例与 context 查找。
 
@@ -8,7 +8,6 @@ import 'package:flutter/material.dart';
 import '../../app.dart';
 import '../models/connection_state.dart';
 import 'discovery_page.dart';
-import 'broadcast_guide_page.dart';
 import 'settings_page.dart';
 
 class HomePage extends StatefulWidget {
@@ -50,7 +49,6 @@ class _HomePageState extends State<HomePage> {
                   index: _index,
                   children: [
                     DiscoveryPage(app: _app),
-                    BroadcastGuidePage(app: _app),
                     SettingsPage(app: _app),
                   ],
                 ),
@@ -65,11 +63,6 @@ class _HomePageState extends State<HomePage> {
                 icon: Icon(Icons.devices_outlined),
                 selectedIcon: Icon(Icons.devices),
                 label: '设备',
-              ),
-              NavigationDestination(
-                icon: Icon(Icons.cast_for_education_outlined),
-                selectedIcon: Icon(Icons.cast_for_education),
-                label: '广播',
               ),
               NavigationDestination(
                 icon: Icon(Icons.settings_outlined),

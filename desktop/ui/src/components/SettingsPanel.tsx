@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import AudioSettingsPanel from "./AudioSettingsPanel";
 
 export interface AppSettings {
   close_action: "ask" | "minimize" | "quit";
@@ -253,6 +254,8 @@ export default function SettingsPanel({ settings, onChange }: Props) {
           </select>
         </label>
       </section>
+
+      <AudioSettingsPanel />
 
       <section className="panel-card settings-card">
         <h2>日志</h2>

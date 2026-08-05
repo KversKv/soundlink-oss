@@ -7,11 +7,6 @@ import Onboarding from "./components/Onboarding";
 import CloseDialog from "./components/CloseDialog";
 import { mapError } from "./utils/errorMap";
 
-interface OutputDevice {
-  id: string;
-  name: string;
-}
-
 interface StartResult {
   pairing_code: string;
   audio_port: number;
@@ -106,13 +101,6 @@ interface DesktopSettings {
   selected_capture_source: string;
 }
 
-const JITTER_MODES: { value: JitterMode; label: string; desc: string }[] = [
-  { value: "low", label: "低延迟", desc: "40ms" },
-  { value: "balanced", label: "平衡", desc: "80ms" },
-  { value: "stable", label: "稳定", desc: "150ms" },
-  { value: "auto", label: "自适应", desc: "动态" },
-];
-
 const DEFAULT_AUDIO_PARAMS: AudioParams = {
   sample_rate: 48000,
   channels: 2,
@@ -120,12 +108,6 @@ const DEFAULT_AUDIO_PARAMS: AudioParams = {
   bitrate: 128000,
   jitter_mode: "balanced",
 };
-
-const BITRATE_OPTIONS = [64000, 96000, 128000, 160000, 192000];
-// 阶段 P：参数动态化可选项。采样率受 Opus 限制固定 48kHz（44100 不被 libopus 支持）。
-const SAMPLE_RATE_OPTIONS = [48000];
-const CHANNEL_OPTIONS = [1, 2];
-const FRAME_DURATION_OPTIONS = [10, 20];
 
 function formatPairingCode(code: string) {
   return code || "────────";
@@ -158,11 +140,8 @@ export default function App() {
   const [running, setRunning] = useState(false);
   const [pairingCode, setPairingCode] = useState("");
   const [deviceId, setDeviceId] = useState("");
-  const [devices, setDevices] = useState<OutputDevice[]>([]);
   const [selectedDevice, setSelectedDevice] = useState<number | null>(null);
   const [status, setStatus] = useState<ReceiverStatus | null>(null);
-  const [jitterMode, setJitterMode] = useState<JitterMode>("balanced");
-  const [volume, setVolume] = useState<number>(100);
   const [pairingMode, setPairingMode] = useState<PairingMode>("random");
   const [fixedPairingCode, setFixedPairingCode] = useState("");
   const [audioParams, setAudioParamsState] = useState<AudioParams>(DEFAULT_AUDIO_PARAMS);
@@ -204,9 +183,6 @@ export default function App() {
   } | null>(null);
 
   useEffect(() => {
-    invoke<OutputDevice[]>("list_output_devices")
-      .then(setDevices)
-      .catch((e) => setError(mapError(e)));
     invoke<CaptureSourceInfo[]>("list_capture_sources")
       .then((srcs) => {
         setCaptureSources(srcs);
@@ -219,8 +195,6 @@ export default function App() {
       .then((settings) => {
         setRole(settings.role);
         setSelectedDevice(settings.selected_device);
-        setJitterMode(settings.jitter_mode);
-        setVolume(Math.round(settings.volume * 100));
         setPairingMode(settings.pairing.mode);
         setFixedPairingCode(settings.pairing.fixed_code);
         setAudioParamsState(settings.audio_params);
@@ -244,15 +218,6 @@ export default function App() {
     // 加载本机局域网 IP 地址列表（配对码卡片显示用）。
     invoke<LocalAddressInfo[]>("get_local_addresses")
       .then(setLocalAddresses)
-      .catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    invoke<string>("get_jitter_mode")
-      .then((m) => setJitterMode(m as JitterMode))
-      .catch(() => {});
-    invoke<number>("get_volume")
-      .then((v) => setVolume(Math.round(v * 100)))
       .catch(() => {});
   }, []);
 
@@ -466,25 +431,6 @@ export default function App() {
     }
   }
 
-  async function pickDevice(idx: number) {
-    setSelectedDevice(idx);
-    try {
-      await invoke("select_output_device", { index: idx });
-    } catch (e) {
-      setError(mapError(e));
-    }
-  }
-
-  async function pickJitterMode(mode: JitterMode) {
-    setJitterMode(mode);
-    setAudioParamsState((p) => ({ ...p, jitter_mode: mode }));
-    try {
-      await invoke("set_jitter_mode", { mode });
-    } catch (e) {
-      setError(mapError(e));
-    }
-  }
-
   async function savePairingSettings(nextMode = pairingMode, nextCode = fixedPairingCode) {
     setError("");
     if (nextMode === "fixed" && !/^\d{8}$/.test(nextCode)) {
@@ -499,39 +445,6 @@ export default function App() {
       setPairingMode(settings.mode);
       setFixedPairingCode(settings.fixed_code);
       if (running) await refreshCode();
-    } catch (e) {
-      setError(mapError(e));
-    }
-  }
-
-  async function setAudioParams(params: AudioParams) {
-    setAudioParamsState(params);
-    setJitterMode(params.jitter_mode);
-    try {
-      const saved = await invoke<AudioParams>("set_audio_params", { params });
-      setAudioParamsState(saved);
-      setJitterMode(saved.jitter_mode);
-    } catch (e) {
-      setError(mapError(e));
-    }
-  }
-
-  async function autoDetectAudioParams() {
-    setError("");
-    try {
-      const detected = await invoke<AudioParams>("auto_detect_audio_params");
-      setAudioParamsState(detected);
-      setJitterMode(detected.jitter_mode);
-      setError(`自动探测完成：已推荐 ${detected.bitrate / 1000}kbps / Jitter ${detected.jitter_mode}。`);
-    } catch (e) {
-      setError(mapError(e));
-    }
-  }
-
-  async function changeVolume(v: number) {
-    setVolume(v);
-    try {
-      await invoke("set_volume", { volume: v / 100 });
     } catch (e) {
       setError(mapError(e));
     }
@@ -646,18 +559,9 @@ export default function App() {
     }
   }
 
-  const lossPct = status ? (status.loss_rate * 100).toFixed(1) : "0.0";
   const bitrateKbps = status ? Math.round(status.bitrate / 1000) : 0;
-  const recBitrateKbps = status ? Math.round(status.recommended_bitrate / 1000) : 0;
-  const driftPct = status ? ((status.drift_ratio - 1) * 100).toFixed(2) : "0.00";
   const senderBitrateKbps = senderStatus ? Math.round(senderStatus.bitrate / 1000) : 0;
-  const senderRecKbps = senderStatus ? Math.round(senderStatus.recommended_bitrate / 1000) : 0;
   const adaptiveOn = audioParams.jitter_mode === "auto";
-  // N4：手动模式且建议值与当前目标不一致时显示一键采纳。
-  const senderAdoptKbps =
-    !adaptiveOn && senderRecKbps > 0 && senderRecKbps * 1000 !== audioParams.bitrate
-      ? senderRecKbps
-      : 0;
   const activeReceiver = running || Boolean(status);
   const activeSender = senderRunning || Boolean(senderStatus);
 
@@ -820,98 +724,6 @@ export default function App() {
               </div>
             </section>
 
-            <section className="panel-card settings-card">
-              <h2>输出设备</h2>
-              <label className="field-shell">
-                <select
-                  value={selectedDevice ?? ""}
-                  onChange={(e) => pickDevice(Number(e.target.value))}
-                >
-                  <option value="">默认设备</option>
-                  {devices.map((d, i) => (
-                    <option key={d.id} value={i}>{d.name}</option>
-                  ))}
-                </select>
-              </label>
-
-              <h2 className="subsection-title">JITTER 模式</h2>
-              <div className="jitter-grid">
-                {JITTER_MODES.map((m) => (
-                  <button
-                    key={m.value}
-                    className={jitterMode === m.value ? "selected" : ""}
-                    onClick={() => pickJitterMode(m.value)}
-                    title={m.desc}
-                    type="button"
-                  >
-                    {m.label}
-                  </button>
-                ))}
-              </div>
-
-              <div className="volume-head">
-                <h2>音量</h2>
-                <strong>{volume}%</strong>
-              </div>
-              <div className="volume-row">
-                <span aria-hidden="true">◖</span>
-                <input
-                  type="range"
-                  min={0}
-                  max={100}
-                  value={volume}
-                  onChange={(e) => changeVolume(Number(e.target.value))}
-                  style={{ "--volume": `${volume}%` } as React.CSSProperties}
-                  aria-label="音量"
-                />
-              </div>
-            </section>
-
-            <section className="panel-card settings-card">
-              <div className="section-title-row">
-                <h2>音频参数</h2>
-                <button className="text-button" onClick={autoDetectAudioParams} type="button">
-                  <span aria-hidden="true">⌁</span> 自动探测
-                </button>
-              </div>
-              <div className="audio-options-grid">
-                <label>
-                  <span>采样率</span>
-                  <select
-                    value={audioParams.sample_rate}
-                    onChange={(e) => setAudioParams({ ...audioParams, sample_rate: Number(e.target.value) })}
-                  >
-                    {SAMPLE_RATE_OPTIONS.map((v) => <option key={v} value={v}>{v} Hz</option>)}
-                  </select>
-                </label>
-                <label>
-                  <span>声道</span>
-                  <select
-                    value={audioParams.channels}
-                    onChange={(e) => setAudioParams({ ...audioParams, channels: Number(e.target.value) })}
-                  >
-                    {CHANNEL_OPTIONS.map((v) => <option key={v} value={v}>{v === 1 ? "Mono" : "Stereo"}</option>)}
-                  </select>
-                </label>
-                <label>
-                  <span>帧长</span>
-                  <select
-                    value={audioParams.frame_duration_ms}
-                    onChange={(e) => setAudioParams({ ...audioParams, frame_duration_ms: Number(e.target.value) })}
-                  >
-                    {FRAME_DURATION_OPTIONS.map((v) => <option key={v} value={v}>{v} ms</option>)}
-                  </select>
-                </label>
-                <label>
-                  <span>码率</span>
-                  <select value={audioParams.bitrate} onChange={(e) => setAudioParams({ ...audioParams, bitrate: Number(e.target.value) })}>
-                    {BITRATE_OPTIONS.map((v) => <option key={v} value={v}>{Math.round(v / 1000)} kbps</option>)}
-                  </select>
-                </label>
-              </div>
-              <small className="settings-note">码率、Jitter、音量运行时即时生效；采样率/声道/帧长改动需重新开始流后生效。</small>
-            </section>
-
             <button
               className={`primary-action ${activeReceiver ? "danger" : "success"}`}
               onClick={activeReceiver ? stop : start}
@@ -931,17 +743,8 @@ export default function App() {
                 <h2>状态</h2>
                 <div className="stats-grid">
                   <StatCard label="状态" value={status.state} />
-                  <StatCard label="已收包" value={status.packets_recv} />
-                  <StatCard label="丢包" value={`${status.packets_lost}（${lossPct}%）`} />
-                  <StatCard label="丢弃" value={status.packets_dropped} />
-                  <StatCard label="缓冲" value={`${status.buffer_ms} ms（${status.buffer_depth} 帧）`} />
-                  <StatCard label="抖动" value={`${status.jitter_ms} ms`} />
                   <StatCard label="估算延迟" value={`${status.est_latency_ms} ms`} />
                   <StatCard label="接收码率" value={`${bitrateKbps} kbps`} />
-                  <StatCard label="建议码率" value={`${recBitrateKbps} kbps${recBitrateKbps > 0 && recBitrateKbps !== 128 ? "（自适应）" : ""}`} />
-                  <StatCard label="漂移校正" value={`${driftPct}%`} />
-                  <StatCard label="连续 PLC" value={`${status.consecutive_plc} 帧`} />
-                  <StatCard label="Jitter 模式" value={status.jitter_mode} />
                 </div>
               </section>
             ) : (
@@ -1068,36 +871,6 @@ export default function App() {
               )}
             </section>
 
-            <section className="panel-card settings-card">
-              <div className="section-title-row">
-                <h2>音频参数</h2>
-                <button className="text-button" onClick={autoDetectAudioParams} disabled={senderRunning} type="button">
-                  <span aria-hidden="true">⌁</span> 自动探测
-                </button>
-              </div>
-              <div className="audio-options-grid">
-                <label>
-                  <span>采样率</span>
-                  <span className="readonly-value">{audioParams.sample_rate} Hz</span>
-                </label>
-                <label>
-                  <span>声道</span>
-                  <span className="readonly-value">{audioParams.channels === 1 ? "Mono" : "Stereo"}</span>
-                </label>
-                <label>
-                  <span>帧长</span>
-                  <span className="readonly-value">{audioParams.frame_duration_ms} ms</span>
-                </label>
-                <label>
-                  <span>码率</span>
-                  <select value={audioParams.bitrate} onChange={(e) => setAudioParams({ ...audioParams, bitrate: Number(e.target.value) })}>
-                    {BITRATE_OPTIONS.map((v) => <option key={v} value={v}>{Math.round(v / 1000)} kbps</option>)}
-                  </select>
-                </label>
-              </div>
-              <small className="settings-note">当前版本发送端真正生效：Opus 码率。采样率/声道/帧长固定为 48kHz/Stereo/10ms，运行中发送时不允许改参数。</small>
-            </section>
-
             <button
               className={`primary-action ${activeSender ? "danger" : "send"}`}
               onClick={activeSender ? stopSender : startSender}
@@ -1120,32 +893,10 @@ export default function App() {
                 <div className="stats-grid">
                   <StatCard label="状态" value={senderStatus.state} />
                   <StatCard label="目标" value={senderStatus.receiver_device_name || senderStatus.target_addr} />
-                  <StatCard label="已发包" value={senderStatus.packets_sent} />
-                  <StatCard label="编码耗时" value={`${senderStatus.encode_ms_avg.toFixed(1)} ms`} />
                   <StatCard
                     label="发送码率"
                     value={`${senderBitrateKbps} kbps${adaptiveOn ? "（自动）" : ""}`}
                   />
-                  {senderRecKbps > 0 && (
-                    <StatCard
-                      label="建议码率"
-                      value={`${senderRecKbps} kbps${adaptiveOn ? "（自适应）" : ""}`}
-                    />
-                  )}
-                  {senderAdoptKbps > 0 && (
-                    <div className="stat-card adopt-card">
-                      <button
-                        className="text-button"
-                        type="button"
-                        onClick={() =>
-                          setAudioParams({ ...audioParams, bitrate: senderAdoptKbps * 1000 })
-                        }
-                      >
-                        采纳建议 {senderAdoptKbps} kbps
-                      </button>
-                    </div>
-                  )}
-                  <StatCard label="已信任" value={senderStatus.trusted ? "是" : "否"} />
                   {senderStatus.error && <StatCard label="错误" value={senderStatus.error} />}
                 </div>
               </section>

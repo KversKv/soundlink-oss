@@ -1,7 +1,9 @@
 // 设备页：扫描局域网桌面 Receiver，列表选择；支持手动输入 IP。
 // 已信任设备可直接快速重连（跳过配对码）。
 // 页面底部内嵌配对区块：输入配对码连接所选设备，或停止广播。
+// 广播中自动隐藏扫描/设备列表/配对输入等连接相关内容，仅保留停止入口。
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../app.dart';
@@ -45,6 +47,17 @@ class _DiscoveryPageState extends State<DiscoveryPage> {
       body: ListenableBuilder(
         listenable: app,
         builder: (context, _) {
+          final broadcasting = app.conn == LinkState.streaming;
+          // 广播中：隐藏扫描/设备列表/配对输入等连接相关内容，仅保留停止入口。
+          if (broadcasting) {
+            return ListView(
+              children: [
+                if (app.lastError != null)
+                  _banner(app.lastError!, Colors.red.shade50),
+                _buildBroadcastingCard(context, app),
+              ],
+            );
+          }
           return ListView(
             children: [
               if (app.lastError != null)
@@ -98,6 +111,8 @@ class _DiscoveryPageState extends State<DiscoveryPage> {
                 ),
               ),
               const Divider(),
+              _buildGuideSection(context),
+              const Divider(),
               _buildPairingSection(context, app),
               // 调试：采集 PCM 转储开关
               _DumpPcmTile(app: app),
@@ -108,7 +123,7 @@ class _DiscoveryPageState extends State<DiscoveryPage> {
     );
   }
 
-  /// 配对区块：显示目标设备、配对码输入与连接/停止按钮。
+  /// 配对区块：显示目标设备、配对码输入与连接按钮（仅在未广播时显示）。
   Widget _buildPairingSection(BuildContext context, AppState app) {
     final device = app.selectedDevice;
     return Padding(
@@ -146,16 +161,95 @@ class _DiscoveryPageState extends State<DiscoveryPage> {
             icon: const Icon(Icons.history),
             label: const Text('已信任设备直接连接'),
           ),
-          const SizedBox(height: 16),
-          if (app.conn == LinkState.streaming)
-            FilledButton.tonalIcon(
-              onPressed: _busy ? null : () => app.stop(),
-              icon: const Icon(Icons.stop),
-              label: const Text('停止广播'),
-              style: FilledButton.styleFrom(
-                backgroundColor: Colors.red.shade100,
+        ],
+      ),
+    );
+  }
+
+  /// 平台广播引导（原广播页内容精简并入，仅未广播时显示）。
+  Widget _buildGuideSection(BuildContext context) {
+    final isIOS = defaultTargetPlatform != TargetPlatform.android;
+    final steps = isIOS
+        ? const <String>[
+            '打开系统「控制中心」（屏幕右上角下滑）',
+            '长按「屏幕录制」按钮',
+            '在列表中选择 SoundLink',
+            '点击「开始广播」，音频将开始传输',
+          ]
+        : const <String>[
+            '在下方选择设备并点击「配对并开始广播」',
+            '系统将弹出「屏幕共享/录制」授权弹窗',
+            '点击「立即开始」授权 MediaProjection',
+            '通知栏将显示采集状态，音频开始传输',
+          ];
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            isIOS ? 'iOS 开启广播步骤' : 'Android 开启采集步骤',
+            style: Theme.of(context).textTheme.titleSmall,
+          ),
+          const SizedBox(height: 8),
+          for (var i = 0; i < steps.length; i++)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 2),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('${i + 1}. ', style: const TextStyle(fontSize: 13)),
+                  Expanded(
+                    child: Text(steps[i], style: const TextStyle(fontSize: 13)),
+                  ),
+                ],
               ),
             ),
+          const SizedBox(height: 8),
+          Text(
+            '说明：基于系统官方采集能力，支持大部分普通应用音频；受 DRM 或应用限制的内容可能无法采集。'
+            '${isIOS ? " iOS 不支持应用静默修改全局媒体音量，如本机仍外放请用系统音量/耳机控制。" : ""}',
+            style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 广播中卡片：隐藏连接相关内容后，仅展示状态与停止入口。
+  Widget _buildBroadcastingCard(BuildContext context, AppState app) {
+    return Padding(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Card(
+            color: Colors.green.shade50,
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  const Icon(Icons.cast_connected, color: Colors.green),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      '正在广播音频到 ${app.selectedDevice?.deviceName ?? ""}',
+                      style: const TextStyle(fontSize: 14),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+          FilledButton.tonalIcon(
+            onPressed: _busy ? null : () => app.stop(),
+            icon: const Icon(Icons.stop),
+            label: const Text('停止广播'),
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.red.shade100,
+            ),
+          ),
         ],
       ),
     );

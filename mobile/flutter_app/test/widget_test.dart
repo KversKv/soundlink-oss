@@ -18,7 +18,6 @@ void main() {
     expect(find.text('状态：未连接'), findsOneWidget);
     expect(find.byType(NavigationBar), findsOneWidget);
     expect(find.text('设备'), findsWidgets);
-    expect(find.text('广播'), findsOneWidget);
     expect(find.text('设置'), findsOneWidget);
   });
 }
