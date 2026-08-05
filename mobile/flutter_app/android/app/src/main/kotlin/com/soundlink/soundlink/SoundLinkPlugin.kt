@@ -81,6 +81,20 @@ class SoundLinkPlugin(
                 prefs.edit().putBoolean("dump_pcm", enabled).apply()
                 result.success(true)
             }
+            "setBitrate" -> {
+                // N3：转发给采集 Service，由 captureLoop 热下发到 Opus encoder。
+                val bitrate = call.argument<Int>("bitrate") ?: 0
+                if (bitrate <= 0) {
+                    result.error("BAD_BITRATE", "bitrate 必须为正", null)
+                    return
+                }
+                val svc = Intent(activity, AudioCaptureService::class.java).apply {
+                    action = AudioCaptureService.ACTION_SET_BITRATE
+                    putExtra(AudioCaptureService.EXTRA_BITRATE, bitrate)
+                }
+                activity.startService(svc)
+                result.success(true)
+            }
             else -> result.notImplemented()
         }
     }

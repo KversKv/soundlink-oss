@@ -31,6 +31,11 @@ class OpusEncoder(
 
     val samplesPerFramePerChannel: Int get() = frameSize
 
+    /** N3：运行时调整编码码率（bps），不重建 encoder。 */
+    fun setBitrate(bitrate: Int) {
+        if (ptr != 0L) nativeSetBitrate(ptr, bitrate)
+    }
+
     override fun close() {
         if (ptr != 0L) nativeDestroy(ptr)
     }
@@ -41,6 +46,7 @@ class OpusEncoder(
         }
         @JvmStatic external fun nativeCreate(sampleRate: Int, channels: Int, bitrate: Int): Long
         @JvmStatic external fun nativeEncode(ptr: Long, pcm: ShortArray, frameSize: Int): ByteArray
+        @JvmStatic external fun nativeSetBitrate(ptr: Long, bitrate: Int)
         @JvmStatic external fun nativeDestroy(ptr: Long)
     }
 }

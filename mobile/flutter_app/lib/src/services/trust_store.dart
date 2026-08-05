@@ -51,10 +51,15 @@ class AudioSettings {
     jitterMs: jitterMs ?? this.jitterMs,
   );
 
+  // 阶段 P：白名单校验（采样率受 Opus 限制固定 48kHz；声道/帧长可选）。
   AudioSettings normalized() => AudioSettings(
-    sampleRate: k.sampleRate,
-    channels: k.channels,
-    frameDurationMs: k.frameDurationMs,
+    sampleRate: k.audioSampleRateOptions.contains(sampleRate)
+        ? sampleRate
+        : k.sampleRate,
+    channels: k.audioChannelOptions.contains(channels) ? channels : k.channels,
+    frameDurationMs: k.audioFrameDurationOptions.contains(frameDurationMs)
+        ? frameDurationMs
+        : k.frameDurationMs,
     bitrate: k.audioBitrateOptions.contains(bitrate) ? bitrate : k.opusBitrate,
     jitterMs:
         [k.jitterLowMs, k.jitterBalancedMs, k.jitterStableMs].contains(jitterMs)

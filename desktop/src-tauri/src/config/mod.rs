@@ -33,10 +33,17 @@ impl Default for AudioParams {
 }
 
 impl AudioParams {
+    /// 阶段 P：白名单校验（不再强制覆盖为基线）。非法值回退基线。
     pub fn normalized(mut self) -> Self {
-        self.sample_rate = SAMPLE_RATE;
-        self.channels = 2;
-        self.frame_duration_ms = FRAME_DURATION_MS;
+        if !crate::constants::SAMPLE_RATE_OPTIONS.contains(&self.sample_rate) {
+            self.sample_rate = SAMPLE_RATE;
+        }
+        if !crate::constants::CHANNEL_OPTIONS.contains(&self.channels) {
+            self.channels = 2;
+        }
+        if !crate::constants::FRAME_DURATION_OPTIONS.contains(&self.frame_duration_ms) {
+            self.frame_duration_ms = FRAME_DURATION_MS;
+        }
         if ![64_000, 96_000, 128_000, 160_000, 192_000].contains(&self.bitrate) {
             self.bitrate = OPUS_BITRATE;
         }
@@ -44,6 +51,13 @@ impl AudioParams {
             self.jitter_mode = "balanced".into();
         }
         self
+    }
+
+    /// 是否需要重启流才能生效（采样率/声道/帧长偏离当前运行基线）。
+    pub fn restart_required(&self) -> bool {
+        self.sample_rate != SAMPLE_RATE
+            || self.channels != 2
+            || self.frame_duration_ms != FRAME_DURATION_MS
     }
 }
 

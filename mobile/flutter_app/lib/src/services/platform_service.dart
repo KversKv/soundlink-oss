@@ -42,6 +42,11 @@ class PlatformService {
     await _channel.invokeMethod('stopCapture', {'clearSession': clearSession});
   }
 
+  /// N3：运行时下发编码码率（bps）到采集组件，不重建 encoder。
+  Future<void> setBitrate(int bitrate) async {
+    await _channel.invokeMethod('setBitrate', {'bitrate': bitrate});
+  }
+
   /// 请求 MediaProjection 授权（Android）。
   Future<bool> requestMediaProjection() async {
     final r = await _channel.invokeMethod('requestMediaProjection');

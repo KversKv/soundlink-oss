@@ -146,16 +146,17 @@ class SettingsPage extends StatelessWidget {
 }
 
 String _recommendationText(AudioRecommendation result) {
-  final latency = result.avgLatencyMs == null
-      ? '未获得有效样本'
-      : '平均 ${result.avgLatencyMs!.toStringAsFixed(1)} ms，最高 ${result.maxLatencyMs!.toStringAsFixed(1)} ms';
   final s = result.settings;
+  // O4：展示真实 UDP 音频面指标（丢包/抖动）。
+  final metric = result.lossRate == null
+      ? '未获得有效样本'
+      : '丢包 ${(result.lossRate! * 100).toStringAsFixed(1)}%，抖动 ${result.jitterMs ?? 0} ms';
   return [
     result.reason,
     '',
-    '探测样本：${result.sampleCount} 次（$latency）',
+    '音频面指标：$metric',
     '推荐参数：${s.sampleRate} Hz / ${s.channels == 1 ? 'Mono' : 'Stereo'} / ${s.frameDurationMs} ms / ${s.bitrate ~/ 1000} kbps / Jitter ${s.jitterMs} ms',
-    result.pausedStream ? '为避免当前音频流干扰探测，已先停止广播；需要手动重新开始。' : '当前未在广播，无需暂停音频流。',
+    '探测基于接收端真实统计，无需暂停当前广播。',
   ].join('\n');
 }
 

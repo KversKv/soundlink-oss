@@ -57,6 +57,12 @@ final class OpusEncoderWrapper {
         return Data(buf.prefix(Int(n)))
     }
 
+    /// N3：运行时调整编码码率（bps），不重建 encoder。
+    func setBitrate(_ bitrate: Int) {
+        guard let st = state else { return }
+        opus_encoder_set_bitrate(st, Int32(bitrate))
+    }
+
     /// 便捷：从 Data(Int16 交错) 编码。
     func encode(_ pcmData: Data) -> Data? {
         guard pcmData.count >= MemoryLayout<Int16>.size * Int(channels) * Int(frameSize) else {

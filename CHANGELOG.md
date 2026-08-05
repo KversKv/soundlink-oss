@@ -4,6 +4,18 @@
 
 ## [未发布]
 
+### 新增
+
+- 音频参数与自适应规划文档 `docs/NewFunctions/audio-adaptation/`：参数生效矩阵审计、码率自适应闭环（阶段 N）、真实 UDP 探测（阶段 O）、参数动态化（阶段 P）的完成计划与回填规则。
+- **码率自适应闭环（阶段 N）**：接收端按丢包率计算的 `recommended_bitrate` 现在能真正改变发送端实际编码码率，无需重启流。桌面/移动发送循环内检测目标码率变化并经 Opus `set_bitrate` 热下发，带 5s 最短间隔 + 归档到允许集合的节流；`jitter_mode=auto` 时建议值自动生效，手动模式仅展示。桌面 UI 发送端面板新增「建议码率」展示与一键采纳按钮。
+- **真实探测能力（阶段 O）**：桌面自动探测在样本不足（收包 < 50）时诚实返回「保持当前参数」，不再乐观误推 160kbps；`audio.params.probe_request` 实装——接收端基于真实 UDP 音频面统计回传 `probe_result`（`recommended_bitrate`/`jitter_mode`/`loss_rate`/`jitter_ms`）。移动端自动探测改走 `probe_request`/`probe_result`（替换原 5 次 TCP connect 测延迟的做法），且不再强制停止当前广播；双端探测阈值统一为 `loss_rate`/`jitter_ms` 口径。新增 AudioPacket `flags bit1=probe` 探测包标记（接收端回显且不进 Jitter Buffer/不污染统计）。
+- **参数动态化（阶段 P）**：声道（Mono/Stereo）与帧长（10/20ms）端到端可变。引入运行时 `AudioFormat` 会话参数贯穿发送/接收链路；发送端采集始终 48kHz/Stereo 基线、编码前经线性插值重采样 + 声道映射转换为会话格式（新增 `format_convert` 模块），接收端按 `stream_start` 携带的会话格式重建 Opus 解码器并将解码结果重采样回 48kHz/Stereo 设备基线输出。`restart_required` 成为真实判定。桌面 UI 声道/帧长恢复可选。端到端自测（`examples/phase_p_format.rs`）验证 48k/Mono/20ms 收发零丢失。
+
+### 变更
+
+- **音频参数采样率收窄为固定 48kHz**：spec §3.9 原声明 `sample_rate=44100|48000`，但 libopus 仅支持 8/12/16/24/48kHz，44100 会导致 `opus_encoder_create` 返回 `OPUS_BAD_ARG`，物理上不可用。已同步收窄 `11-implementation-spec.md` §3.9 与双端白名单/常量，消除文档-实现不一致。动态化维度保留声道与帧长。
+- `AudioPacket` 头部 `flags` 字段文档由 u16 更正为 u8（与实现一致），并补充 bit1=probe 定义（`04-protocol.md`、`11-implementation-spec.md`）。
+
 ## [0.1.0-beta.1] - 2026-08-04
 
 首个公开内测版本（Pre-release）。仅实测通过 Android → Windows 与 Windows → Windows；macOS 采集未实装，iOS 待真机验收。产物未经代码签名，Windows 会触发 SmartScreen 提示。

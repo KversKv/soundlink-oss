@@ -43,6 +43,7 @@ interface SenderStatus {
   packets_sent: number;
   encode_ms_avg: number;
   bitrate: number;
+  recommended_bitrate: number;
   trusted: boolean;
   error: string;
 }
@@ -121,6 +122,10 @@ const DEFAULT_AUDIO_PARAMS: AudioParams = {
 };
 
 const BITRATE_OPTIONS = [64000, 96000, 128000, 160000, 192000];
+// 阶段 P：参数动态化可选项。采样率受 Opus 限制固定 48kHz（44100 不被 libopus 支持）。
+const SAMPLE_RATE_OPTIONS = [48000];
+const CHANNEL_OPTIONS = [1, 2];
+const FRAME_DURATION_OPTIONS = [10, 20];
 
 function formatPairingCode(code: string) {
   return code || "────────";
@@ -517,7 +522,7 @@ export default function App() {
       const detected = await invoke<AudioParams>("auto_detect_audio_params");
       setAudioParamsState(detected);
       setJitterMode(detected.jitter_mode);
-      setError(`自动探测完成：已推荐 ${detected.bitrate / 1000}kbps / Jitter ${detected.jitter_mode}。当前版本采样率、声道和帧长固定为 48kHz/Stereo/10ms。`);
+      setError(`自动探测完成：已推荐 ${detected.bitrate / 1000}kbps / Jitter ${detected.jitter_mode}。`);
     } catch (e) {
       setError(mapError(e));
     }
@@ -646,6 +651,13 @@ export default function App() {
   const recBitrateKbps = status ? Math.round(status.recommended_bitrate / 1000) : 0;
   const driftPct = status ? ((status.drift_ratio - 1) * 100).toFixed(2) : "0.00";
   const senderBitrateKbps = senderStatus ? Math.round(senderStatus.bitrate / 1000) : 0;
+  const senderRecKbps = senderStatus ? Math.round(senderStatus.recommended_bitrate / 1000) : 0;
+  const adaptiveOn = audioParams.jitter_mode === "auto";
+  // N4：手动模式且建议值与当前目标不一致时显示一键采纳。
+  const senderAdoptKbps =
+    !adaptiveOn && senderRecKbps > 0 && senderRecKbps * 1000 !== audioParams.bitrate
+      ? senderRecKbps
+      : 0;
   const activeReceiver = running || Boolean(status);
   const activeSender = senderRunning || Boolean(senderStatus);
 
@@ -865,15 +877,30 @@ export default function App() {
               <div className="audio-options-grid">
                 <label>
                   <span>采样率</span>
-                  <span className="readonly-value">{audioParams.sample_rate} Hz</span>
+                  <select
+                    value={audioParams.sample_rate}
+                    onChange={(e) => setAudioParams({ ...audioParams, sample_rate: Number(e.target.value) })}
+                  >
+                    {SAMPLE_RATE_OPTIONS.map((v) => <option key={v} value={v}>{v} Hz</option>)}
+                  </select>
                 </label>
                 <label>
                   <span>声道</span>
-                  <span className="readonly-value">{audioParams.channels === 1 ? "Mono" : "Stereo"}</span>
+                  <select
+                    value={audioParams.channels}
+                    onChange={(e) => setAudioParams({ ...audioParams, channels: Number(e.target.value) })}
+                  >
+                    {CHANNEL_OPTIONS.map((v) => <option key={v} value={v}>{v === 1 ? "Mono" : "Stereo"}</option>)}
+                  </select>
                 </label>
                 <label>
                   <span>帧长</span>
-                  <span className="readonly-value">{audioParams.frame_duration_ms} ms</span>
+                  <select
+                    value={audioParams.frame_duration_ms}
+                    onChange={(e) => setAudioParams({ ...audioParams, frame_duration_ms: Number(e.target.value) })}
+                  >
+                    {FRAME_DURATION_OPTIONS.map((v) => <option key={v} value={v}>{v} ms</option>)}
+                  </select>
                 </label>
                 <label>
                   <span>码率</span>
@@ -882,7 +909,7 @@ export default function App() {
                   </select>
                 </label>
               </div>
-              <small className="settings-note">当前版本运行时真正生效：Opus 码率、Jitter 模式、音量。采样率/声道/帧长固定为 48kHz/Stereo/10ms。</small>
+              <small className="settings-note">码率、Jitter、音量运行时即时生效；采样率/声道/帧长改动需重新开始流后生效。</small>
             </section>
 
             <button
@@ -1063,7 +1090,7 @@ export default function App() {
                 </label>
                 <label>
                   <span>码率</span>
-                  <select value={audioParams.bitrate} disabled={senderRunning} onChange={(e) => setAudioParams({ ...audioParams, bitrate: Number(e.target.value) })}>
+                  <select value={audioParams.bitrate} onChange={(e) => setAudioParams({ ...audioParams, bitrate: Number(e.target.value) })}>
                     {BITRATE_OPTIONS.map((v) => <option key={v} value={v}>{Math.round(v / 1000)} kbps</option>)}
                   </select>
                 </label>
@@ -1095,7 +1122,29 @@ export default function App() {
                   <StatCard label="目标" value={senderStatus.receiver_device_name || senderStatus.target_addr} />
                   <StatCard label="已发包" value={senderStatus.packets_sent} />
                   <StatCard label="编码耗时" value={`${senderStatus.encode_ms_avg.toFixed(1)} ms`} />
-                  <StatCard label="发送码率" value={`${senderBitrateKbps} kbps`} />
+                  <StatCard
+                    label="发送码率"
+                    value={`${senderBitrateKbps} kbps${adaptiveOn ? "（自动）" : ""}`}
+                  />
+                  {senderRecKbps > 0 && (
+                    <StatCard
+                      label="建议码率"
+                      value={`${senderRecKbps} kbps${adaptiveOn ? "（自适应）" : ""}`}
+                    />
+                  )}
+                  {senderAdoptKbps > 0 && (
+                    <div className="stat-card adopt-card">
+                      <button
+                        className="text-button"
+                        type="button"
+                        onClick={() =>
+                          setAudioParams({ ...audioParams, bitrate: senderAdoptKbps * 1000 })
+                        }
+                      >
+                        采纳建议 {senderAdoptKbps} kbps
+                      </button>
+                    </div>
+                  )}
                   <StatCard label="已信任" value={senderStatus.trusted ? "是" : "否"} />
                   {senderStatus.error && <StatCard label="错误" value={senderStatus.error} />}
                 </div>

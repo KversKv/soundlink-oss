@@ -28,6 +28,7 @@ import android.util.Log
 import com.soundlink.soundlink.codec.OpusEncoder
 import com.soundlink.soundlink.network.SenderConfig
 import com.soundlink.soundlink.network.UdpAudioSender
+import com.soundlink.soundlink.network.normalizedSession
 import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
@@ -41,6 +42,12 @@ class AudioCaptureService : Service() {
     private var encoder: OpusEncoder? = null
     private var sender: UdpAudioSender? = null
     @Volatile private var running = false
+    // N3：本次流起始码率（bps），captureLoop 以此跟踪热调整。
+    private var startBitrate = 0
+    // 阶段 P：归一化后的会话配置（采集循环按此做格式转换与凑帧）。
+    private var sessionCfg: SenderConfig? = null
+    // 会话格式样本累积缓冲（凑满一个会话帧编一次）。
+    private var sessionAccum = ShortArray(0)
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -48,6 +55,14 @@ class AudioCaptureService : Service() {
         when (intent?.action) {
             ACTION_START -> startCapture(intent)
             ACTION_STOP -> stopCapture()
+            ACTION_SET_BITRATE -> {
+                // N3：Flutter 经 Plugin 写入 pending bitrate；captureLoop 每帧检测并热下发。
+                val b = intent.getIntExtra(EXTRA_BITRATE, 0)
+                if (b > 0) {
+                    getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                        .edit().putInt(KEY_PENDING_BITRATE, b).apply()
+                }
+            }
         }
         return START_NOT_STICKY
     }
@@ -78,15 +93,19 @@ class AudioCaptureService : Service() {
         }
 
         try {
-            val runtimeCfg = cfg.copy(sampleRate = 48000, channels = 2, frameDurationMs = 10)
+            // 阶段 P：按会话格式构造编码器/发送器（44.1k/Mono/20ms 等，经白名单归一化）。
+            val runtimeCfg = cfg.normalizedSession()
             encoder = OpusEncoder(runtimeCfg.sampleRate, runtimeCfg.channels, runtimeCfg.bitrate)
             sender = UdpAudioSender(runtimeCfg)
+            startBitrate = runtimeCfg.bitrate
+            sessionCfg = runtimeCfg
         } catch (e: Exception) {
             Log.e(TAG, "编码器/发送器初始化失败", e)
             stopSelf()
             return
         }
 
+        sessionAccum = ShortArray(0)
         running = true
         captureThread = Thread { captureLoop() }.apply { start() }
     }
@@ -141,6 +160,9 @@ class AudioCaptureService : Service() {
         // 通过 SharedPreferences 的 dump_pcm=1 启用，文件写到公共 Download 目录。
         val sp = getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val dumpPcm = sp.getBoolean("dump_pcm", false)
+        // N3：跟踪当前生效码率，检测 pending 变化后热下发。
+        var currentBitrate = startBitrate
+        sp.edit().remove(KEY_PENDING_BITRATE).apply()
         var pcmDumpStream: OutputStream? = null
         var opusDumpStream: OutputStream? = null
         if (dumpPcm) {
@@ -164,6 +186,15 @@ class AudioCaptureService : Service() {
         }
 
         while (running) {
+            // N3：检测码率热调整请求（SharedPreferences 轮询，每帧一次开销可忽略）。
+            val pending = sp.getInt(KEY_PENDING_BITRATE, 0)
+            if (pending > 0 && pending != currentBitrate) {
+                encoder?.setBitrate(pending)
+                Log.i(TAG, "编码码率热调整：${currentBitrate / 1000}kbps → ${pending / 1000}kbps")
+                currentBitrate = pending
+                sp.edit().remove(KEY_PENDING_BITRATE).apply()
+            }
+
             val read = record.read(pcm, 0, pcm.size)
             if (read <= 0) continue
             if (read < pcm.size) continue // 不足一帧，丢弃
@@ -180,25 +211,36 @@ class AudioCaptureService : Service() {
                 }
             }
 
-            try {
-                val opus = encoder?.encode(pcm) ?: continue
+            // 阶段 P：基线帧（48k/Stereo/10ms）→ 会话格式，累积凑满一个会话帧再编码。
+            val cfg = sessionCfg
+            if (cfg != null) {
+                sessionAccum = SessionFormatConverter.toSession(pcm, cfg.sampleRate, cfg.channels)
+                    .let { sessionAccum + it }
+                val sessionFrameLen = cfg.sampleRate / 1000 * cfg.frameDurationMs * cfg.channels
+                if (sessionAccum.size < sessionFrameLen) continue
+                val sessionFrame = sessionAccum.copyOfRange(0, sessionFrameLen)
+                sessionAccum = sessionAccum.copyOfRange(sessionFrameLen, sessionAccum.size)
 
-                // 转储 Opus 帧（4 字节长度前缀 + 数据）
-                if (opusDumpStream != null) {
-                    try {
-                        val lb = java.nio.ByteBuffer.allocate(4)
-                        lb.order(java.nio.ByteOrder.LITTLE_ENDIAN)
-                        lb.putInt(opus.size)
-                        opusDumpStream.write(lb.array())
-                        opusDumpStream.write(opus)
-                    } catch (e: Exception) {
-                        Log.w(TAG, "Opus 转储写入失败", e)
+                try {
+                    val opus = encoder?.encode(sessionFrame) ?: continue
+
+                    // 转储 Opus 帧（4 字节长度前缀 + 数据）
+                    if (opusDumpStream != null) {
+                        try {
+                            val lb = java.nio.ByteBuffer.allocate(4)
+                            lb.order(java.nio.ByteOrder.LITTLE_ENDIAN)
+                            lb.putInt(opus.size)
+                            opusDumpStream.write(lb.array())
+                            opusDumpStream.write(opus)
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Opus 转储写入失败", e)
+                        }
                     }
-                }
 
-                sender?.send(opus)
-            } catch (e: Exception) {
-                Log.w(TAG, "编码/发送异常", e)
+                    sender?.send(opus)
+                } catch (e: Exception) {
+                    Log.w(TAG, "编码/发送异常", e)
+                }
             }
         }
 
@@ -314,7 +356,10 @@ class AudioCaptureService : Service() {
 
         const val ACTION_START = "com.soundlink.START_CAPTURE"
         const val ACTION_STOP = "com.soundlink.STOP_CAPTURE"
+        const val ACTION_SET_BITRATE = "com.soundlink.SET_BITRATE"
         const val EXTRA_RESULT_CODE = "result_code"
         const val EXTRA_RESULT_DATA = "result_data"
+        const val EXTRA_BITRATE = "bitrate"
+        const val KEY_PENDING_BITRATE = "pending_bitrate"
     }
 }

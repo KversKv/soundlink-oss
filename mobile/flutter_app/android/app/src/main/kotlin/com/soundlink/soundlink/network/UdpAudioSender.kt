@@ -26,6 +26,19 @@ data class SenderConfig(
     val bitrate: Int,
 )
 
+/** 阶段 P：会话格式白名单（对齐 desktop constants.rs）。采样率受 Opus 限制固定 48kHz。 */
+private val SAMPLE_RATE_OPTIONS = intArrayOf(48000)
+private val CHANNEL_OPTIONS = intArrayOf(1, 2)
+private val FRAME_DURATION_OPTIONS = intArrayOf(10, 20)
+
+/** 白名单归一化：非法值回退基线 48k/Stereo/10ms。 */
+fun SenderConfig.normalizedSession(): SenderConfig {
+    val sr = if (sampleRate in SAMPLE_RATE_OPTIONS) sampleRate else 48000
+    val ch = if (channels in CHANNEL_OPTIONS) channels else 2
+    val fd = if (frameDurationMs in FRAME_DURATION_OPTIONS) frameDurationMs else 10
+    return copy(sampleRate = sr, channels = ch, frameDurationMs = fd)
+}
+
 class UdpAudioSender(private val cfg: SenderConfig) : AutoCloseable {
 
     private val key = KeyParameter(cfg.audioKey)

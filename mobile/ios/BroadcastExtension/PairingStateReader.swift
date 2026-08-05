@@ -38,6 +38,22 @@ struct SessionConfig: Codable {
             bitrate: bitrate)
     }
 
+    /// 阶段 P：会话格式白名单归一化（Mono/20ms 等；采样率受 Opus 限制固定 48kHz）。
+    var sessionNormalized: SessionConfig {
+        let sr = sampleRate == 48000 ? sampleRate : 48000
+        let ch = [1, 2].contains(channels) ? channels : 2
+        let fd = [10, 20].contains(frameDurationMs) ? frameDurationMs : 10
+        return SessionConfig(
+            targetHost: targetHost,
+            audioPort: audioPort,
+            streamId: streamId,
+            audioKey: audioKey,
+            sampleRate: sr,
+            channels: ch,
+            frameDurationMs: fd,
+            bitrate: bitrate)
+    }
+
     /// 解码 audio_key 为原始 32 字节。
     func audioKeyBytes() -> Data {
         Data(base64Encoded: audioKey) ?? Data()
@@ -51,6 +67,8 @@ enum PairingStateReader {
     /// Extension 停止原因日志键（主 App 读取用于排查"直播已停止"）。
     static let stopReasonKey = "soundlink.stop_reason"
     static let stopReasonTimestampKey = "soundlink.stop_reason_ts"
+    /// N3：主 App 写入的目标码率（bps），Extension 每帧读取并热下发。
+    static let pendingBitrateKey = "soundlink.pending_bitrate"
 
     /// 读取最新会话配置；不存在或解析失败返回 nil。
     static func read() -> SessionConfig? {

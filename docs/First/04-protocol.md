@@ -114,7 +114,7 @@ AudioPacket {
   sample_rate:        u32    // 采样率
   channels:           u8     // 声道数
   frame_duration_ms:  u8     // 帧时长
-  flags:              u16    // 标志位（末包/关键等）
+  flags:              u8     // 标志位（bit0=stream_end，bit1=probe 探测包）
   payload_len:        u16    // 加密载荷长度
   payload:            bytes  // 加密后的 Opus 数据
   auth_tag:           bytes  // AEAD 认证标签

@@ -44,7 +44,7 @@
 | 20 | codec | u8 | 1 | `1`=opus |
 | 21 | channels | u8 | 1 | `2` |
 | 22 | frame_duration_ms | u8 | 1 | `10` |
-| 23 | flags | u8 | 1 | bit0=stream_end，其余保留 |
+| 23 | flags | u8 | 1 | bit0=stream_end，bit1=probe（探测包，接收端回显且不进 Jitter/统计），其余保留 |
 | 24 | sample_rate | u32 | 4 | `48000` |
 | 28 | payload_len | u16 | 2 | 密文长度（不含 tag） |
 | 30 | reserved | u16 | 2 | `0` |
@@ -205,7 +205,7 @@ packet = header ‖ cipher ‖ tag
 | `audio.params.probe_request` | `{}` | 请求对端回传当前音频能力/质量建议 |
 | `audio.params.probe_result` | `{ "recommended_bitrate":128000, "jitter_mode":"balanced", "loss_rate":0.0, "jitter_ms":0 }` | 回传探测或统计推荐结果 |
 
-音频参数可选值：`sample_rate=44100|48000`，`channels=1|2`，`frame_duration_ms=10|20`，`bitrate=64000|96000|128000|160000|192000`，`jitter_mode=low|balanced|stable|auto`。第一版运行中仅要求 `jitter_mode` 立即应用；`bitrate` 由发送端后续编码应用；采样率、声道、帧长允许持久化和协议声明，但若当前流无法动态重建采集/编码/解码链路，接收方必须在回执中标记 `restart_required=true`，并在下一次 `stream_start` 完全生效。
+音频参数可选值：`sample_rate=48000`（**注：libopus 仅支持 8/12/16/24/48kHz，44100 会导致 `OPUS_BAD_ARG`，故会话采样率固定 48kHz**），`channels=1|2`，`frame_duration_ms=10|20`，`bitrate=64000|96000|128000|160000|192000`，`jitter_mode=low|balanced|stable|auto`。运行时生效语义：`jitter_mode`、`bitrate`、`volume` 立即应用（码率经 `set_bitrate` 热下发）；`channels`、`frame_duration_ms` 需重建采集/编码/解码链路，接收方在回执中标记 `restart_required=true`，并在下一次 `stream_start` 完全生效（发送端在 `stream_start` 中携带会话格式，接收端按格式重建解码器并将解码结果重采样回 48kHz/Stereo 设备基线输出）。
 
 ### 3.10 control_action_ack  (双向)
 ```json

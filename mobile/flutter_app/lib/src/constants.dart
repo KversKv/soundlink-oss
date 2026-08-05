@@ -37,9 +37,10 @@ const int samplesPerFramePerChannel = 480;
 /// Opus 起始码率。
 const int opusBitrate = 128000;
 
+// 阶段 P：参数动态化白名单。采样率受 Opus 限制固定 48kHz（44100 不被 libopus 支持）。
 const List<int> audioSampleRateOptions = [48000];
-const List<int> audioChannelOptions = [2];
-const List<int> audioFrameDurationOptions = [10];
+const List<int> audioChannelOptions = [1, 2];
+const List<int> audioFrameDurationOptions = [10, 20];
 const List<int> audioBitrateOptions = [64000, 96000, 128000, 160000, 192000];
 
 /// 编码类型：Opus。
@@ -47,6 +48,22 @@ const int codecOpus = 1;
 
 /// flags bit0：流末包。
 const int flagStreamEnd = 0x01;
+
+/// flags bit1：UDP 探测包（不进 Jitter Buffer、不污染统计）。
+const int flagProbe = 0x02;
+
+/// 探测/推荐的最小有效样本包数（与 receiver recommend_bitrate 判据一致）。
+const int probeMinPackets = 50;
+
+/// 码率自适应：建议值归档步长（bps）与最短生效间隔（毫秒）。
+const int bitrateStep = 16000;
+const int bitrateAdjustMinIntervalMs = 5000;
+
+/// 双端统一探测阈值（与 desktop constants.rs 对齐）。
+const double lossRateHighThreshold = 0.05; // 5%：触发降码率 + stable
+const double lossRateLowThreshold = 0.01; // 1%：触发升码率 + low
+const int jitterHighThresholdMs = 35;
+const int jitterLowThresholdMs = 12;
 
 /// 默认 Jitter 缓冲（毫秒）。
 const int defaultJitterMs = 80;

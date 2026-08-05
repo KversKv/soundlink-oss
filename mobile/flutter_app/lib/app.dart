@@ -4,7 +4,6 @@
 // 详见 docs/First/07-tech-stack.md §6、08-platform-notes.md §1b。
 
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -27,6 +26,9 @@ class AudioRecommendation {
   final double? avgLatencyMs;
   final double? maxLatencyMs;
   final String reason;
+  // O4：真实 UDP 音频面指标（来自接收端 probe_result）。
+  final double? lossRate;
+  final int? jitterMs;
 
   const AudioRecommendation({
     required this.settings,
@@ -35,6 +37,8 @@ class AudioRecommendation {
     required this.avgLatencyMs,
     required this.maxLatencyMs,
     required this.reason,
+    this.lossRate,
+    this.jitterMs,
   });
 }
 
@@ -150,94 +154,113 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// O4：真实探测。向接收端发 probe_request，等待基于 UDP 音频面统计的
+  /// probe_result（loss_rate / jitter_ms / recommended_bitrate / jitter_mode）。
+  /// 不再强制停流（探测控制面开销极小）；未连接或样本不足时保持当前参数。
   Future<AudioRecommendation> autoDetectAudioSettings() async {
     final wasStreaming = _conn == LinkState.streaming;
-    final device = _selectedDevice ?? _lastReceiver;
-    if (wasStreaming) {
-      await stop();
-      await Future<void>.delayed(const Duration(milliseconds: 300));
+    final current = _audioSettings.normalized();
+
+    // 仅在已建立控制连接时可探测（probe_result 来自接收端真实音频面统计）。
+    final pairing = _pairing;
+    if (pairing == null || !wasStreaming) {
+      return AudioRecommendation(
+        settings: current,
+        pausedStream: false,
+        sampleCount: 0,
+        avgLatencyMs: null,
+        maxLatencyMs: null,
+        reason: '未在广播，无法采集音频面探测样本，已保持当前参数。',
+      );
     }
 
-    final samples = device == null
-        ? <Duration>[]
-        : await _probeControlLatency(device.host, device.controlPort);
-    final avgMs = samples.isEmpty
-        ? null
-        : samples.map((d) => d.inMilliseconds).reduce((a, b) => a + b) /
-              samples.length;
-    final maxMs = samples.isEmpty
-        ? null
-        : samples
-              .map((d) => d.inMilliseconds.toDouble())
-              .reduce((a, b) => a > b ? a : b);
-    final spreadMs = avgMs == null || maxMs == null ? null : maxMs - avgMs;
+    final payload = await pairing.probeAudioParams();
+    if (payload == null) {
+      return AudioRecommendation(
+        settings: current,
+        pausedStream: false,
+        sampleCount: 0,
+        avgLatencyMs: null,
+        maxLatencyMs: null,
+        reason: '探测超时或接收端无响应，已保持当前参数。',
+      );
+    }
 
-    final current = _audioSettings.normalized();
-    final recommended = _recommendAudioSettings(current, avgMs, spreadMs);
-    await setAudioSettings(recommended);
+    final lossRate = (payload['loss_rate'] as num?)?.toDouble();
+    final jitterMs = (payload['jitter_ms'] as num?)?.toInt();
+    final recBitrate = (payload['recommended_bitrate'] as num?)?.toInt() ?? 0;
+    final recJitterMode = payload['jitter_mode'] as String?;
+
+    // O5：与桌面端统一阈值（lossRate/jitterMs 口径）。recommended_bitrate==0 表示样本不足。
+    final hasSample = recBitrate > 0;
+    final recommended = !hasSample
+        ? current
+        : current.copyWith(
+            bitrate: _snapBitrate(recBitrate),
+            jitterMs: _jitterMsFromMode(recJitterMode) ??
+                _jitterMsFromMetrics(lossRate, jitterMs) ??
+                current.jitterMs,
+          );
+    if (hasSample) {
+      await setAudioSettings(recommended);
+    }
     return AudioRecommendation(
       settings: recommended,
-      pausedStream: wasStreaming,
-      sampleCount: samples.length,
-      avgLatencyMs: avgMs,
-      maxLatencyMs: maxMs,
-      reason: _recommendationReason(avgMs, spreadMs, samples.length),
+      pausedStream: false,
+      sampleCount: hasSample ? 1 : 0,
+      avgLatencyMs: null,
+      maxLatencyMs: null,
+      reason: _probeReason(hasSample, lossRate, jitterMs),
+      lossRate: lossRate,
+      jitterMs: jitterMs,
     );
   }
 
-  AudioSettings _recommendAudioSettings(
-    AudioSettings current,
-    double? avgMs,
-    double? spreadMs,
-  ) {
-    if (avgMs == null || spreadMs == null) {
-      return current.copyWith(bitrate: opusBitrate, jitterMs: defaultJitterMs);
-    }
-    if (avgMs >= 80 || spreadMs >= 35) {
-      return current.copyWith(bitrate: 96000, jitterMs: jitterStableMs);
-    }
-    if (avgMs <= 25 && spreadMs <= 10) {
-      return current.copyWith(bitrate: 160000, jitterMs: jitterLowMs);
-    }
-    return current.copyWith(bitrate: 128000, jitterMs: jitterBalancedMs);
-  }
-
-  String _recommendationReason(
-    double? avgMs,
-    double? spreadMs,
-    int sampleCount,
-  ) {
-    if (sampleCount == 0 || avgMs == null || spreadMs == null) {
-      return '未连接到可探测的接收端，已使用默认稳定参数。';
-    }
-    if (avgMs >= 80 || spreadMs >= 35) {
-      return '控制链路延迟或波动较高，推荐降低码率并提高 Jitter 稳定性。';
-    }
-    if (avgMs <= 25 && spreadMs <= 10) {
-      return '控制链路延迟低且波动小，推荐更高码率和低延迟 Jitter。';
-    }
-    return '控制链路质量中等，推荐平衡参数。';
-  }
-
-  Future<List<Duration>> _probeControlLatency(String host, int port) async {
-    final samples = <Duration>[];
-    for (var i = 0; i < 5; i++) {
-      final sw = Stopwatch()..start();
-      try {
-        final socket = await Socket.connect(
-          host,
-          port,
-          timeout: const Duration(milliseconds: 800),
-        );
-        sw.stop();
-        samples.add(sw.elapsed);
-        socket.destroy();
-      } catch (_) {
-        sw.stop();
+  /// 码率归档到允许集合（与桌面 nearest_bitrate 对齐）。
+  int _snapBitrate(int v) {
+    var best = opusBitrate;
+    var bestDiff = (v - opusBitrate).abs();
+    for (final c in audioBitrateOptions) {
+      final d = (v - c).abs();
+      if (d < bestDiff) {
+        best = c;
+        bestDiff = d;
       }
-      await Future<void>.delayed(const Duration(milliseconds: 80));
     }
-    return samples;
+    return best;
+  }
+
+  int? _jitterMsFromMode(String? mode) {
+    switch (mode) {
+      case 'low':
+        return jitterLowMs;
+      case 'stable':
+        return jitterStableMs;
+      case 'balanced':
+        return jitterBalancedMs;
+      default:
+        return null;
+    }
+  }
+
+  /// 依据 loss/jitter 指标推 Jitter（与桌面 auto_detect_audio_params 阈值一致）。
+  int? _jitterMsFromMetrics(double? lossRate, int? jitterMs) {
+    if (lossRate == null || jitterMs == null) return null;
+    if (lossRate >= lossRateHighThreshold || jitterMs >= jitterHighThresholdMs) {
+      return jitterStableMs;
+    }
+    if (lossRate <= lossRateLowThreshold && jitterMs <= jitterLowThresholdMs) {
+      return jitterLowMs;
+    }
+    return jitterBalancedMs;
+  }
+
+  String _probeReason(bool hasSample, double? lossRate, int? jitterMs) {
+    if (!hasSample) {
+      return '接收端样本不足（收包过少），已保持当前参数。';
+    }
+    final lossPct = ((lossRate ?? 0) * 100).toStringAsFixed(1);
+    return '基于接收端真实音频面统计：丢包 $lossPct%、抖动 ${jitterMs ?? 0} ms。';
   }
 
   /// 扫描局域网设备。

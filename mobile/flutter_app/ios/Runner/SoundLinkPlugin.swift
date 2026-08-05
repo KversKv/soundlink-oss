@@ -86,6 +86,17 @@ class SoundLinkPlugin: NSObject, FlutterPlugin {
             UserDefaults(suiteName: Self.appGroupId)?.set(enabled, forKey: Self.dumpPcmKey)
             result(true)
 
+        case "setBitrate":
+            // N3：写入 App Group，BroadcastExtension 每帧读取并热下发到 Opus encoder。
+            guard let args = call.arguments as? [String: Any],
+                  let bitrate = args["bitrate"] as? Int, bitrate > 0 else {
+                result(FlutterError(code: "ARG", message: "缺少有效 bitrate", details: nil))
+                return
+            }
+            UserDefaults(suiteName: Self.appGroupId)?
+                .set(bitrate, forKey: "soundlink.pending_bitrate")
+            result(true)
+
         default:
             result(FlutterMethodNotImplemented)
         }

@@ -9,14 +9,15 @@
 //!
 //! 同时被 Tauri commands（应用）与 `examples/*`（自测）使用，不依赖 Tauri。
 
+use crate::audio::format_convert::SessionConverter;
 use crate::audio::jitter_buffer::{JitterBuffer, JitterFrame, JitterMode, PopResult};
-use crate::audio::opus_codec::{default_codec, frame_pcm_len, AudioCodec};
+use crate::audio::opus_codec::{codec_with_format, default_codec, frame_pcm_len, AudioCodec};
 use crate::audio::output::{AudioOutput, PlaybackSource};
 use crate::audio::resampler::DriftResampler;
 use crate::constants::{
-    BITRATE_MAX, BITRATE_MIN, BITRATE_STEP, DEFAULT_AUDIO_PORT, DEFAULT_JITTER_MS,
+    AudioFormat, BITRATE_MAX, BITRATE_MIN, BITRATE_STEP, DEFAULT_AUDIO_PORT, DEFAULT_JITTER_MS,
     EST_LATENCY_INIT_MS, FRAME_DURATION_MS, LOSS_RATE_HIGH_THRESHOLD, LOSS_RATE_LOW_THRESHOLD,
-    OUTPUT_BUFFER_FRAMES, PLC_CONSECUTIVE_LIMIT, SAMPLE_RATE,
+    OUTPUT_BUFFER_FRAMES, PLC_CONSECUTIVE_LIMIT, PROBE_MIN_PACKETS, SAMPLE_RATE,
 };
 use crate::network::packet::decode_packet;
 use parking_lot::Mutex;
@@ -300,7 +301,7 @@ impl ReceiverEngine {
         }
     }
 
-    /// 启动接收：绑定 UDP、起 cpal 输出。
+    /// 启动接收：绑定 UDP、起 cpal 输出（默认基线格式）。
     pub async fn start(
         &self,
         audio_key: [u8; 32],
@@ -308,6 +309,20 @@ impl ReceiverEngine {
         bind_addr: &str,
         device_index: Option<usize>,
     ) -> Result<(), String> {
+        self.start_with_format(audio_key, stream_id, bind_addr, device_index, AudioFormat::default())
+            .await
+    }
+
+    /// 阶段 P：按会话格式启动接收（解码器按 format 构造，解码后重采样回 48k/Stereo 基线输出）。
+    pub async fn start_with_format(
+        &self,
+        audio_key: [u8; 32],
+        stream_id: u32,
+        bind_addr: &str,
+        device_index: Option<usize>,
+        session_format: AudioFormat,
+    ) -> Result<(), String> {
+        let session_format = session_format.normalized();
         if self.running.load(Ordering::SeqCst) {
             return Err("接收器已在运行".into());
         }
@@ -316,6 +331,8 @@ impl ReceiverEngine {
         let sock = UdpSocket::bind(bind_addr)
             .await
             .map_err(|e| format!("绑定 {} 失败：{}", bind_addr, e))?;
+        // 阶段 P：按会话格式重建解码器（覆盖构造时的默认 codec）。
+        *self.codec.lock() = codec_with_format(crate::constants::OPUS_BITRATE, session_format);
         // 重置 jitter/状态。
         self.jitter.lock().reset();
         {
@@ -328,12 +345,13 @@ impl ReceiverEngine {
         *self.latency_state.lock() = LatencyState::default();
         self.running.store(true, Ordering::SeqCst);
 
-        // cpal 输出。
+        // cpal 输出（PlaybackFromJitter 内部按会话格式解码 + 重采样回基线）。
         let playback = Box::new(PlaybackFromJitter::new(
             self.jitter.clone(),
             self.codec.clone(),
             self.latency_state.clone(),
             self.dump_enable,
+            session_format,
         ));
         if let Err(e) = self.audio_output.lock().start(device_index, playback) {
             tracing::warn!("cpal 输出启动失败（继续收包但不发声）：{}", e);
@@ -351,12 +369,22 @@ impl ReceiverEngine {
             let mut err_counter: u32 = 0;
             while running.load(Ordering::SeqCst) {
                 match sock.recv_from(&mut buf).await {
-                    Ok((n, _src)) => {
+                    Ok((n, src)) => {
                         // D1：正常收包，重置错误计数。
                         err_counter = 0;
                         match decode_packet(&audio_key, &buf[..n]) {
                             Ok(dec) => {
                                 if dec.header.stream_id != stream_id {
+                                    continue;
+                                }
+                                // O2：探测包直接回显，不进 Jitter Buffer、不污染统计。
+                                if dec.header.flags & crate::constants::FLAG_PROBE != 0 {
+                                    let mut hdr = dec.header;
+                                    if let Ok(pkt) =
+                                        crate::network::packet::encode_packet(&audio_key, &mut hdr, &dec.plaintext)
+                                    {
+                                        let _ = sock.send_to(&pkt, src).await;
+                                    }
                                     continue;
                                 }
                                 let payload_len = dec.plaintext.len();
@@ -570,6 +598,10 @@ struct PlaybackFromJitter {
     resampled: VecDeque<i16>,
     /// 调试保存器（None = 未启用）。
     dumper: Option<DebugDumper>,
+    /// 会话格式（阶段 P）：解码器按此格式，解码后重采样回 48k/Stereo 基线。
+    session_format: AudioFormat,
+    /// 会话格式 → 基线转换器。
+    converter: SessionConverter,
 }
 
 impl PlaybackFromJitter {
@@ -578,6 +610,7 @@ impl PlaybackFromJitter {
         codec: Arc<Mutex<Box<dyn AudioCodec>>>,
         latency_state: Arc<Mutex<LatencyState>>,
         dump_enable: bool,
+        session_format: AudioFormat,
     ) -> Self {
         Self {
             jitter,
@@ -588,6 +621,8 @@ impl PlaybackFromJitter {
             consecutive_plc: 0,
             resampled: VecDeque::with_capacity(frame_pcm_len() * 4),
             dumper: DebugDumper::new(dump_enable),
+            session_format,
+            converter: SessionConverter::new(session_format),
         }
     }
 
@@ -603,7 +638,10 @@ impl PlaybackFromJitter {
         // 根据缓冲水位更新漂移校正比率。
         self.resampler.observe(depth, target);
 
-        let pcm: Vec<i16> = match pop_result {
+        // 会话格式帧长（解码/PLC 输出长度）。
+        let session_len = self.session_format.frame_samples_total();
+
+        let session_pcm: Vec<i16> = match pop_result {
             PopResult::Frame(ref f) => {
                 self.consecutive_plc = 0;
                 let decoded = self.codec.lock().decode(&f.data);
@@ -620,24 +658,27 @@ impl PlaybackFromJitter {
                     d.dump_opus(&[], 0, true);
                 }
                 if self.consecutive_plc > PLC_CONSECUTIVE_LIMIT {
-                    // 超过连续 PLC 上限：切静音，避免 Opus PLC 持续衰减 artifacts。
-                    vec![0i16; frame_pcm_len()]
+                    // 超过连续 PLC 上限：切静音（会话格式长度），避免 Opus PLC 持续衰减 artifacts。
+                    vec![0i16; session_len]
                 } else {
                     self.codec.lock().decode_plc()
                 }
             }
             PopResult::Empty => {
-                // 欠流：缓冲耗尽，直接返回静音。
+                // 欠流：缓冲耗尽，直接返回静音（会话格式长度）。
                 // 注意：不调用 decode_plc()——PLC 会推进 Opus 解码器内部状态，
                 // 当真实帧到达时解码器状态已偏移，导致后续解码输出噪声。
                 // PLC 仅用于真正丢包（Lost），欠流用静音更安全。
                 self.consecutive_plc = self.consecutive_plc.saturating_add(1);
-                vec![0i16; frame_pcm_len()]
+                vec![0i16; session_len]
             }
         };
 
+        // 阶段 P：会话格式 → 基线（48k/Stereo），再交漂移校正（基线专用）。
+        let baseline_pcm = self.converter.to_baseline(&session_pcm);
+
         // 重采样并累积到 resampled。
-        let out = self.resampler.process(&pcm);
+        let out = self.resampler.process(&baseline_pcm);
         if let Some(d) = self.dumper.as_ref() {
             d.dump_pcm_resampled(&out);
         }
@@ -671,7 +712,7 @@ impl PlaybackSource for PlaybackFromJitter {
 /// - loss_rate < 1%：上调（每次 +16kbps，上限 192kbps）。
 /// - 中间：维持 128kbps。
 fn recommend_bitrate(loss_rate: f64, packets_recv: u64) -> u32 {
-    if packets_recv < 50 {
+    if packets_recv < PROBE_MIN_PACKETS {
         return 0; // 样本不足，不建议。
     }
     let baseline: u32 = 128_000;

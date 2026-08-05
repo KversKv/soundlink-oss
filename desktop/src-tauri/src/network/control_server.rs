@@ -6,7 +6,8 @@
 use crate::audio::jitter_buffer::JitterMode;
 use crate::config::{AppConfig, AudioParams};
 use crate::constants::{
-    FRAME_DURATION_MS, HEARTBEAT_TIMEOUT_SECS, OPUS_BITRATE, PROTOCOL_VERSION, SAMPLE_RATE,
+    AudioFormat, FRAME_DURATION_MS, HEARTBEAT_TIMEOUT_SECS, OPUS_BITRATE, PROTOCOL_VERSION,
+    SAMPLE_RATE,
 };
 use crate::device::device_identity::DeviceIdentity;
 use crate::pairing::{
@@ -584,11 +585,24 @@ async fn handle_stream_start(msg: &Value, state: &ControlState) -> Value {
             state.engine.stop();
         }
 
+        // 阶段 P：解析 stream_start 携带的会话格式（缺省回退基线）。
+        let session_format = AudioFormat {
+            sample_rate: msg
+                .get("sample_rate")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(SAMPLE_RATE as u64) as u32,
+            channels: msg.get("channels").and_then(|v| v.as_u64()).unwrap_or(2) as u8,
+            frame_duration_ms: msg
+                .get("frame_duration_ms")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(FRAME_DURATION_MS as u64) as u8,
+        }
+        .normalized();
         let bind = format!("0.0.0.0:{}", audio_port);
         let device_index = *state.selected_device.lock();
         if let Err(e) = state
             .engine
-            .start(audio_key, stream_id, &bind, device_index)
+            .start_with_format(audio_key, stream_id, &bind, device_index, session_format)
             .await
         {
             return error_msg(msg, ErrorCode::Internal, &format!("启动接收器失败：{}", e));
@@ -662,12 +676,13 @@ fn handle_control_action(msg: &Value, state: &ControlState) -> Value {
     let action = msg.get("action").and_then(|v| v.as_str()).unwrap_or("");
     match action {
         "audio.params.update" => handle_audio_params_update(msg, state),
+        // O3：基于接收端真实统计回传探测结果（规格 §3.9 字段）。
+        "audio.params.probe_request" => handle_probe_request(msg, state),
         "media.play_pause"
         | "media.previous"
         | "media.next"
         | "shortcut.set"
         | "shortcut.trigger"
-        | "audio.params.probe_request"
         | "audio.params.probe_result" => control_action_ack(msg, action, "accepted", Value::Null),
         _ => control_action_ack(
             msg,
@@ -676,6 +691,26 @@ fn handle_control_action(msg: &Value, state: &ControlState) -> Value {
             json!({ "code": ErrorCode::Internal.as_i32(), "message": format!("不支持的控制动作：{}", action) }),
         ),
     }
+}
+
+/// O3：probe_request → 基于接收端真实统计回传 probe_result（规格 §3.9）。
+/// recommended_bitrate 由 receiver 的 recommend_bitrate 算出（样本不足时为 0）。
+fn handle_probe_request(msg: &Value, state: &ControlState) -> Value {
+    let st = state.engine.status();
+    json!({
+        "type": msg_type::CONTROL_ACTION,
+        "msg_id": new_msg_id("s"),
+        "ts": now_ms(),
+        "reply_to": msg.get("msg_id").and_then(|v| v.as_str()).unwrap_or(""),
+        "action": "audio.params.probe_result",
+        "target": "sender",
+        "payload": {
+            "recommended_bitrate": st.recommended_bitrate,
+            "jitter_mode": st.jitter_mode,
+            "loss_rate": st.loss_rate,
+            "jitter_ms": st.jitter_ms,
+        }
+    })
 }
 
 fn handle_audio_params_update(msg: &Value, state: &ControlState) -> Value {
@@ -699,9 +734,8 @@ fn handle_audio_params_update(msg: &Value, state: &ControlState) -> Value {
             tracing::warn!("保存音频参数失败：{}", e);
         }
     }
-    let restart_required = params.sample_rate != SAMPLE_RATE
-        || params.channels != 2
-        || params.frame_duration_ms != FRAME_DURATION_MS;
+    // P5：白名单校验后 restart_required 变为真实判定（非基线参数需重启流生效）。
+    let restart_required = params.restart_required();
     let message = if restart_required {
         "已保存音频参数并切换 Jitter；采样率/声道/帧长需下次开始流时生效"
     } else {

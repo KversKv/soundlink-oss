@@ -10,13 +10,15 @@
 //! 同时被 Tauri commands（应用）与 `examples/phase5_loopback.rs`（自测）使用。
 
 use crate::audio::capture::CaptureSource;
-use crate::audio::opus_codec::codec_with_bitrate;
+use crate::audio::format_convert::SessionConverter;
+use crate::audio::opus_codec::codec_with_format;
 use crate::config::AudioParams;
 use crate::constants::{
-    CHANNELS, DEFAULT_STREAM_ID, ENCODE_MS_EWMA_ALPHA, FRAME_DURATION_MS, FRAME_SAMPLES_TOTAL,
-    PROTOCOL_VERSION, SAMPLE_RATE, SENDER_CONNECT_TIMEOUT_SECS, SENDER_HEARTBEAT_INTERVAL_SECS,
-    SENDER_STATS_INTERVAL_SECS,
+    AudioFormat, BITRATE_ADJUST_MIN_INTERVAL_SECS, BITRATE_ALLOWED, DEFAULT_STREAM_ID,
+    ENCODE_MS_EWMA_ALPHA, FRAME_SAMPLES_TOTAL, PROTOCOL_VERSION, SAMPLE_RATE,
+    SENDER_CONNECT_TIMEOUT_SECS, SENDER_HEARTBEAT_INTERVAL_SECS, SENDER_STATS_INTERVAL_SECS,
 };
+use std::sync::atomic::AtomicU32;
 use crate::network::control_server::msg_type;
 use crate::network::packet::{encode_packet, AudioPacketHeader};
 use crate::pairing::{
@@ -98,6 +100,10 @@ pub struct SenderEngine {
     /// 重连参数（D1）：start 时保存，backoff 重连时复用。
     /// capture_factory 闭包用于每次重连重新构造采集源（WASAPI 不可重用）。
     reconnect_params: Arc<Mutex<Option<ReconnectParams>>>,
+    /// 目标编码码率（bps）：运行时可被 N1/N2 通路改写，send_loop 检测后调用 codec.set_bitrate。
+    target_bitrate: Arc<AtomicU32>,
+    /// 码率自适应开关（对齐 jitter_mode=="auto"）：开启时接收端建议码率自动下发。
+    bitrate_adaptive: Arc<AtomicBool>,
 }
 
 /// D1：重连所需参数。
@@ -134,6 +140,8 @@ impl SenderEngine {
             on_state_change: Arc::new(Mutex::new(None)),
             on_pubkey_mismatch: Arc::new(Mutex::new(None)),
             reconnect_params: Arc::new(Mutex::new(None)),
+            target_bitrate: Arc::new(AtomicU32::new(0)),
+            bitrate_adaptive: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -152,6 +160,8 @@ impl SenderEngine {
             on_state_change: Arc::new(Mutex::new(None)),
             on_pubkey_mismatch: Arc::new(Mutex::new(None)),
             reconnect_params: Arc::new(Mutex::new(None)),
+            target_bitrate: Arc::new(AtomicU32::new(0)),
+            bitrate_adaptive: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -167,6 +177,24 @@ impl SenderEngine {
         cb: Box<dyn Fn(String, String, String, String) + Send + Sync>,
     ) {
         *self.on_pubkey_mismatch.lock() = Some(cb);
+    }
+
+    /// N1：设置目标编码码率（bps），send_loop 检测到变化后调用 codec.set_bitrate 热生效。
+    /// 非允许集合的值会被忽略（保证 UI 可表示）。
+    pub fn set_target_bitrate(&self, bitrate: u32) {
+        if BITRATE_ALLOWED.contains(&bitrate) {
+            self.target_bitrate.store(bitrate, Ordering::SeqCst);
+        }
+    }
+
+    /// N2：开关码率自适应（true 时接收端 recommended_bitrate 自动下发编码器）。
+    pub fn set_bitrate_adaptive(&self, enabled: bool) {
+        self.bitrate_adaptive.store(enabled, Ordering::SeqCst);
+    }
+
+    /// N2：查询码率自适应开关状态（commands 层读取）。
+    pub fn bitrate_adaptive(&self) -> bool {
+        self.bitrate_adaptive.load(Ordering::SeqCst)
     }
 
     /// 启动发送端：握手 + 采集 + 发送（不启用重连，向后兼容）。
@@ -364,6 +392,10 @@ impl SenderEngine {
         let status = self.status.clone();
         let running = self.running.clone();
         let dump_enable = self.dump_enable;
+        let params = audio_params.normalized();
+        // N1：初始化目标码率为本次流的起始码率。
+        self.target_bitrate.store(params.bitrate, Ordering::SeqCst);
+        let target_bitrate = self.target_bitrate.clone();
         let send_handle = tokio::spawn(async move {
             send_loop(
                 capture,
@@ -373,7 +405,8 @@ impl SenderEngine {
                 status,
                 running,
                 dump_enable,
-                audio_params.normalized(),
+                params,
+                target_bitrate,
             )
             .await;
         });
@@ -390,6 +423,8 @@ impl SenderEngine {
         let status_rc = self.status.clone();
         let running_rc = self.running.clone();
         let on_state_change_rc = self.on_state_change.clone();
+        let target_bitrate = self.target_bitrate.clone();
+        let bitrate_adaptive = self.bitrate_adaptive.clone();
         let control_handle = tokio::spawn(async move {
             control_loop(
                 tcp_reader,
@@ -405,6 +440,8 @@ impl SenderEngine {
                 status_rc,
                 running_rc,
                 on_state_change_rc,
+                target_bitrate,
+                bitrate_adaptive,
             )
             .await;
         });
@@ -727,8 +764,22 @@ async fn send_loop(
     running: Arc<AtomicBool>,
     dump_enable: bool,
     audio_params: AudioParams,
+    target_bitrate: Arc<AtomicU32>,
 ) {
-    let mut codec = codec_with_bitrate(audio_params.bitrate);
+    // 阶段 P：会话格式（44.1k/Mono/20ms 等）。采集始终基线 48k/Stereo/10ms，
+    // 编码前经 SessionConverter 转换；帧长 >10ms 时跨采集帧凑帧。
+    let session_format = AudioFormat {
+        sample_rate: audio_params.sample_rate,
+        channels: audio_params.channels,
+        frame_duration_ms: audio_params.frame_duration_ms,
+    }
+    .normalized();
+    let converter = SessionConverter::new(session_format);
+    let session_frame_len = session_format.frame_samples_total();
+    let mut codec = codec_with_format(audio_params.bitrate, session_format);
+    // N1：运行中跟踪当前生效码率与上次变更时间（节流：最短间隔 + 归档到允许集合）。
+    let mut current_bitrate = audio_params.bitrate;
+    let mut last_adjust = std::time::Instant::now() - std::time::Duration::from_secs(BITRATE_ADJUST_MIN_INTERVAL_SECS);
     tracing::info!(
         "发送端音频参数生效：{}Hz {}ch {}ms {}kbps",
         audio_params.sample_rate,
@@ -738,6 +789,8 @@ async fn send_loop(
     );
     let mut seq: u32 = 0;
     let mut total_samples: u64 = 0;
+    // 会话格式样本累积缓冲（凑满 session_frame_len 编一帧）。
+    let mut session_accum: Vec<i16> = Vec::with_capacity(session_frame_len * 2);
     let mut encode_ms_ewma: f64 = 0.0;
     let mut bytes_sent: u64 = 0;
     let mut bitrate_start = std::time::Instant::now();
@@ -772,6 +825,22 @@ async fn send_loop(
     while running.load(Ordering::SeqCst) {
         ticker.tick().await;
 
+        // N1：检测目标码率变化并热下发（节流：最短间隔 BITRATE_ADJUST_MIN_INTERVAL_SECS）。
+        let target = target_bitrate.load(Ordering::SeqCst);
+        if target != 0
+            && target != current_bitrate
+            && last_adjust.elapsed().as_secs() >= BITRATE_ADJUST_MIN_INTERVAL_SECS
+        {
+            codec.set_bitrate(target);
+            tracing::info!(
+                "发送端码率热调整：{}kbps → {}kbps",
+                current_bitrate / 1000,
+                target / 1000
+            );
+            current_bitrate = target;
+            last_adjust = std::time::Instant::now();
+        }
+
         // 拉取一帧 PCM；数据不足时跳过（不发空包）。
         let pcm = match capture.poll_frame() {
             Some(p) => p,
@@ -783,9 +852,8 @@ async fn send_loop(
             tracing::warn!("采集帧长度异常：{} != {}", pcm.len(), FRAME_SAMPLES_TOTAL);
             continue;
         }
-        total_samples += (FRAME_SAMPLES_TOTAL / 2) as u64;
 
-        // 转储采集后 PCM（i16 LE 交错）。
+        // 转储采集后 PCM（i16 LE 交错，基线 48k/Stereo）。
         if let Some(f) = pcm_dump.as_mut() {
             let mut bytes = Vec::with_capacity(pcm.len() * 2);
             for &s in &pcm {
@@ -794,9 +862,20 @@ async fn send_loop(
             let _ = f.write_all(&bytes);
         }
 
+        // 阶段 P：基线帧 → 会话格式，累积到 session_accum。
+        session_accum.extend(converter.to_session(&pcm));
+
+        // 凑满一个会话帧才编码（10ms 帧每拍一次；20ms 帧两拍一次）。
+        if session_accum.len() < session_frame_len {
+            continue;
+        }
+        let session_frame: Vec<i16> = session_accum.drain(..session_frame_len).collect();
+        // timestamp 按会话采样计数推进（每声道样本数）。
+        total_samples += session_format.samples_per_frame_per_channel() as u64;
+
         // 编码（计时）。
         let enc_start = std::time::Instant::now();
-        let frame_bytes = codec.encode(&pcm);
+        let frame_bytes = codec.encode(&session_frame);
         let enc_elapsed = enc_start.elapsed().as_secs_f64() * 1000.0;
         encode_ms_ewma =
             ENCODE_MS_EWMA_ALPHA * enc_elapsed + (1.0 - ENCODE_MS_EWMA_ALPHA) * encode_ms_ewma;
@@ -808,14 +887,14 @@ async fn send_loop(
             let _ = f.write_all(&frame_bytes);
         }
 
-        // 打包加密 + 发送。
+        // 打包加密 + 发送（头部携带会话格式，供接收端按格式解码）。
         let mut header = AudioPacketHeader::with_audio_params(
             stream_id,
             seq,
             total_samples,
-            SAMPLE_RATE,
-            CHANNELS,
-            FRAME_DURATION_MS,
+            session_format.sample_rate,
+            session_format.channels,
+            session_format.frame_duration_ms,
         );
         let packet = match encode_packet(&audio_key, &mut header, &frame_bytes) {
             Ok(p) => p,
@@ -869,6 +948,8 @@ async fn control_loop(
     _status_rc: Arc<Mutex<SenderStatus>>,
     _running_rc: Arc<AtomicBool>,
     _on_state_change_rc: Arc<Mutex<Option<Box<dyn Fn(String, String) + Send + Sync>>>>,
+    target_bitrate: Arc<AtomicU32>,
+    bitrate_adaptive: Arc<AtomicBool>,
 ) {
     let mut reader = BufReader::new(reader);
     let mut line = String::new();
@@ -892,7 +973,14 @@ async fn control_loop(
                     Ok(_) => {
                         let trimmed = line.trim();
                         if !trimmed.is_empty() {
-                            handle_control_message(trimmed, &status, &running, &on_state_change);
+                            handle_control_message(
+                                trimmed,
+                                &status,
+                                &running,
+                                &on_state_change,
+                                &target_bitrate,
+                                &bitrate_adaptive,
+                            );
                         }
                         line.clear();
                     }
@@ -1032,6 +1120,8 @@ fn handle_control_message(
     status: &Arc<Mutex<SenderStatus>>,
     running: &Arc<AtomicBool>,
     on_state_change: &Arc<Mutex<Option<Box<dyn Fn(String, String) + Send + Sync>>>>,
+    target_bitrate: &Arc<AtomicU32>,
+    bitrate_adaptive: &Arc<AtomicBool>,
 ) {
     let Ok(msg) = serde_json::from_str::<Value>(line) else {
         return;
@@ -1062,8 +1152,16 @@ fn handle_control_message(
         }
         msg_type::STATS => {
             if let Some(recommended) = msg.get("recommended_bitrate").and_then(|v| v.as_u64()) {
-                let mut s = status.lock();
-                s.recommended_bitrate = recommended as u32;
+                let recommended = recommended as u32;
+                {
+                    let mut s = status.lock();
+                    s.recommended_bitrate = recommended;
+                }
+                // N2：自适应开启时把建议值归档到允许集合后下发编码器；0 表示样本不足，忽略。
+                if bitrate_adaptive.load(Ordering::SeqCst) && recommended > 0 {
+                    let snapped = nearest_allowed_bitrate(recommended);
+                    target_bitrate.store(snapped, Ordering::SeqCst);
+                }
             }
         }
         _ => {}
@@ -1091,6 +1189,14 @@ async fn recv_msg(reader: &mut BufReader<OwnedReadHalf>) -> Result<Value, String
         return Err("控制连接已关闭".into());
     }
     serde_json::from_str(line.trim()).map_err(|e| e.to_string())
+}
+
+/// N2：把建议码率归档到允许集合，避免出现 UI 无法表示的值。
+fn nearest_allowed_bitrate(value: u32) -> u32 {
+    BITRATE_ALLOWED
+        .into_iter()
+        .min_by_key(|c| (*c).abs_diff(value))
+        .unwrap_or(128_000)
 }
 
 fn now_ms() -> u64 {

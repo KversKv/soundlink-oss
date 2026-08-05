@@ -88,6 +88,10 @@ class PairingService {
     await platform.startCapture();
     _startEventLoops();
 
+    // N3：以本次流起始码率为基准，后续自适应在此基础上节流调整。
+    _currentBitrate = audioSettings.bitrate;
+    _lastBitrateAdjustMs = 0;
+
     onState(LinkState.streaming);
   }
 
@@ -250,8 +254,31 @@ class PairingService {
         _streamStopFromRemote = true;
         await _stopLocalCapture(clearSession: true);
         _onState?.call(LinkState.reconnecting);
+      } else if (msg['type'] == 'stats') {
+        _onReceiverStats(msg);
       }
     });
+  }
+
+  // N3：码率自适应状态（接收端建议值 → 归档 → 节流下发到原生 encoder）。
+  int _currentBitrate = 0;
+  int _lastBitrateAdjustMs = 0;
+  // 码率自适应开关（由 App 层注入；对应桌面 jitter_mode=="auto" 的语义）。
+  bool bitrateAdaptive = false;
+
+  /// 接收端 stats 回传：自适应开启时把 recommended_bitrate 归档到
+  /// bitrateStep 倍数并节流下发（最短间隔 bitrateAdjustMinIntervalMs）。
+  void _onReceiverStats(Map<String, dynamic> msg) {
+    if (!bitrateAdaptive) return;
+    final rec = (msg['recommended_bitrate'] as num?)?.toInt() ?? 0;
+    if (rec <= 0) return; // 0 = 样本不足，忽略
+    final snapped = (rec / bitrateStep).round() * bitrateStep;
+    if (snapped == _currentBitrate) return;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (now - _lastBitrateAdjustMs < bitrateAdjustMinIntervalMs) return;
+    _currentBitrate = snapped;
+    _lastBitrateAdjustMs = now;
+    platform.setBitrate(snapped);
   }
 
   /// 尝试自动重连：使用原设备信息与 audio_key 重建控制会话。
@@ -293,6 +320,35 @@ class PairingService {
     }
     _reconnecting = false;
     _onState?.call(LinkState.reconnecting);
+  }
+
+  /// O4：向接收端发起真实探测，等待 probe_result（基于接收端 UDP 音频面统计）。
+  /// 返回 null 表示未连接或超时。probe_result 是 control_action 且 action=probe_result。
+  Future<Map<String, dynamic>?> probeAudioParams({
+    Duration timeout = const Duration(seconds: 3),
+  }) async {
+    if (!control.isConnected) return null;
+    final msgId = newMsgId('c-probe');
+    final future = control.messages
+        .firstWhere(
+          (m) =>
+              m['type'] == 'control_action' &&
+              m['action'] == ControlActions.audioParamsProbeResult &&
+              m['reply_to'] == msgId,
+        )
+        .timeout(timeout, onTimeout: () => <String, dynamic>{});
+    control.send(
+      ControlActionMsg(
+        msgId: msgId,
+        ts: nowMs(),
+        action: ControlActions.audioParamsProbeRequest,
+        target: 'receiver',
+      ),
+    );
+    final msg = await future;
+    if (msg.isEmpty) return null;
+    final payload = msg['payload'];
+    return payload is Map<String, dynamic> ? payload : null;
   }
 
   void sendAudioParamsUpdate(AudioSettings settings) {

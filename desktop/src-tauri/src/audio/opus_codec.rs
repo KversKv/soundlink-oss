@@ -6,11 +6,11 @@
 //!   仅用于无法编译 libopus 时验证 UDP/加密/Jitter/输出链路（非 spec 合规，
 //!   仅供开发自测）。生产须启用 `opus`。
 
-use crate::constants::{CHANNELS, OPUS_BITRATE, SAMPLES_PER_FRAME_PER_CHANNEL};
+use crate::constants::{AudioFormat, OPUS_BITRATE};
 
-/// 音频编解码接口（单帧 10ms）。
+/// 音频编解码接口（单帧 frame_duration_ms）。
 pub trait AudioCodec: Send {
-    /// 编码一帧 PCM（交错 i16，长度 = 480*channels）→ Opus 字节。
+    /// 编码一帧 PCM（交错 i16，长度 = samples_per_frame*channels）→ Opus 字节。
     fn encode(&mut self, pcm: &[i16]) -> Vec<u8>;
     /// 解码一帧 Opus 字节 → PCM（交错 i16）。
     fn decode(&mut self, frame: &[u8]) -> Vec<i16>;
@@ -18,11 +18,16 @@ pub trait AudioCodec: Send {
     fn decode_plc(&mut self) -> Vec<i16>;
     /// 设置编码码率。解码-only 或回退 codec 可忽略。
     fn set_bitrate(&mut self, _bitrate: u32) {}
+    /// 当前编解码会话格式（passthrough 返回默认基线）。
+    fn format(&self) -> AudioFormat {
+        AudioFormat::default()
+    }
 }
 
-/// 单帧 PCM 样本数（交错）。
+/// 单帧 PCM 样本数（交错，默认基线 48k/Stereo/10ms = 960）。
+/// 参数化场景请用 `AudioFormat::frame_samples_total()`。
 pub fn frame_pcm_len() -> usize {
-    SAMPLES_PER_FRAME_PER_CHANNEL * CHANNELS as usize
+    AudioFormat::default().frame_samples_total()
 }
 
 // ───────────────────────── passthrough（开发回退） ─────────────────────────
@@ -66,8 +71,8 @@ impl AudioCodec for PassthroughCodec {
 
 #[cfg(feature = "opus")]
 pub mod libopus {
-    use super::{frame_pcm_len, AudioCodec};
-    use crate::constants::{OPUS_BITRATE, SAMPLES_PER_FRAME_PER_CHANNEL, SAMPLE_RATE};
+    use super::AudioCodec;
+    use crate::constants::{AudioFormat, OPUS_BITRATE};
     use libopus_sys as opusffi;
     use std::os::raw::{c_int, c_uchar};
     use std::ptr;
@@ -76,11 +81,12 @@ pub mod libopus {
     const OPUS_SIGNAL_REQUEST: c_int = 4024;
     const OPUS_SIGNAL_MUSIC: c_int = 3002;
 
-    /// libopus 编解码器封装。
+    /// libopus 编解码器封装（按会话 AudioFormat 参数化）。
     pub struct LibopusCodec {
         encoder: *mut opusffi::OpusEncoder,
         decoder: *mut opusffi::OpusDecoder,
         enc_buf: Vec<u8>,
+        format: AudioFormat,
     }
 
     unsafe impl Send for LibopusCodec {}
@@ -91,12 +97,19 @@ pub mod libopus {
     }
 
     impl LibopusCodec {
+        /// 默认基线（48k/Stereo/10ms）。
         pub fn new() -> Result<Self, OpusError> {
+            Self::with_format(AudioFormat::default())
+        }
+
+        /// 按会话格式构造（阶段 P：支持 44.1k/Mono/20ms 等）。
+        pub fn with_format(format: AudioFormat) -> Result<Self, OpusError> {
+            let format = format.normalized();
             unsafe {
                 let mut err: c_int = 0;
                 let enc = opusffi::opus_encoder_create(
-                    SAMPLE_RATE as c_int,
-                    2,
+                    format.sample_rate as c_int,
+                    format.channels as c_int,
                     opusffi::OPUS_APPLICATION_AUDIO as c_int,
                     &mut err,
                 );
@@ -106,7 +119,11 @@ pub mod libopus {
                 opusffi::opus_encoder_ctl(enc, OPUS_SET_BITRATE_REQUEST, OPUS_BITRATE as c_int);
                 opusffi::opus_encoder_ctl(enc, OPUS_SIGNAL_REQUEST, OPUS_SIGNAL_MUSIC);
 
-                let dec = opusffi::opus_decoder_create(SAMPLE_RATE as c_int, 2, &mut err);
+                let dec = opusffi::opus_decoder_create(
+                    format.sample_rate as c_int,
+                    format.channels as c_int,
+                    &mut err,
+                );
                 if err != 0 || dec.is_null() {
                     opusffi::opus_encoder_destroy(enc);
                     return Err(OpusError::Create(err));
@@ -115,6 +132,7 @@ pub mod libopus {
                     encoder: enc,
                     decoder: dec,
                     enc_buf: vec![0u8; 4000],
+                    format,
                 })
             }
         }
@@ -135,11 +153,12 @@ pub mod libopus {
 
     impl AudioCodec for LibopusCodec {
         fn encode(&mut self, pcm: &[i16]) -> Vec<u8> {
+            let spf = self.format.samples_per_frame_per_channel();
             unsafe {
                 let n = opusffi::opus_encode(
                     self.encoder,
                     pcm.as_ptr(),
-                    SAMPLES_PER_FRAME_PER_CHANNEL as c_int,
+                    spf as c_int,
                     self.enc_buf.as_mut_ptr() as *mut c_uchar,
                     self.enc_buf.len() as c_int,
                 );
@@ -151,7 +170,9 @@ pub mod libopus {
             }
         }
         fn decode(&mut self, frame: &[u8]) -> Vec<i16> {
-            let mut out = vec![0i16; frame_pcm_len()];
+            let spf = self.format.samples_per_frame_per_channel();
+            let total = self.format.frame_samples_total();
+            let mut out = vec![0i16; total];
             unsafe {
                 let n = opusffi::opus_decode(
                     self.decoder,
@@ -162,24 +183,26 @@ pub mod libopus {
                     },
                     frame.len() as c_int,
                     out.as_mut_ptr(),
-                    SAMPLES_PER_FRAME_PER_CHANNEL as c_int,
+                    spf as c_int,
                     0,
                 );
                 if n < 0 {
-                    return vec![0i16; frame_pcm_len()];
+                    return vec![0i16; total];
                 }
             }
             out
         }
         fn decode_plc(&mut self) -> Vec<i16> {
-            let mut out = vec![0i16; frame_pcm_len()];
+            let spf = self.format.samples_per_frame_per_channel();
+            let total = self.format.frame_samples_total();
+            let mut out = vec![0i16; total];
             unsafe {
                 let _ = opusffi::opus_decode(
                     self.decoder,
                     ptr::null(),
                     0,
                     out.as_mut_ptr(),
-                    SAMPLES_PER_FRAME_PER_CHANNEL as c_int,
+                    spf as c_int,
                     0,
                 );
             }
@@ -190,6 +213,10 @@ pub mod libopus {
             unsafe {
                 opusffi::opus_encoder_ctl(self.encoder, OPUS_SET_BITRATE_REQUEST, bitrate as c_int);
             }
+        }
+
+        fn format(&self) -> AudioFormat {
+            self.format
         }
     }
 
@@ -216,12 +243,20 @@ pub fn default_codec() -> Box<dyn AudioCodec> {
 }
 
 pub fn codec_with_bitrate(bitrate: u32) -> Box<dyn AudioCodec> {
+    codec_with_format(bitrate, AudioFormat::default())
+}
+
+/// 按会话格式构造编解码器（阶段 P：参数动态化）。
+pub fn codec_with_format(bitrate: u32, format: AudioFormat) -> Box<dyn AudioCodec> {
     #[cfg(not(feature = "opus"))]
-    let _ = bitrate;
+    {
+        let _ = bitrate;
+        let _ = format;
+    }
 
     #[cfg(feature = "opus")]
     {
-        match libopus::LibopusCodec::new() {
+        match libopus::LibopusCodec::with_format(format) {
             Ok(mut c) => {
                 c.set_bitrate(bitrate);
                 return Box::new(c);

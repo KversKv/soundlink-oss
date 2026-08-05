@@ -51,6 +51,16 @@ Java_com_soundlink_soundlink_codec_OpusEncoder_nativeEncode(
 }
 
 JNIEXPORT void JNICALL
+Java_com_soundlink_soundlink_codec_OpusEncoder_nativeSetBitrate(
+    JNIEnv *env, jclass clazz, jlong ptr, jint bitrate) {
+    (void)env; (void)clazz;
+    OpusEncoder *enc = (OpusEncoder *)(intptr_t)ptr;
+    if (enc != NULL) {
+        opus_encoder_ctl(enc, OPUS_SET_BITRATE(bitrate));
+    }
+}
+
+JNIEXPORT void JNICALL
 Java_com_soundlink_soundlink_codec_OpusEncoder_nativeDestroy(
     JNIEnv *env, jclass clazz, jlong ptr) {
     (void)env; (void)clazz;

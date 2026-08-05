@@ -587,6 +587,12 @@ pub fn set_audio_params(
     if let Some(mode) = parse_jitter_mode(&params.jitter_mode) {
         s.engine.set_jitter_mode(mode);
     }
+    // N1/N2：手动模式下把目标码率热下发到发送端；auto 模式开启自适应（建议值自动生效）。
+    let adaptive = params.jitter_mode == "auto";
+    s.sender.set_bitrate_adaptive(adaptive);
+    if !adaptive {
+        s.sender.set_target_bitrate(params.bitrate);
+    }
     {
         let mut cfg = s.config.lock();
         cfg.jitter_mode = params.jitter_mode.clone();
@@ -601,7 +607,7 @@ pub fn auto_detect_audio_params(state: State<'_, AppState>) -> Result<AudioParam
     let s = state.inner();
     let receiver = s.engine.status();
     let sender = s.sender.status();
-    let mut params = s.config.lock().audio_params.clone().normalized();
+    let params = s.config.lock().audio_params.clone().normalized();
     let loss_rate = receiver.loss_rate;
     let jitter_ms = receiver.jitter_ms;
     let recommended = if receiver.recommended_bitrate > 0 {
@@ -609,6 +615,18 @@ pub fn auto_detect_audio_params(state: State<'_, AppState>) -> Result<AudioParam
     } else {
         sender.recommended_bitrate
     };
+    // O1：样本不足（未开流或收包过少）时保持当前参数，不给乐观推荐（假阳性）。
+    // 与 receiver recommend_bitrate 的 PROBE_MIN_PACKETS 判据对齐。
+    if receiver.packets_recv < crate::constants::PROBE_MIN_PACKETS && recommended == 0 {
+        tracing::info!(
+            "自动探测：样本不足（packets_recv={}），保持当前参数 {}kbps/{}",
+            receiver.packets_recv,
+            params.bitrate / 1000,
+            params.jitter_mode
+        );
+        return Ok(params);
+    }
+    let mut params = params;
     params.bitrate = if recommended > 0 {
         nearest_bitrate(recommended)
     } else if loss_rate >= 0.05 || jitter_ms >= 35 {
