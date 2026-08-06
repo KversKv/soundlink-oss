@@ -20,6 +20,7 @@ export const en: Content = {
     privacy: `${REPO}/blob/main/docs/privacy.md`,
     changelog: `${REPO}/blob/main/CHANGELOG.md`,
     docs: `${REPO}/tree/main/docs/user`,
+    guide: './guide/',
   },
   nav: {
     features: 'Features',
@@ -27,6 +28,7 @@ export const en: Content = {
     platforms: 'Platforms',
     specs: 'Specs',
     docs: 'Docs',
+    guide: 'User guide',
     cta: 'Download Beta',
     langSwitch: '中文',
     logoAlt: 'SoundLink',
@@ -39,7 +41,7 @@ export const en: Content = {
     primaryCta: 'Download Beta',
     secondaryCta: 'View source',
     screenshotAlt: 'SoundLink desktop main window showing receiving state and pairing code',
-    screenshotSrc: ASSET('assets/placeholder.svg'),
+    screenshotSrc: ASSET('assets/desktop-hero.png'),
   },
   platforms: {
     title: 'Platform support',
@@ -65,7 +67,10 @@ export const en: Content = {
     fits: ['Music', 'Long videos'],
     unfitTitle: 'Not for',
     unfit: ['Real-time gaming or voice chat (latency too high)', 'Short videos may feel slightly delayed'],
-    bgAlt: 'A pair of headphones and a phone on a desk',
+    desktopShotSrc: ASSET('assets/desktop-playing.png'),
+    desktopShotAlt: 'Desktop receiving and playing audio from the phone',
+    phoneShotSrc: ASSET('assets/phone-connected.png'),
+    phoneShotAlt: 'Phone broadcasting audio to the computer',
   },
   differentiators: {
     title: 'Three differentiators',
@@ -90,22 +95,23 @@ export const en: Content = {
       {
         verb: 'Start receiving',
         body: 'Launch SoundLink on your computer, pick an output device, switch to receiver role. An 8-digit pairing code appears.',
-        imgSrc: ASSET('assets/placeholder.svg'),
+        imgSrc: ASSET('assets/desktop-pairing.png'),
         imgAlt: 'Desktop showing an 8-digit pairing code',
       },
       {
         verb: 'Enter the code',
         body: 'On your phone, select the computer from the device list (auto-discovered via mDNS) and enter the pairing code.',
-        imgSrc: ASSET('assets/placeholder.svg'),
+        imgSrc: ASSET('assets/phone-pairing.png'),
         imgAlt: 'Phone entering the pairing code',
       },
       {
         verb: 'Start playing',
         body: 'The phone starts capturing and playing audio; sound comes out of the computer instantly. Pairing persists and auto-reconnects.',
-        imgSrc: ASSET('assets/placeholder.svg'),
+        imgSrc: ASSET('assets/desktop-playing.png'),
         imgAlt: 'Desktop showing device connected and playing',
       },
     ],
+    guideLink: 'Read the full user guide →',
   },
   specs: {
     title: 'Technical specs',
@@ -177,6 +183,130 @@ export const en: Content = {
       'Installers are not code-signed, so Windows SmartScreen shows an "unknown publisher" warning on first run. This is expected; verify the SHA256 above before running.',
     testedTitle: 'Tested scope',
     testedBody: 'Only Android → Windows and Windows → Windows have been tested so far. Treat other combinations as experimental.',
+  },
+  guide: {
+    eyebrow: 'User guide',
+    title: 'From install to sound, end to end',
+    intro:
+      'This guide covers: preparation, phone → PC, PC → PC, settings, and FAQ. Every step uses real screenshots — just follow along.',
+    backHome: 'Back to home',
+    homeHref: '../',
+    otherLangHref: '../../guide/',
+    toc: [
+      { id: 'prepare', label: 'Preparation' },
+      { id: 'phone-to-pc', label: 'Phone → PC' },
+      { id: 'pc-to-pc', label: 'PC → PC' },
+      { id: 'settings', label: 'Settings' },
+      { id: 'faq', label: 'FAQ' },
+    ],
+    prepare: {
+      title: 'Preparation',
+      items: [
+        {
+          title: 'Same LAN',
+          body: 'Connect the phone and the computer to the same Wi-Fi / subnet. Disable AP isolation on the router and avoid guest networks, otherwise the devices cannot see each other.',
+        },
+        {
+          title: 'Install SoundLink',
+          body: 'Get the desktop and Android installers from GitHub Releases. Launch after install — no account, no sign-in.',
+        },
+        {
+          title: 'Allow the firewall',
+          body: 'On first launch, allow "Private networks" in the Windows firewall prompt. Control uses TCP 47810, audio uses UDP 47811.',
+        },
+      ],
+    },
+    phoneToPc: {
+      title: 'Phone → PC',
+      note: 'The most common path: the phone captures audio, the PC receives it and outputs to your headphones or DAC.',
+      steps: [
+        {
+          title: 'Start receiving on the PC',
+          body: 'Open SoundLink and switch to Receiver mode. An 8-digit pairing code and the local address appear. Pick the output device under Settings → Audio.',
+          imgSrc: ASSET('assets/desktop-pairing.png'),
+          imgAlt: 'Desktop receiver mode showing the 8-digit pairing code',
+          kind: 'desktop',
+        },
+        {
+          title: 'Pick the device and enter the code',
+          body: 'The app auto-discovers computers on the LAN via mDNS. If nothing shows up, tap "Manual IP" and enter the IP from the PC\'s local address. Select the device, then enter the 8-digit code.',
+          imgSrc: ASSET('assets/phone-pairing.png'),
+          imgAlt: 'Phone selecting a device and entering the pairing code',
+          kind: 'phone',
+        },
+        {
+          title: 'Grant screen capture',
+          body: 'On first broadcast, Android shows a MediaProjection consent dialog — tap "Start now". This is the official capture API; DRM-protected content cannot be captured.',
+          imgSrc: ASSET('assets/phone-consent.png'),
+          imgAlt: 'Phone MediaProjection consent dialog',
+          kind: 'phone',
+        },
+        {
+          title: 'Start playing',
+          body: 'The phone shows "Broadcasting" with a persistent capture notification; sound comes out of the PC instantly. Pairing persists and reconnects automatically next time.',
+          imgSrc: ASSET('assets/phone-connected.png'),
+          imgAlt: 'Phone broadcasting audio to the computer',
+          kind: 'phone',
+        },
+      ],
+    },
+    pcToPc: {
+      title: 'PC → PC',
+      body: 'To stream between two computers: switch the sending PC to Sender mode and pick a capture source (system loopback or the 440Hz sine test source). "Discovered receivers" lists receivers on the LAN; if none appear, click "Scan LAN" or enter the receiver\'s address manually (e.g. 192.168.1.100:47810), then enter its pairing code to start.',
+      imgSrc: ASSET('assets/desktop-sender.png'),
+      imgAlt: 'Desktop sender mode: capture source and receiver selection',
+      points: [
+        'The receiving PC must be in Receiver mode showing its pairing code',
+        'Capture sources can be switched anytime without re-pairing',
+        'Windows → Windows is a tested combination',
+      ],
+    },
+    settings: {
+      title: 'Settings',
+      imgSrc: ASSET('assets/desktop-settings.png'),
+      imgAlt: 'Desktop settings: startup, close behavior, device and audio',
+      points: [
+        ['Launch at startup', 'Combined with "auto-start receiving", your PC can stay a permanent receiver — connect from the phone anytime.'],
+        ['Close-window behavior', 'Choose ask every time, minimize to tray, or quit. Tray mode keeps it out of the way.'],
+        ['Device name (mDNS broadcast)', 'The name shown on the LAN. Rename it when several devices coexist.'],
+        ['Audio', 'Receiver mode picks the output device (headphones / DAC); sender mode picks the default capture source. Jitter buffer defaults to 80ms — raise it on lossy networks.'],
+      ],
+    },
+    faq: {
+      title: 'FAQ',
+      items: [
+        {
+          q: 'The phone can\'t find the computer?',
+          a: 'Make sure both devices are on the same subnet and AP isolation is off. If mDNS is filtered, use "Manual IP" with the address shown on the PC, and check the Windows firewall rules.',
+        },
+        {
+          q: 'Pairing code rejected or locked out?',
+          a: 'Temporary codes are valid for 120 seconds — refresh on the PC when expired. Five wrong attempts trigger a 60-second lockout. Long-term codes are reusable but still protected by the lockout.',
+        },
+        {
+          q: 'Connected, but no sound?',
+          a: 'Check the selected output device on the PC; make sure the content is not DRM-protected (some streaming apps go silent); confirm the phone notification shows an active capture.',
+        },
+        {
+          q: 'Noticeable latency?',
+          a: 'The default 80ms jitter buffer is normal for music and long videos. Gaming and voice chat are out of scope — see "Known limitations" on the home page.',
+        },
+        {
+          q: 'Windows SmartScreen warning?',
+          a: 'Installers are not code-signed, so the warning is expected. Verify the SHA256 from the release page matches your download, then choose "Run anyway".',
+        },
+        {
+          q: 'How do I stop broadcasting?',
+          a: 'Tap "Stop broadcasting" on the phone or stop from the notification; click "Stop receiving" on the PC. For daily use, set close-window behavior to minimize to tray.',
+        },
+      ],
+    },
+    cta: {
+      title: 'Ready?',
+      body: 'Download the latest Beta from GitHub Releases and finish your first pairing with the steps above.',
+      primary: 'Download Beta',
+      secondary: 'Back to home',
+    },
   },
   footer: {
     tagline: 'LAN audio streaming, free and open source.',

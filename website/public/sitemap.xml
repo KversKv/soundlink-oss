@@ -13,4 +13,16 @@
     <xhtml:link rel="alternate" hreflang="en" href="https://kverskv.github.io/SoundLink/en/"/>
     <xhtml:link rel="alternate" hreflang="x-default" href="https://kverskv.github.io/SoundLink/"/>
   </url>
+  <url>
+    <loc>https://kverskv.github.io/SoundLink/guide/</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://kverskv.github.io/SoundLink/guide/"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://kverskv.github.io/SoundLink/en/guide/"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://kverskv.github.io/SoundLink/guide/"/>
+  </url>
+  <url>
+    <loc>https://kverskv.github.io/SoundLink/en/guide/</loc>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://kverskv.github.io/SoundLink/guide/"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://kverskv.github.io/SoundLink/en/guide/"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://kverskv.github.io/SoundLink/guide/"/>
+  </url>
 </urlset>

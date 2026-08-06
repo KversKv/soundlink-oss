@@ -12,6 +12,8 @@ export default defineConfig({
       input: {
         main: resolve(__dirname, 'index.html'),
         en: resolve(__dirname, 'en/index.html'),
+        guide: resolve(__dirname, 'guide/index.html'),
+        enGuide: resolve(__dirname, 'en/guide/index.html'),
       },
     },
   },

@@ -37,16 +37,27 @@ export function Scenario({ c }: { c: Content }) {
           </div>
         </div>
 
-        <div className="reveal">
-          {/* TODO(A4): 替换为真实场景图 */}
-          <img
-            src="https://picsum.photos/seed/soundlink-scene/1600/1100"
-            alt={c.scenario.bgAlt}
-            width={1600}
-            height={1100}
-            loading="lazy"
-            className="block h-auto w-full rounded-[12px] border border-border object-cover"
-          />
+        <div className="reveal relative mb-10 md:mb-0">
+          <div className="overflow-hidden rounded-[12px] border border-border bg-surface-1">
+            <img
+              src={c.scenario.desktopShotSrc}
+              alt={c.scenario.desktopShotAlt}
+              width={1200}
+              height={900}
+              loading="lazy"
+              className="block h-auto w-full"
+            />
+          </div>
+          <div className="absolute -bottom-8 right-4 w-[34%] overflow-hidden rounded-[12px] border border-border bg-surface-1 shadow-2xl shadow-black/60 md:-right-6">
+            <img
+              src={c.scenario.phoneShotSrc}
+              alt={c.scenario.phoneShotAlt}
+              width={400}
+              height={700}
+              loading="lazy"
+              className="block h-auto w-full"
+            />
+          </div>
         </div>
       </div>
     </SectionShell>

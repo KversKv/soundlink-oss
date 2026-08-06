@@ -30,6 +30,11 @@ export function HowItWorks({ c }: { c: Content }) {
           </li>
         ))}
       </ol>
+      <p className="reveal mt-10 text-sm">
+        <a href={c.links.guide} className="text-accent underline-offset-4 hover:underline">
+          {c.how.guideLink}
+        </a>
+      </p>
     </SectionShell>
   )
 }

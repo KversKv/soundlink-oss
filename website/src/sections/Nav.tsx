@@ -26,6 +26,9 @@ export function Nav({ c }: { c: Content }) {
               {a.label}
             </a>
           ))}
+          <a href={c.links.guide} className="hover:text-text">
+            {c.nav.guide}
+          </a>
           <a href={c.links.docs} target="_blank" rel="noreferrer" className="hover:text-text">
             {c.nav.docs}
           </a>
@@ -71,6 +74,9 @@ export function Nav({ c }: { c: Content }) {
                 {a.label}
               </a>
             ))}
+            <a href={c.links.guide} onClick={() => setOpen(false)}>
+              {c.nav.guide}
+            </a>
             <a href={c.links.docs} target="_blank" rel="noreferrer">
               {c.nav.docs}
             </a>

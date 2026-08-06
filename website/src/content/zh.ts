@@ -21,6 +21,7 @@ export const zh = {
     privacy: `${REPO}/blob/main/docs/privacy.md`,
     changelog: `${REPO}/blob/main/CHANGELOG.md`,
     docs: `${REPO}/tree/main/docs/user`,
+    guide: './guide/',
   },
   nav: {
     features: '特性',
@@ -28,6 +29,7 @@ export const zh = {
     platforms: '平台',
     specs: '规格',
     docs: '文档',
+    guide: '使用指南',
     cta: '下载 Beta',
     langSwitch: 'EN',
     logoAlt: 'SoundLink',
@@ -39,8 +41,7 @@ export const zh = {
     primaryCta: '下载 Beta',
     secondaryCta: '查看源码',
     screenshotAlt: 'SoundLink 桌面端主界面，显示接收状态与配对码',
-    // TODO(A1): 替换为真实桌面端截图 ≥2400×1500 PNG/WebP
-    screenshotSrc: ASSET('assets/placeholder.svg'),
+    screenshotSrc: ASSET('assets/desktop-hero.png'),
   },
   platforms: {
     title: '平台支持',
@@ -66,8 +67,10 @@ export const zh = {
     fits: ['听音乐', '看长视频'],
     unfitTitle: '不适用',
     unfit: ['游戏、连麦等实时互动（延迟不满足）', '短视频可能感知轻微延迟'],
-    // TODO(A4): 替换为真实场景图（耳机 + 桌面 + 手机）横向 ≥2400px
-    bgAlt: '桌面上的一副耳机与一部手机',
+    desktopShotSrc: ASSET('assets/desktop-playing.png'),
+    desktopShotAlt: '桌面端正在接收并播放来自手机的音频',
+    phoneShotSrc: ASSET('assets/phone-connected.png'),
+    phoneShotAlt: '手机端正在向电脑广播音频',
   },
   differentiators: {
     title: '三条差异化',
@@ -92,25 +95,23 @@ export const zh = {
       {
         verb: '开启接收',
         body: '电脑端启动 SoundLink，选择输出设备并切到接收角色，界面显示 8 位配对码。',
-        // TODO(A1): 桌面端开启接收、显示配对码截图
-        imgSrc: ASSET('assets/placeholder.svg'),
+        imgSrc: ASSET('assets/desktop-pairing.png'),
         imgAlt: '桌面端显示 8 位配对码',
       },
       {
         verb: '输入配对码',
         body: '手机端在设备列表选中电脑（mDNS 自动发现），输入配对码完成配对。',
-        // TODO(A2): 手机端配对界面截图
-        imgSrc: ASSET('assets/placeholder.svg'),
+        imgSrc: ASSET('assets/phone-pairing.png'),
         imgAlt: '手机端输入配对码',
       },
       {
         verb: '开始播放',
         body: '手机开始采集并播放音频，电脑端即刻出声。配对信息持久化，下次自动重连。',
-        // TODO(A3): 桌面端设备已连接 / 播放中截图
-        imgSrc: ASSET('assets/placeholder.svg'),
+        imgSrc: ASSET('assets/desktop-playing.png'),
         imgAlt: '桌面端显示设备已连接、播放中',
       },
     ],
+    guideLink: '查看详细使用指南 →',
   },
   specs: {
     title: '技术规格',
@@ -182,6 +183,130 @@ export const zh = {
       '安装包未购买代码签名证书，Windows SmartScreen 首次运行会提示「未知发布者」。这是预期行为，可先用上面的 SHA256 校验后再运行。',
     testedTitle: '实测范围',
     testedBody: '当前仅实测 Android → Windows 与 Windows → Windows 两种组合，其他组合请按实验性预期。',
+  },
+  guide: {
+    eyebrow: '使用指南',
+    title: '从安装到出声，一次讲清',
+    intro:
+      '本指南覆盖：准备工作、手机 → 电脑、电脑 → 电脑、设置说明与常见问题。全程真实截图，跟着做即可。',
+    backHome: '返回首页',
+    homeHref: '../',
+    otherLangHref: '../en/guide/',
+    toc: [
+      { id: 'prepare', label: '准备工作' },
+      { id: 'phone-to-pc', label: '手机 → 电脑' },
+      { id: 'pc-to-pc', label: '电脑 → 电脑' },
+      { id: 'settings', label: '设置说明' },
+      { id: 'faq', label: '常见问题' },
+    ] as { id: string; label: string }[],
+    prepare: {
+      title: '准备工作',
+      items: [
+        {
+          title: '同一局域网',
+          body: '手机与电脑连接同一个 Wi-Fi / 网段。关闭路由器的 AP 隔离，不要使用访客网络，否则设备互相不可见。',
+        },
+        {
+          title: '安装 SoundLink',
+          body: '电脑端与 Android 端安装包均从 GitHub Releases 获取。安装后启动即可，无需注册、无需登录。',
+        },
+        {
+          title: '放行防火墙',
+          body: '首次启动时，Windows 防火墙弹窗请勾选「专用网络」并允许。控制通道走 TCP 47810，音频走 UDP 47811。',
+        },
+      ] as { title: string; body: string }[],
+    },
+    phoneToPc: {
+      title: '手机 → 电脑',
+      note: '最常用路径：手机采集音频，电脑接收并输出到耳机或声卡。',
+      steps: [
+        {
+          title: '电脑端开启接收',
+          body: '打开 SoundLink，切到「接收模式」，界面显示 8 位配对码与本机地址。输出设备可在「设置 → 音频」中指定。',
+          imgSrc: ASSET('assets/desktop-pairing.png'),
+          imgAlt: '桌面端接收模式，显示 8 位配对码',
+          kind: 'desktop',
+        },
+        {
+          title: '手机端选设备、输配对码',
+          body: 'App 通过 mDNS 自动发现局域网内的电脑；搜不到时点「手动 IP」，输入电脑端「本机地址」中的 IP。选中设备后输入 8 位配对码。',
+          imgSrc: ASSET('assets/phone-pairing.png'),
+          imgAlt: '手机端选择设备并输入配对码',
+          kind: 'phone',
+        },
+        {
+          title: '授权屏幕采集',
+          body: '首次广播时系统弹出 MediaProjection 授权窗口，点击「立即开始」。这是 Android 官方采集能力；受 DRM 保护的内容无法采集。',
+          imgSrc: ASSET('assets/phone-consent.png'),
+          imgAlt: '手机端 MediaProjection 授权弹窗',
+          kind: 'phone',
+        },
+        {
+          title: '开始播放',
+          body: '手机提示「正在广播」，通知栏显示采集状态；电脑端即刻出声。配对信息会保存，下次打开自动重连。',
+          imgSrc: ASSET('assets/phone-connected.png'),
+          imgAlt: '手机端正在广播音频到电脑',
+          kind: 'phone',
+        },
+      ] as { title: string; body: string; imgSrc: string; imgAlt: string; kind: 'desktop' | 'phone' }[],
+    },
+    pcToPc: {
+      title: '电脑 → 电脑',
+      body: '两台电脑互传：发送端切到「发送模式」，在「采集源」中选择要发送的音频（系统环回或 440Hz 正弦测试源）。「发现 Receiver」会列出局域网内的接收端；未发现时点「扫描局域网」，或手动输入接收端的本机地址（如 192.168.1.100:47810），再输入配对码即可开始发送。',
+      imgSrc: ASSET('assets/desktop-sender.png'),
+      imgAlt: '桌面端发送模式，选择采集源与接收端',
+      points: [
+        '接收端需处于「接收模式」并显示配对码',
+        '采集源可随时切换，无需重新配对',
+        'Windows → Windows 组合已实测通过',
+      ] as string[],
+    },
+    settings: {
+      title: '设置说明',
+      imgSrc: ASSET('assets/desktop-settings.png'),
+      imgAlt: '桌面端设置页：启动、关闭行为、设备与音频',
+      points: [
+        ['开机自启动', '配合「自启动后自动开启接收」，可把电脑常驻为接收端，手机随连随用。'],
+        ['关闭窗口行为', '可选每次询问、最小化到托盘或直接退出；常驻托盘不打扰日常使用。'],
+        ['设备名（mDNS 广播名）', '局域网内显示的名字，多台设备并存时建议改名区分。'],
+        ['音频', '接收模式选输出设备（耳机 / 声卡），发送模式选默认采集源；Jitter 缓冲默认 80ms，网络抖动大时可适当调高。'],
+      ] as [string, string][],
+    },
+    faq: {
+      title: '常见问题',
+      items: [
+        {
+          q: '手机搜不到电脑？',
+          a: '确认两端在同一网段、路由器未开启 AP 隔离；mDNS 被过滤时使用「手动 IP」，地址见电脑端「本机地址」；同时检查 Windows 防火墙是否放行。',
+        },
+        {
+          q: '配对码报错或被锁定？',
+          a: '临时配对码 120 秒内有效，过期在电脑端点「刷新」；连续错误 5 次触发 60 秒锁定，稍候重试。长期配对码可重复使用，同样受错误锁定保护。',
+        },
+        {
+          q: '连上了但没有声音？',
+          a: '检查电脑端输出设备是否选对；确认播放内容未受 DRM 保护（部分流媒体会静音）；确认手机通知栏显示正在采集。',
+        },
+        {
+          q: '感觉有延迟？',
+          a: '默认 Jitter 缓冲 80ms，听音乐、看长视频属正常体验；游戏与连麦不在适用范围，详见首页「已知限制」。',
+        },
+        {
+          q: 'Windows 弹出 SmartScreen 告警？',
+          a: '安装包未购买代码签名证书，告警属预期行为。核对 Release 页的 SHA256 与下载文件一致后，选择「仍要运行」即可。',
+        },
+        {
+          q: '如何停止广播？',
+          a: '手机端点「停止广播」，或在通知栏停止采集；电脑端点「停止接收」。日常可将关闭窗口行为设为最小化到托盘。',
+        },
+      ] as { q: string; a: string }[],
+    },
+    cta: {
+      title: '准备好了？',
+      body: '从 GitHub Releases 下载最新 Beta，按上面的步骤完成第一次配对。',
+      primary: '下载 Beta',
+      secondary: '返回首页',
+    },
   },
   footer: {
     tagline: '局域网音频流转，开源免费。',
