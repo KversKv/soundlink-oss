@@ -49,6 +49,10 @@ cpal = "0.15"
 base64 = "0.22"
 # mDNS 服务发现（阶段 3）：广播 _soundlink._udp.local.
 mdns-sd = "0.11"
+# open-core 能力边界（MON-01 阶段 Q）：恒定 path 依赖，无 feature、无 optional。
+# 构建免费版还是 Pro 版由 desktop/pro/ 目录内容决定（公开免费实现 / 私有实现检出覆盖）。
+soundlink-pro-api = { path = "../pro-api" }
+soundlink-pro = { path = "../pro" }
 # 本机局域网 IPv4 枚举（配对码卡片显示本机地址用）。
 local-ip-address = "0.6"
 libopus_sys = { version = "0.3", optional = true }
@@ -76,6 +80,8 @@ windows = { version = "0.58", optional = true, features = [
     "Win32_Media_KernelStreaming",
     "Win32_System_Com",
     "Win32_Devices_Properties",
+    # MON-01 R3：读取 HKLM\SOFTWARE\Microsoft\Cryptography\MachineGuid 计算设备指纹。
+    "Win32_System_Registry",
 ] }
 
 [build-dependencies]

@@ -1,0 +1,14 @@
+[package]
+name = "soundlink-pro"
+version = "0.1.0"
+edition = "2021"
+description = "SoundLink Pro 能力：免费实现（社区构建）。官方构建时本目录被私有实现整体替换。"
+license = "MIT"
+rust-version = "1.80"
+
+# ⚠️ 版本号必须与私有实现完全一致（Cargo.lock 记录 path 依赖版本，不一致会导致
+# 官方构建无法 --locked）。定稿后不再变动。见 monetization/02 §5.1 / G11。
+
+[dependencies]
+soundlink-pro-api = { path = "../pro-api" }
+parking_lot = "0.12"

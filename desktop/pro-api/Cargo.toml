@@ -1,0 +1,18 @@
+[package]
+name = "soundlink-pro-api"
+version = "0.1.0"
+edition = "2021"
+description = "SoundLink Pro 能力边界：trait 与数据类型（open-core 接口层，MIT）"
+license = "MIT"
+rust-version = "1.80"
+
+# 版本号独立手工维护（接口稳定，极少变），不参与根 VERSION 同步。
+# 见 docs/NewFunctions/monetization/02-multi-repo-guide.md §5.1。
+
+# 说明：测试也仅用这些正式依赖，不使用 dev-dependencies ——
+# pro crate 以 path 依赖被 soundlink 引用、非 workspace 成员，
+# 一旦本 crate 出现 dev-dependencies，顶层 `cargo test -p` 会被 Cargo 拒绝。
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+parking_lot = "0.12"

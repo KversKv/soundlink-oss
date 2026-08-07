@@ -30,6 +30,10 @@ jobs:
       - name: Verify version synchronization
         run: python scripts/sync_version.py --check
 
+      # MON-01 T3：Python 签发 ↔ Rust 验签 跨语言一致性（用 committed 测试密钥，无需真实私钥）。
+      - name: License roundtrip check (Python issue ↔ Rust verify)
+        run: python scripts/license/roundtrip_check.py
+
   desktop-rust:
     name: Desktop Rust (${{ matrix.os }})
     runs-on: ${{ matrix.os }}

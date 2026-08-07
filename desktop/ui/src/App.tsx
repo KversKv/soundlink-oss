@@ -155,6 +155,8 @@ export default function App() {
   const [selectedSource, setSelectedSource] = useState("sine");
   const [discovering, setDiscovering] = useState(false);
   const [trustedReceivers, setTrustedReceivers] = useState<TrustedReceiver[]>([]);
+  // MON-01 S2：设备记忆配额（UI 标注 used/max）。
+  const [trustQuota, setTrustQuota] = useState<{ max: number; senders_used: number; receivers_used: number } | null>(null);
 
   const [error, setError] = useState<string>("");
 
@@ -191,6 +193,7 @@ export default function App() {
       })
       .catch(() => {});
     loadTrustedReceivers();
+    loadTrustQuota();
     invoke<DesktopSettings>("get_desktop_settings")
       .then((settings) => {
         setRole(settings.role);
@@ -276,17 +279,105 @@ export default function App() {
       setPubkeyMismatchInfo(e.payload);
       setPubkeyMismatchOpen(true);
     });
-    // I2：全局快捷键。toggle-role 切换角色、show-window 显示主窗口。
+    // I2 + MON-01 S13：全局快捷键。动作集由后端能力驱动（免费仅 show-window）。
     const unlistenShortcut = listen<{ kind: string }>("global-shortcut", (e) => {
-      if (e.payload.kind === "toggle-role") {
+      const kind = e.payload.kind;
+      if (kind === "toggle-role") {
         const next = role === "receiver" ? "sender" : "receiver";
         invoke("set_role", { role: next })
           .then(() => setRole(next))
           .catch((err) => setError(mapError(err)));
-      } else if (e.payload.kind === "show-window") {
+      } else if (kind === "show-window") {
         invoke("show_main_window").catch(() => {});
+      } else if (kind === "start-stop-receiver") {
+        if (running || status) {
+          stop();
+        } else {
+          start();
+        }
+      } else if (kind === "start-stop-sender") {
+        if (senderRunning || senderStatus) {
+          stopSender();
+        } else {
+          // 无手动目标时按 S9 规则自动选择（last_peer 优先）。
+          invoke<string | null>("resolve_auto_send_target")
+            .then(async (deviceId) => {
+              if (!deviceId) {
+                setError("没有可自动连接的信任接收端");
+                return;
+              }
+              setReceiverAddr("");
+              setSenderPairingCode("");
+              await invoke("connect_trusted_receiver", {
+                deviceId,
+                captureSource: selectedSource,
+              });
+              setSenderRunning(true);
+              loadTrustedReceivers();
+            })
+            .catch((err) => setError(mapError(err)));
+        }
+      } else if (kind === "cycle-output-device") {
+        invoke<{ id: string; name: string }[]>("list_output_devices")
+          .then(async (devices) => {
+            if (devices.length === 0) return;
+            // selected_device 为数组索引（与 select_output_device 语义一致）。
+            const cur = selectedDevice ?? -1;
+            const nextIdx = (cur + 1) % devices.length;
+            await invoke("select_output_device", { index: nextIdx });
+            setSelectedDevice(nextIdx);
+            setError(`输出设备已切换：${devices[nextIdx].name}`);
+          })
+          .catch(() => {});
+      } else if (kind === "toggle-mute") {
+        invoke<boolean>("toggle_mute")
+          .then((muted) => setError(muted ? "已静音" : "已取消静音"))
+          .catch(() => {});
       }
     });
+    // MON-01 S14：快捷键注册失败（被系统/其他软件占用）明确提示，不静默忽略。
+    const unlistenShortcutFailed = listen<{ accelerators: string[] }>(
+      "shortcut-register-failed",
+      (e) => {
+        setError(`快捷键 ${e.payload.accelerators.join("、")} 注册失败（可能被其他程序占用）`);
+      }
+    );
+    // MON-01 S1：设备记忆满时被替换提示。
+    const unlistenEvicted = listen<{ device_id: string; name: string | null; max: number }>(
+      "trust-device-evicted",
+      (e) => {
+        setError(
+          `设备记忆已满（${e.payload.max} 台）：已替换最久未用的「${e.payload.name || e.payload.device_id}」`
+        );
+        loadTrustedReceivers();
+        loadTrustQuota();
+      }
+    );
+    // MON-01 R5：激活/反激活后即时刷新设置（自动化开关可用性随授权变化）。
+    const unlistenLicense = listen("license-changed", () => {
+      invoke<AppSettings>("get_app_settings")
+        .then(setAppSettings)
+        .catch(() => {});
+      loadTrustQuota();
+    });
+    // MON-01 S15：托盘应用配置档后同步 UI 状态。
+    const unlistenProfileApplied = listen<{ name: string; restart_required: boolean }>(
+      "profile-applied",
+      (e) => {
+        invoke<DesktopSettings>("get_desktop_settings")
+          .then((settings) => {
+            setRole(settings.role);
+            setSelectedDevice(settings.selected_device);
+            setAudioParamsState(settings.audio_params);
+          })
+          .catch(() => {});
+        setError(
+          e.payload.restart_required
+            ? `已切换到配置档「${e.payload.name}」（部分参数需重启流后生效）`
+            : `已切换到配置档「${e.payload.name}」`
+        );
+      }
+    );
     return () => {
       unlistenClose.then((fn) => fn());
       unlistenTray.then((fn) => fn());
@@ -295,8 +386,12 @@ export default function App() {
       unlistenSenderState.then((fn) => fn());
       unlistenPubkeyMismatch.then((fn) => fn());
       unlistenShortcut.then((fn) => fn());
+      unlistenShortcutFailed.then((fn) => fn());
+      unlistenEvicted.then((fn) => fn());
+      unlistenLicense.then((fn) => fn());
+      unlistenProfileApplied.then((fn) => fn());
     };
-  }, [receiverAddr, selectedSource, role]);
+  }, [receiverAddr, selectedSource, role, running, status, senderRunning, senderStatus, selectedDevice]);
 
   // D4：配对锁定倒计时。每秒减 1，到 0 时清空锁定状态并清除错误提示。
   useEffect(() => {
@@ -312,7 +407,8 @@ export default function App() {
     return () => clearInterval(timer);
   }, [pairingLockRemaining]);
 
-  // 自启动后自动收发（前端驱动）：mount 时读 AppSettings，按需触发既有命令。
+  // 启动自动化（MON-01 S3）：判定已下沉到 Rust。前端只执行 resolve_startup_plan
+  // 返回的计划；免费实现恒返回 null，即使手工篡改 app_config.json 也不会自动启动。
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -323,35 +419,40 @@ export default function App() {
         // E3：未完成首次引导则显示 Onboarding。
         if (!s.onboarding_completed) {
           setShowOnboarding(true);
-          return; // 不进入自启动逻辑，等引导完成。
+          return; // 不进入启动计划，等引导完成。
         }
-        // 仅在用户开启对应开关时尝试自动启动；失败仅打日志不阻塞。
-        if (s.auto_receive_on_start) {
+        interface StartupPlan {
+          silent: boolean;
+          auto_receive: boolean;
+          auto_send_to: string | null;
+        }
+        const plan = await invoke<StartupPlan | null>("resolve_startup_plan");
+        if (cancelled || !plan) return;
+        // 仅按计划执行既有命令；失败仅打日志不阻塞（E1）。
+        if (plan.auto_receive) {
           try {
             const r = await invoke<StartResult>("start_receiver");
             if (cancelled) return;
             setPairingCode(r.pairing_code);
             setDeviceId(r.device_id);
             setRunning(true);
+            invoke<LocalAddressInfo[]>("get_local_addresses")
+              .then(setLocalAddresses)
+              .catch(() => {});
           } catch (e) {
-            console.warn("自启动接收失败：", String(e));
+            console.warn("自动启动接收失败：", String(e));
           }
         }
-        if (s.auto_send_on_start) {
+        if (plan.auto_send_to) {
           try {
-            const list = await invoke<TrustedReceiver[]>("list_trusted_receivers");
+            await invoke("connect_trusted_receiver", {
+              deviceId: plan.auto_send_to,
+              captureSource: selectedSource,
+            });
             if (cancelled) return;
-            const first = list.find((t) => t.host && t.control_port);
-            if (first) {
-              await invoke("connect_trusted_receiver", {
-                deviceId: first.device_id,
-                captureSource: selectedSource,
-              });
-              if (cancelled) return;
-              setSenderRunning(true);
-            }
+            setSenderRunning(true);
           } catch (e) {
-            console.warn("自启动发送失败：", String(e));
+            console.warn("自动连接上次设备失败：", String(e));
           }
         }
       } catch (e) {
@@ -520,6 +621,18 @@ export default function App() {
     try {
       const list = await invoke<TrustedReceiver[]>("list_trusted_receivers");
       setTrustedReceivers(list);
+    } catch {
+      // 忽略加载失败
+    }
+  }
+
+  // MON-01 S2：加载设备记忆配额（used/max 标注）。
+  async function loadTrustQuota() {
+    try {
+      const q = await invoke<{ max: number; senders_used: number; receivers_used: number }>(
+        "get_trust_quota"
+      );
+      setTrustQuota(q);
     } catch {
       // 忽略加载失败
     }
@@ -801,7 +914,14 @@ export default function App() {
 
             {trustedReceivers.length > 0 && (
               <section className="panel-card settings-card">
-                <h2>已信任设备</h2>
+                <h2>
+                  已信任设备
+                  {trustQuota && (
+                    <small style={{ fontWeight: "normal", color: "#888", marginLeft: 8 }}>
+                      {trustQuota.receivers_used}/{trustQuota.max}
+                    </small>
+                  )}
+                </h2>
                 <div className="receiver-list">
                   {trustedReceivers.map((t) => (
                     <div key={t.device_id} className="receiver-item trusted-item">

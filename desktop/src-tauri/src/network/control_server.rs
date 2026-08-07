@@ -94,6 +94,8 @@ pub struct ControlState {
     pub audio_port: u16,
     pub config: Option<Arc<Mutex<AppConfig>>>,
     pub config_dir: Option<std::path::PathBuf>,
+    /// MON-01 S1：能力对象（设备记忆上限来源）。examples 不注入时视为无上限。
+    pub caps: Option<Arc<dyn soundlink_pro_api::ProCapabilities>>,
     pub current_session: Mutex<Option<Session>>,
     pub running: Arc<AtomicBool>,
     pub stop_notify: Arc<Notify>,
@@ -128,6 +130,7 @@ impl ControlServer {
             None,
             None,
             None,
+            None,
         )
     }
 
@@ -143,6 +146,7 @@ impl ControlServer {
         config: Option<Arc<Mutex<AppConfig>>>,
         config_dir: Option<std::path::PathBuf>,
         app_handle: AppHandleOpt,
+        caps: Option<Arc<dyn soundlink_pro_api::ProCapabilities>>,
     ) -> Self {
         Self {
             state: Arc::new(ControlState {
@@ -155,6 +159,7 @@ impl ControlServer {
                 audio_port,
                 config,
                 config_dir,
+                caps,
                 current_session: Mutex::new(None),
                 running: Arc::new(AtomicBool::new(false)),
                 stop_notify: Arc::new(Notify::new()),
@@ -519,8 +524,42 @@ async fn handle_pair_request(msg: &Value, state: &ControlState, addr: SocketAddr
             control_port: None,
             audio_port: None,
         };
-        if let Err(e) = state.trust.lock().add(trusted_device) {
-            tracing::warn!("保存信任失败：{}", e);
+        // MON-01 S1：上限取自能力对象（免费 1 / Pro 8）；未注入（examples）视为无上限。
+        let max = state
+            .caps
+            .as_ref()
+            .map(|c| c.max_remembered_devices())
+            .unwrap_or(usize::MAX);
+        match state.trust.lock().add(trusted_device, max) {
+            Ok(evicted) => {
+                if let Some(old) = evicted {
+                    tracing::info!(
+                        "记忆容量（{}）已满：已替换最久未用的发送端 {}",
+                        max,
+                        old.device_id
+                    );
+                    #[cfg(feature = "tauri_app")]
+                    if let Some(handle) = &state.app_handle {
+                        use tauri::Emitter;
+                        let _ = handle.emit(
+                            "trust-device-evicted",
+                            json!({
+                                "device_id": old.device_id,
+                                "name": old.name,
+                                "max": max,
+                            }),
+                        );
+                    }
+                }
+            }
+            Err(e) => tracing::warn!("保存信任失败：{}", e),
+        }
+        // MON-01 S7：记录上次对端设备（免费版也写入；Pro 的自动重连消费它）。
+        if let (Some(cfg), Some(dir)) = (&state.config, &state.config_dir) {
+            cfg.lock().last_peer_device_id = Some(sender_device_id.clone());
+            if let Err(e) = cfg.lock().save(dir) {
+                tracing::warn!("记录上次对端设备失败：{}", e);
+            }
         }
         (keys, pairing_secret)
     };

@@ -349,8 +349,8 @@ SoundLink_<version>_x64-setup.exe
 
 未实测项（留待 Q 阶段真实工程内验证，风险低）：
 
-- [ ] **V-6** Tauri NSIS 完整打包在替换目录后的表现（探针只验证了 `cargo build/run` 层面的串味，打包层预期同理，因为 bundle 输入就是 `cargo build` 产物；但需确认 `cargo clean -p` 后 tauri 不会因缺少缓存报错）
-- [ ] **V-7** `cargo clippy` 在 junction 下的表现（预期与 `cargo build` 一致，V-2 未单独跑 clippy）
+- [x] **V-6** Tauri NSIS 完整打包在替换目录后的表现 — **2026-08-06 实测通过**：junction 挂载私有实现后 `tauri build --bundles nsis` 成功产出 `SoundLink_0.1.0-beta.1_x64-setup.exe`，`cargo clean -p soundlink-pro` 后打包无缓存报错。注：`targets:"all"` 时 MSI 目标不支持 `0.1.0-beta.1` 预发布号（既有配置限制，与 Pro 无关）；发布 CI 走 NSIS（release.yml 即 `--bundles nsis` 等价路径）。
+- [x] **V-7** `cargo clippy` 在 junction 下的表现 — **2026-08-06 实测通过**：junction 挂载私有实现后 `cargo clippy --features tauri_app --all-targets -- -D warnings` 全绿，与 `cargo build` 行为一致。
 
 ---
 

@@ -3,6 +3,7 @@ use crate::constants::{
     SAMPLE_RATE,
 };
 use serde::{Deserialize, Serialize};
+use soundlink_pro_api::ShortcutBinding;
 use std::fs;
 use std::path::Path;
 
@@ -97,6 +98,55 @@ pub struct AppConfig {
     /// F6：发送端 DRM 提示是否已展示。false 时首次开始发送弹模态。
     #[serde(default)]
     pub sender_drm_hint_seen: bool,
+    /// MON-01 S7：上次成功连接的对端 device_id（接收端记发送端、发送端记接收端）。
+    /// 区别于 `last_receiver_addr`（仅地址无身份）。免费版也写入，只是不消费。
+    #[serde(default)]
+    pub last_peer_device_id: Option<String>,
+    /// MON-01 S10：配置档（PRO-4）。免费版字段保留但命令层不开放（E6 向下兼容）。
+    #[serde(default)]
+    pub profiles: Vec<Profile>,
+    /// 当前激活的配置档 id。
+    #[serde(default)]
+    pub active_profile: Option<String>,
+    /// MON-01 S14：自定义全局快捷键绑定（PRO-5；免费实现忽略，见 caps.shortcuts）。
+    #[serde(default)]
+    pub shortcuts: Vec<ShortcutBinding>,
+}
+
+/// MON-01 S10：配置档（PRO-4 多套配置一键切换）。
+/// 所有新增字段 `#[serde(default)]`，老 app_config.json 可正常加载（E6）。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Profile {
+    /// 稳定 id（`prof-<unix秒>` 生成）。
+    pub id: String,
+    /// 显示名（如「客厅音箱」）。
+    pub name: String,
+    /// 输出设备索引（None = 系统默认）。
+    #[serde(default)]
+    pub output_device: Option<usize>,
+    #[serde(default = "default_profile_jitter")]
+    pub jitter_mode: String,
+    #[serde(default = "default_profile_volume")]
+    pub volume: f32,
+    #[serde(default)]
+    pub audio_params: AudioParams,
+    #[serde(default = "default_profile_role")]
+    pub role: String,
+    /// 关联的对端设备（发送档记接收端；可空）。
+    #[serde(default)]
+    pub peer_device_id: Option<String>,
+}
+
+fn default_profile_jitter() -> String {
+    "balanced".into()
+}
+
+fn default_profile_volume() -> f32 {
+    1.0
+}
+
+fn default_profile_role() -> String {
+    "receiver".into()
 }
 
 fn default_close_action() -> String {
@@ -127,6 +177,10 @@ impl Default for AppConfig {
             auto_send_on_start: false,
             onboarding_completed: false,
             sender_drm_hint_seen: false,
+            last_peer_device_id: None,
+            profiles: Vec::new(),
+            active_profile: None,
+            shortcuts: Vec::new(),
         }
     }
 }
@@ -192,6 +246,12 @@ impl AppConfig {
         }
         self.volume = self.volume.clamp(0.0, 1.0);
         self.audio_params = self.audio_params.normalized();
+        // active_profile 必须指向存在的档，否则清空。
+        if let Some(active) = &self.active_profile {
+            if !self.profiles.iter().any(|p| &p.id == active) {
+                self.active_profile = None;
+            }
+        }
         self
     }
 }

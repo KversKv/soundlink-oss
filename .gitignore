@@ -54,6 +54,15 @@ $RECYCLE.BIN/
 secrets.*
 credentials.*
 
+# MON-01 T1：license 签发私钥与台账绝不入库（test_sk.hex 为公开测试值，例外保留）
+scripts/license/*.pem
+*_sk*
+!scripts/license/test_sk.hex
+license_ledger.csv
+
+# MON-01 Q5：发布 CI 检出私有 Pro 实现覆盖 desktop/pro/ 时的嵌套 git 目录（红线 G1/E7）
+/desktop/pro/.git/
+
 
 # ===========================================================================
 # 通用：日志 / 临时目录

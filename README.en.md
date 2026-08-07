@@ -2,7 +2,7 @@
 
 **LAN audio streaming for headphone users**: audio from your phone (iOS/Android) → local network → your computer's audio device. PC-to-PC streaming is also supported.
 
-> Encrypted transport · LAN-only · No telemetry · Open source
+> Encrypted transport · LAN-only · No telemetry · Open-core (MIT core + closed Pro)
 
 [简体中文](README.md) · [License](LICENSE) · [Privacy Policy](docs/privacy.md) · [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md)
 
@@ -108,6 +108,31 @@ Full user manual: [`docs/user/07-usage.md`](docs/user/07-usage.md); troubleshoot
 - **Single receiver**: one sender maps to one receiver.
 - **Desktop UI is Simplified Chinese only** for now (i18n is on the roadmap).
 - **Installers are not code-signed**, so Windows SmartScreen will warn on first run.
+
+---
+
+## Free vs Pro
+
+SoundLink follows an **open-core** model:
+
+1. **The core audio-streaming feature is permanently free and fully open source (MIT)**. Building this repo yourself yields the same complete free version as the official build — no limits on quality, latency, bitrate, encryption, or pairing.
+2. **Pro is a set of automation & convenience enhancements (¥9.99 one-time)** whose implementation is closed source; it is how the project sustains development. Pro simply means "fewer clicks, no babysitting".
+3. **Pro licensing is verified fully offline**: no network, no data upload, no activation server (see the [Privacy Policy](docs/privacy.md)).
+4. One purchase is valid forever, **including all future versions and future Pro features**; up to 3 devices per license, refundable within 7 days.
+
+| Capability | Free | Pro |
+|---|:---:|:---:|
+| Phone→PC / PC↔PC audio streaming | ✅ | ✅ |
+| All bitrates + all jitter modes + encryption + pairing | ✅ | ✅ |
+| Output device / volume / audio params / stats | ✅ | ✅ |
+| Remembered paired devices | 1 | **8** |
+| Launch on boot + auto start receive/send | — | ✅ |
+| Auto-reconnect last device (across launches) | — | ✅ |
+| Multiple config profiles, one-click switch | — | ✅ |
+| Global shortcuts / tray direct control | — | ✅ |
+
+> The free version can always do the same thing manually with one click; Pro makes it "sound on boot, without opening SoundLink".
+> There is only one official download: when not activated it behaves exactly like the free version; paste a license key to unlock.
 
 ---
 

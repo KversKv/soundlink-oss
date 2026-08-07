@@ -8,6 +8,7 @@ pub mod commands;
 pub mod config;
 pub mod constants;
 pub mod device;
+pub mod license;
 pub mod logging;
 pub mod network;
 pub mod pairing;

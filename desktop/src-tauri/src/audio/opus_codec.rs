@@ -223,6 +223,7 @@ pub mod libopus {
     #[cfg(test)]
     mod tests {
         use super::*;
+        use crate::audio::opus_codec::frame_pcm_len;
         #[test]
         fn roundtrip() {
             let mut c = LibopusCodec::new().unwrap();

@@ -31,6 +31,8 @@ fn main() {
     use tauri::Manager;
     soundlink_lib::logging::init();
     install_panic_hook();
+    // MON-01 S5：系统自启动拉起标记（autostart 插件注册的启动参数）。
+    let autostarted = std::env::args().any(|a| a == "--autostarted");
     tauri::Builder::default()
         // 单实例锁定：必须最早注册。二次启动聚焦既有窗口（D2）。
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
@@ -46,37 +48,78 @@ fn main() {
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             Some(vec!["--autostarted"]),
         ))
-        // I2：全局快捷键。Ctrl+Shift+P 切换角色、Ctrl+Shift+S 显示主窗口。
+        // MON-01 S13：全局快捷键处理器。事件 kind 由 ShortcutAction 映射，
+        // 具体动作在前端（隐藏窗口下 webview 仍在运行，事件照常分发）。
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, shortcut, event| {
                     if event.state == tauri_plugin_global_shortcut::ShortcutState::Pressed {
                         use tauri::Emitter;
-                        let kind = match shortcut.to_string().as_str() {
-                            "Ctrl+Shift+P" => "toggle-role",
-                            "Ctrl+Shift+S" => "show-window",
-                            _ => return,
-                        };
-                        let _ = app.emit("global-shortcut", serde_json::json!({ "kind": kind }));
+                        let kind = shortcut_action_kind(app, &shortcut.to_string());
+                        if let Some(kind) = kind {
+                            let _ = app.emit("global-shortcut", serde_json::json!({ "kind": kind }));
+                        }
                     }
                 })
                 .build(),
         )
-        .manage(soundlink_lib::commands::AppState::new(DEBUG, DUMP_ENABLE))
+        .manage(soundlink_lib::commands::AppState::new(DEBUG, DUMP_ENABLE, autostarted))
         .setup(|app| {
             if let Err(e) = soundlink_lib::commands::tray::setup_tray(app) {
                 tracing::warn!("托盘初始化失败：{}（应用继续启动）", e);
             }
-            // I2：注册全局快捷键。
-            use tauri_plugin_global_shortcut::GlobalShortcutExt;
-            let shortcuts = ["Ctrl+Shift+P", "Ctrl+Shift+S"];
-            for sc in shortcuts {
-                if let Err(e) = app.global_shortcut().register(sc) {
-                    tracing::warn!("注册全局快捷键 {} 失败：{}", sc, e);
+            let state: tauri::State<soundlink_lib::commands::AppState> = app.state();
+
+            // MON-01 S13/S14：快捷键改为能力驱动（免费仅 Ctrl+Shift+S 显示主窗口）。
+            // 注册失败不再只 warn：汇总后 emit 事件给前端提示（S14 冲突检测）。
+            {
+                use tauri_plugin_global_shortcut::GlobalShortcutExt;
+                let custom = state.config.lock().shortcuts.clone();
+                let bindings = state.caps.shortcuts(&custom);
+                let mut failed: Vec<String> = Vec::new();
+                for b in &bindings {
+                    if let Err(e) = app.global_shortcut().register(b.accelerator.as_str()) {
+                        tracing::warn!("注册全局快捷键 {} 失败：{}", b.accelerator, e);
+                        failed.push(b.accelerator.clone());
+                    }
+                }
+                if !failed.is_empty() {
+                    use tauri::Emitter;
+                    let _ = app.emit(
+                        "shortcut-register-failed",
+                        serde_json::json!({ "accelerators": failed }),
+                    );
                 }
             }
+
+            // MON-01 S1：发送端信任条目被容量上限替换时注入回调（emit 事件提示前端）。
+            {
+                let app_handle = app.handle().clone();
+                state.sender.set_on_trust_evicted(Box::new(move |old, max| {
+                    use tauri::Emitter;
+                    let _ = app_handle.emit(
+                        "trust-device-evicted",
+                        serde_json::json!({
+                            "device_id": old.device_id,
+                            "name": old.name,
+                            "max": max,
+                        }),
+                    );
+                }));
+            }
+
+            // MON-01 S5：静默启动 —— 启动计划要求 silent 时保持窗口隐藏（最小化到托盘）。
+            // tauri.conf.json 主窗口保持 visible: true；免费版 startup_plan 恒 None，行为不变。
+            if let Some(plan) = state.startup_plan() {
+                if plan.silent {
+                    if let Some(w) = app.get_webview_window("main") {
+                        let _ = w.hide();
+                    }
+                    tracing::info!("静默启动：窗口保持隐藏（最小化到托盘）");
+                }
+            }
+
             // D5：identity 加载失败时通知前端提示用户重新配对。
-            let state: tauri::State<soundlink_lib::commands::AppState> = app.state();
             if state.identity_load_failed {
                 use tauri::Emitter;
                 let _ = app.emit(
@@ -134,9 +177,45 @@ fn main() {
             soundlink_lib::commands::set_close_action,
             soundlink_lib::commands::set_auto_start,
             soundlink_lib::commands::get_auto_start,
+            soundlink_lib::commands::get_license_status,
+            soundlink_lib::commands::activate_license,
+            soundlink_lib::commands::deactivate_license,
+            soundlink_lib::commands::resolve_startup_plan,
+            soundlink_lib::commands::list_profiles,
+            soundlink_lib::commands::save_profile,
+            soundlink_lib::commands::apply_profile,
+            soundlink_lib::commands::delete_profile,
+            soundlink_lib::commands::rename_profile,
+            soundlink_lib::commands::get_shortcuts,
+            soundlink_lib::commands::get_tray_state,
+            soundlink_lib::commands::toggle_mute,
+            soundlink_lib::commands::get_trust_quota,
+            soundlink_lib::commands::resolve_auto_send_target,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+/// MON-01 S13：把快捷键 accelerator 映射为事件 kind（按当前能力集反查动作）。
+#[cfg(feature = "tauri_app")]
+fn shortcut_action_kind(app: &tauri::AppHandle, accelerator: &str) -> Option<&'static str> {
+    use soundlink_pro_api::ShortcutAction;
+    use tauri::Manager;
+    let state: tauri::State<soundlink_lib::commands::AppState> = app.state();
+    let custom = state.config.lock().shortcuts.clone();
+    let bindings = state.caps.shortcuts(&custom);
+    let action = bindings
+        .iter()
+        .find(|b| b.accelerator == accelerator)?
+        .action;
+    Some(match action {
+        ShortcutAction::ShowWindow => "show-window",
+        ShortcutAction::ToggleRole => "toggle-role",
+        ShortcutAction::StartStopReceiver => "start-stop-receiver",
+        ShortcutAction::StartStopSender => "start-stop-sender",
+        ShortcutAction::CycleOutputDevice => "cycle-output-device",
+        ShortcutAction::ToggleMute => "toggle-mute",
+    })
 }
 
 /// 安装 panic hook：panic 时把消息与调用栈写到 `%APPDATA%\soundlink\crash-<ts>.log`。

@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import AudioSettingsPanel from "./AudioSettingsPanel";
+import LicensePanel from "./LicensePanel";
+import ProfilePanel from "./ProfilePanel";
 
 export interface AppSettings {
   close_action: "ask" | "minimize" | "quit";
@@ -11,6 +13,10 @@ export interface AppSettings {
   onboarding_completed: boolean;
   /// F6：发送端 DRM 提示是否已展示。
   sender_drm_hint_seen: boolean;
+  /// MON-01 S4：自动化（自启 + 自动收发）是否可配置（Pro 能力）。
+  automation_available: boolean;
+  /// MON-01 S10：配置档是否可用（Pro 能力）。
+  profiles_available: boolean;
 }
 
 /// E1：关于页元信息（由后端 get_app_version 返回）。
@@ -170,16 +176,38 @@ export default function SettingsPanel({ settings, onChange }: Props) {
     }
   };
 
+  // MON-01 S6：自动化开关为 Pro 能力。免费下置灰 + Pro 徽标 + 说明。
+  const automationLocked = !settings.automation_available;
+
   return (
     <div className="settings-panel mode-panel">
       <section className="panel-card settings-card">
-        <h2>启动</h2>
+        <h2>
+          启动
+          {automationLocked && (
+            <span
+              className="pro-badge"
+              title="Pro 功能"
+              style={{
+                marginLeft: 8,
+                fontSize: 11,
+                padding: "1px 6px",
+                borderRadius: 4,
+                background: "#7c5cff",
+                color: "#fff",
+                verticalAlign: "middle",
+              }}
+            >
+              Pro
+            </span>
+          )}
+        </h2>
         <label className="toggle-row">
           <span>开机自启动</span>
           <input
             type="checkbox"
             checked={settings.auto_start}
-            disabled={busy}
+            disabled={busy || automationLocked}
             onChange={(e) => toggle("auto_start", e.target.checked)}
           />
         </label>
@@ -188,7 +216,7 @@ export default function SettingsPanel({ settings, onChange }: Props) {
           <input
             type="checkbox"
             checked={settings.auto_receive_on_start}
-            disabled={busy || !settings.auto_start}
+            disabled={busy || automationLocked || !settings.auto_start}
             onChange={(e) => toggle("auto_receive_on_start", e.target.checked)}
           />
         </label>
@@ -197,11 +225,28 @@ export default function SettingsPanel({ settings, onChange }: Props) {
           <input
             type="checkbox"
             checked={settings.auto_send_on_start}
-            disabled={busy || !settings.auto_start}
+            disabled={busy || automationLocked || !settings.auto_start}
             onChange={(e) => toggle("auto_send_on_start", e.target.checked)}
           />
         </label>
+        {automationLocked && (
+          <small style={{ display: "block", marginTop: 6, color: "#60718d", lineHeight: 1.6 }}>
+            开机自启与自动收发为 Pro 功能；免费版每次手动一键即可完成同样的操作。
+            <button
+              type="button"
+              className="text-button"
+              style={{ marginLeft: 4 }}
+              onClick={() => document.getElementById("license-section")?.scrollIntoView({ behavior: "smooth" })}
+            >
+              了解 Pro
+            </button>
+          </small>
+        )}
       </section>
+
+      <LicensePanel />
+
+      <ProfilePanel available={settings.profiles_available} />
 
       <section className="panel-card settings-card">
         <h2>关闭窗口行为</h2>

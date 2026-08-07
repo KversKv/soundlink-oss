@@ -114,26 +114,26 @@ pub trait ProCapabilities: Send + Sync {
 
 ## 3. 阶段 Q · 仓库切分与能力抽象（对应 M-B）
 
-- [ ] **Q1 · 新增 `soundlink-pro-api` crate** — `desktop/pro-api/`（公开、MIT）
+- [x] **Q1 · 新增 `soundlink-pro-api` crate** — `desktop/pro-api/`（公开、MIT）
   - 定义 `Entitlement` / `ProCapabilities` / `StartupPlan` / `ReconnectPolicy` / `ShortcutAction` / `TrayItem` / `ProfileStore`
   - **只有 trait 与数据类型，不含任何业务逻辑**
   - 依赖方向：`soundlink → soundlink-pro → soundlink-pro-api`（不可逆）
   - 验证：`cargo test -p soundlink-pro-api` 通过；该 crate 不依赖 `soundlink`
-- [ ] **Q2 · 新增 `soundlink-pro` crate（免费实现）** — `desktop/pro/`（公开、MIT）
+- [x] **Q2 · 新增 `soundlink-pro` crate（免费实现）** — `desktop/pro/`（公开、MIT）
   - `FreeCapabilities`：`max_remembered_devices() = 1`、`startup_plan() = None`、`reconnect_policy() = None`、`profiles() = None`、`shortcuts()` 仅返回 `Ctrl+Shift+S`（显窗口，免费保留）、`tray_items()` 仅返回基础项
   - 导出 `pub const EDITION: &str = "community";` 与工厂 `pub fn capabilities() -> Arc<dyn ProCapabilities>`
   - [`Cargo.toml`](../../../desktop/src-tauri/Cargo.toml) 加**恒定 path 依赖**（不加 `pro` feature、不加 optional）
   - 版本号写定后**不再变动**，且私有侧必须一致（`02` §5.1 / G11）
   - 验证：`cargo test -p soundlink-pro` 覆盖免费实现各返回值；`cargo build --features tauri_app` 通过
-- [ ] **Q3 · 私有仓库 `soundlink-pro` 骨架** — crate 名与公开侧**同名、同版本号**
+- [x] **Q3 · 私有仓库 `soundlink-pro` 骨架** — crate 名与公开侧**同名、同版本号**
   - 依赖 `soundlink-pro-api` 用**相对路径** `../pro-api`（挂载后解析到公开仓库；禁用绝对路径，会触发 lockfile collision，见 `02` §5.1）；导出 `EDITION = "official"` 与同名工厂函数
   - 首版可只做 `max_remembered_devices() = 8`，验证整条替换通路
   - 验证：`desktop/pro/` 替换为私有实现后 `cargo build --features tauri_app` 通过，且免费实现恢复后同样通过；**每次替换后必须 `cargo clean -p soundlink-pro`**（V-4 已证实不清理会构建出错版本产物且无报错）
-- [ ] **Q4 · `AppState` 挂载能力对象** — [`commands/mod.rs`](../../../desktop/src-tauri/src/commands/mod.rs#L43)
+- [x] **Q4 · `AppState` 挂载能力对象** — [`commands/mod.rs`](../../../desktop/src-tauri/src/commands/mod.rs#L43)
   - 加 `pub caps: Arc<dyn ProCapabilities>`、`pub entitlement: Arc<RwLock<Entitlement>>`
   - `AppState::new` 中构造；免费构建下恒为 `Free`
   - 验证：现有 42 个命令行为逐项不变
-- [ ] **Q5 · CI 双构建** — `.github/workflows/`
+- [x] **Q5 · CI 双构建** — `.github/workflows/`
   - 公开 CI：用仓库自带免费实现（无任何 secret），确保社区 fork 可通过
   - 发布 CI：仅 tag 触发；用只读细粒度 token 把私有实现检出覆盖 `desktop/pro/` 后构建；**日志不得打印私有仓库内容或 token**（E7）
   - 检出后**必须 `cargo clean -p soundlink-pro`**（`rust-cache` 恢复的 `target/` 会串味）；构建后不做任何 git 写操作（避免私有依赖清单回流，见 `02` §5.2）
@@ -234,40 +234,40 @@ license 中**不含版本号**，校验也**不比较软件版本**。payload �
 
 #### 对应任务
 
-- [ ] **R8 · 公钥数组化与兼容判定** — `license/token.rs` 直接实现为 `PUBKEYS_VENDOR: &[&str]`（首发仅一项）+ `LICENSE_FORMAT_MAX` + `sku` 白名单常量
+- [x] **R8 · 公钥数组化与兼容判定** — `license/token.rs` 直接实现为 `PUBKEYS_VENDOR: &[&str]`（首发仅一项）+ `LICENSE_FORMAT_MAX` + `sku` 白名单常量
   - 一开始就做成可扩张形态，避免日后改结构时破坏兼容
   - 验证：单测「旧格式 v1 license 在 `LICENSE_FORMAT_MAX=2` 下仍通过」、「第二个公钥签发的 key 也通过」
-- [ ] **R9 · 指纹候选集** — `license/fingerprint.rs` 提供 `fingerprint_candidates() -> Vec<String>`（首发仅 v1），比对时任一命中即通过
+- [x] **R9 · 指纹候选集** — `license/fingerprint.rs` 提供 `fingerprint_candidates() -> Vec<String>`（首发仅 v1），比对时任一命中即通过
   - 验证：单测断言候选集含 v1，且比对使用 `contains` 语义
-- [ ] **R10 · 升级保持测试** — 模拟「旧版本写入 license → 新版本读取」
+- [x] **R10 · 升级保持测试** — 模拟「旧版本写入 license → 新版本读取」
   - 覆盖：keyring 路径 + 文件兜底路径；`v` 值低于当前上限；payload 含未知多余字段（须被忽略而非报错）
   - 归入 U1 计数
 
 ### 4.3 进度表
 
-- [ ] **R1 · `license` 模块** — `desktop/src-tauri/src/license/{mod.rs,token.rs,fingerprint.rs,revocation.rs}`
+- [x] **R1 · `license` 模块** — `desktop/src-tauri/src/license/{mod.rs,token.rs,fingerprint.rs,revocation.rs}`
   - `LicenseState`：`Free` / `Active{sub,iat,seats}` / `Invalid(reason)` / `Expired` / `Revoked` / `DeviceMismatch`
   - base32 编解码自实现（约 40 行），**不加新 crate**
   - 验证：`cargo test license::` ≥ 12 例（见 U1）
-- [ ] **R2 · vendor 公钥常量** — `license/token.rs` 内 `PUBKEY_VENDOR_B64`
+- [x] **R2 · vendor 公钥常量** — `license/token.rs` 内 `PUBKEY_VENDOR_B64`
   - 私钥绝不入库；单测断言解码长度 32 + 一份 committed 测试 fixture license
-- [ ] **R3 · 设备指纹** — `license/fingerprint.rs`
+- [x] **R3 · 设备指纹** — `license/fingerprint.rs`
   - Windows 注册表读取需 `windows` crate 加 `Win32_System_Registry` feature
   - 验证：同机两次结果一致；单测覆盖 `machine_id` 缺失回退分支
-- [ ] **R4 · Entitlement 注入** — `AppState::new` 中加载并验签一次，写入 `entitlement`
+- [x] **R4 · Entitlement 注入** — `AppState::new` 中加载并验签一次，写入 `entitlement`
   - **`Free` 是正常状态**：加载失败仅 `tracing::info!`，不 warn 不 error
   - `pro` feature 未启用时**跳过整个校验流程**（免费构建无需 license 代码路径参与）
   - 验证：无 license 启动日志无告警
-- [ ] **R5 · Tauri 命令三件套** — `commands/mod.rs` + [`main.rs`](../../../desktop/src-tauri/src/main.rs#L94) 注册
+- [x] **R5 · Tauri 命令三件套** — `commands/mod.rs` + [`main.rs`](../../../desktop/src-tauri/src/main.rs#L94) 注册
   - `get_license_status() -> LicenseInfo`（`entitlement` / `state` / `sub_masked` / `fingerprint` / `pro_build: bool`）
   - `activate_license(key)`（验签通过则写 keyring + 更新 entitlement + emit `license-changed`）
   - `deactivate_license()`（清 keyring 与文件，回落 Free；给用户「换机前先释放」的确定性）
   - `sub_masked` 只回显前 4 后 2 字符，避免截图泄露
   - **免费构建下 `pro_build = false`**，前端据此把 Pro 区块显示为「本构建不含 Pro（社区版）」而非「点击购买」
   - 验证：粘贴激活 → 状态变 Pro → 重启仍 Pro → 反激活回 Free
-- [ ] **R6 · 吊销名单** — `license/revocation.rs` 静态 `REVOKED_NONCES: &[&str]`，首发空数组
+- [x] **R6 · 吊销名单** — `license/revocation.rs` 静态 `REVOKED_NONCES: &[&str]`，首发空数组
   - 验证：临时插入测试 nonce 的单测
-- [ ] **R7 · 前端 Pro 区块** — [`SettingsPanel.tsx`](../../../desktop/ui/src/components/SettingsPanel.tsx) 新增「授权」`section`
+- [x] **R7 · 前端 Pro 区块** — [`SettingsPanel.tsx`](../../../desktop/ui/src/components/SettingsPanel.tsx) 新增「授权」`section`
   - 展示：当前状态 / 设备指纹（一键复制）/ 激活输入框 / 购买链接（走既有 `openExternal`）/ 反激活
   - listen `license-changed` 即时刷新，无需重启
   - 验证：三种状态（社区构建 / Pro 未激活 / Pro 已激活）UI 均正确
@@ -282,79 +282,79 @@ license 中**不含版本号**，校验也**不比较软件版本**。payload �
 
 ### S-A · PRO-3 设备记忆上限（先做，最简单且被其他项依赖）
 
-- [ ] **S1 · `TrustStore` 容量约束** — [`trust_store.rs`](../../../desktop/src-tauri/src/pairing/trust_store.rs#L80)
+- [x] **S1 · `TrustStore` 容量约束** — [`trust_store.rs`](../../../desktop/src-tauri/src/pairing/trust_store.rs#L80)
   - `add()` 增加 `max: usize` 参数（或 `TrustStore` 构造时注入上限）
   - 超限行为：**替换 `last_seen` 最旧的条目**，而非拒绝新配对
     - 理由：拒绝会让免费用户在「换手机」时卡死，体验极差且会招致差评；替换最旧的符合「记忆 1 台 = 记住最近用的那台」的直觉
   - 上限来源：`caps.max_remembered_devices()`（免费 1 / Pro 8）
   - 被替换时 emit 事件 → 前端提示「已替换最久未用的设备（免费版可记忆 1 台）」
   - 验证：免费实现下第 2 次配对替换第 1 条；Pro 实现下累积到 8 后才替换；单测覆盖两种上限
-- [ ] **S2 · UI 提示** — 设备列表旁标注 `1/1`（免费）或 `3/8`（Pro）
+- [x] **S2 · UI 提示** — 设备列表旁标注 `1/1`（免费）或 `3/8`（Pro）
   - 验证：数量随配对变化正确
 
 ### S-B · PRO-1 开机自启 + 启动即进入收/发模式
 
-- [ ] **S3 · 自动收发逻辑下沉到 Rust** — 现状在 [`App.tsx`](../../../desktop/ui/src/App.tsx#L316-L360)，前端门控可被绕过
+- [x] **S3 · 自动收发逻辑下沉到 Rust** — 现状在 [`App.tsx`](../../../desktop/ui/src/App.tsx#L316-L360)，前端门控可被绕过
   - 新增命令 `resolve_startup_plan() -> Option<StartupPlan>`，内部走 `caps.startup_plan(&cfg)`
   - 前端只负责「拿到 plan 就执行对应现有命令 + 更新 UI 状态」，不再自行读开关判断
   - 免费实现恒返回 `None` → 前端自然不执行任何自动启动
   - 验证：免费构建下即使手工把 `app_config.json` 的 `auto_receive_on_start` 改为 `true`，**也不会自动启动**（这是门控有效性的关键验收项）
-- [ ] **S4 · `set_app_settings` 门控** — [`commands/mod.rs`](../../../desktop/src-tauri/src/commands/mod.rs#L987)
+- [x] **S4 · `set_app_settings` 门控** — [`commands/mod.rs`](../../../desktop/src-tauri/src/commands/mod.rs#L987)
   - `auto_start` / `auto_receive_on_start` / `auto_send_on_start` 三参数在免费下**忽略并返回当前值**（不报错、不写入）
   - 返回结构加 `automation_available: bool` 供前端置灰
   - 保留 `close_action` / `onboarding_completed` / `sender_drm_hint_seen` 免费可写
   - 验证：免费下调 `set_app_settings` 传 `auto_start=true`，返回仍为 `false` 且 autostart 注册项未创建
-- [ ] **S5 · 静默启动（窗口不弹出）** — Pro 体验的关键差异
+- [x] **S5 · 静默启动（窗口不弹出）** — Pro 体验的关键差异
   - `--autostarted` 参数（[`main.rs`](../../../desktop/src-tauri/src/main.rs#L47) 已传入）时，Pro 下**直接最小化到托盘**，不显示主窗口
   - `tauri.conf.json` 主窗口保持 `visible: true`，改为运行时按参数 `hide()`（避免免费版行为改变）
   - 验证：开机后无窗口弹出，托盘图标显示「接收中」，音频可用
-- [ ] **S6 · 前端设置页门控 UI** — [`SettingsPanel.tsx`](../../../desktop/ui/src/components/SettingsPanel.tsx)
+- [x] **S6 · 前端设置页门控 UI** — [`SettingsPanel.tsx`](../../../desktop/ui/src/components/SettingsPanel.tsx)
   - 三个开关在免费下置灰 + 「Pro」徽标 + 一行说明 + 「了解 Pro」链接
   - 验证：激活后即时可用（listen `license-changed`）
 
 ### S-C · PRO-2 记忆并自动重连上次设备
 
-- [ ] **S7 · 「上次设备」持久化** — [`config/mod.rs`](../../../desktop/src-tauri/src/config/mod.rs)
+- [x] **S7 · 「上次设备」持久化** — [`config/mod.rs`](../../../desktop/src-tauri/src/config/mod.rs)
   - 加 `#[serde(default)] pub last_peer_device_id: Option<String>`（区别于已有 `last_receiver_addr`，后者只是地址无身份）
   - 成功建立连接时写入（接收端记发送端、发送端记接收端）
   - **此字段免费版也写入**（记录行为无害），只是免费不消费它
   - 验证：连接后重启，配置文件含正确 device_id
-- [ ] **S8 · 自动重连策略** — `caps.reconnect_policy()`
+- [x] **S8 · 自动重连策略** — `caps.reconnect_policy()`
   - Pro：启动时按 `last_peer_device_id` 查 `TrustStore` 直连；断线后指数退避重试（1s/2s/4s/8s/上限 30s），静默不弹窗
   - 免费：`None`，行为与现状一致（发送端既有 `start_with_reconnect` 的会话内重连**保持免费**——那是「本次连接的鲁棒性」，属流转本体，不能收费）
   - **边界明确**：Pro 卖的是「**跨启动**的自动重连」，不是「连接过程中的容错」
   - 验证：拔网线 → 恢复后自动恢复播放；免费构建下需手动重连
-- [ ] **S9 · 发送端目标选择修正** — 替换 [`App.tsx`](../../../desktop/ui/src/App.tsx#L340-L351) 的「取第一个」逻辑
+- [x] **S9 · 发送端目标选择修正** — 替换 [`App.tsx`](../../../desktop/ui/src/App.tsx#L340-L351) 的「取第一个」逻辑
   - 改为按 `last_peer_device_id` 优先，回退到 `last_seen` 最新
   - 验证：多台已信任接收端时连到正确的那台
 
 ### S-D · PRO-4 多套配置一键切换
 
-- [ ] **S10 · `Profile` 数据结构** — [`config/mod.rs`](../../../desktop/src-tauri/src/config/mod.rs)
+- [x] **S10 · `Profile` 数据结构** — [`config/mod.rs`](../../../desktop/src-tauri/src/config/mod.rs)
   - `pub struct Profile { id, name, output_device: Option<usize>, jitter_mode: String, volume: f32, audio_params: AudioParams, role: String, peer_device_id: Option<String> }`
   - `AppConfig` 加 `#[serde(default)] pub profiles: Vec<Profile>`、`#[serde(default)] pub active_profile: Option<String>`
   - 上限 8；免费下 `caps.profiles()` 为 `None`，命令直接返回受限提示
   - 验证：老 `app_config.json` 可正常加载（E6）
-- [ ] **S11 · 命令** — `list_profiles` / `save_profile` / `apply_profile` / `delete_profile` / `rename_profile`
+- [x] **S11 · 命令** — `list_profiles` / `save_profile` / `apply_profile` / `delete_profile` / `rename_profile`
   - `apply_profile` **复用**既有 `select_output_device` / `set_jitter_mode` / `set_volume` / `set_audio_params` 内部逻辑，不重复实现
   - 涉及 `restart_required` 的参数变更返回提示，不静默重启流
   - 验证：切换后 `get_desktop_settings` 各字段与档内一致
-- [ ] **S12 · UI** — 新增 `desktop/ui/src/components/ProfilePanel.tsx`，挂设置页
+- [x] **S12 · UI** — 新增 `desktop/ui/src/components/ProfilePanel.tsx`，挂设置页
   - 免费下显示 2 个示例档（灰色不可点）+ Pro 徽标
   - 验证：激活前后状态切换正确
 
 ### S-E · PRO-5 全局快捷键与托盘直控
 
-- [ ] **S13 · 快捷键注册改为能力驱动** — [`main.rs`](../../../desktop/src-tauri/src/main.rs#L50-L77)
+- [x] **S13 · 快捷键注册改为能力驱动** — [`main.rs`](../../../desktop/src-tauri/src/main.rs#L50-L77)
   - 现状硬编码两个快捷键 → 改为遍历 `caps.shortcuts()`
   - 免费：仅 `Ctrl+Shift+S`（显示主窗口，属基本可用性，保持免费）
   - Pro：追加 `Ctrl+Shift+P`（切角色）、开始/停止收发、切换输出设备、静音切换
   - handler 中 `ShortcutAction` → emit 对应事件（沿用现有 `global-shortcut` 事件通道，`kind` 扩展）
   - 验证：免费下 `Ctrl+Shift+P` 无响应；Pro 下全部生效
-- [ ] **S14 · 快捷键自定义（Pro）** — `AppConfig` 加 `#[serde(default)] pub shortcuts: Vec<ShortcutBinding>`
+- [x] **S14 · 快捷键自定义（Pro）** — `AppConfig` 加 `#[serde(default)] pub shortcuts: Vec<ShortcutBinding>`
   - 冲突检测：注册失败时提示而非静默忽略（现状仅 `tracing::warn!`）
   - 验证：改绑后重启仍生效；与系统占用冲突时有明确提示
-- [ ] **S15 · 托盘直控菜单** — `commands/tray.rs`
+- [x] **S15 · 托盘直控菜单** — `commands/tray.rs`
   - 菜单项来自 `caps.tray_items()`；免费仅「显示主窗口 / 退出」
   - Pro 追加「开始/停止接收」「开始/停止发送」「静音」「切换到配置档 →」子菜单
   - 菜单文字随状态更新（如「开始接收」↔「停止接收」）
@@ -366,17 +366,17 @@ license 中**不含版本号**，校验也**不比较软件版本**。payload �
 
 ## 6. 阶段 T · 签发工具链与销售落地（对应 M-E）
 
-- [ ] **T1 · 密钥生成脚本** — `scripts/license/keygen.py`（用项目根 `.venv`，禁系统 python）
+- [x] **T1 · 密钥生成脚本** — `scripts/license/keygen.py`（用项目根 `.venv`，禁系统 python）
   - 生成 vendor Ed25519 密钥对；私钥输出到**仓库外**路径；打印公钥 base64 供填 R2
   - `.gitignore` 加 `scripts/license/*.pem`、`*_sk*`、`license_ledger.csv`
   - 输出须醒目提示：**私钥丢失 = 无法再签发新 key（已发出的仍可用）**
-- [ ] **T2 · 签发脚本** — `scripts/license/issue.py`
+- [x] **T2 · 签发脚本** — `scripts/license/issue.py`
   - 入参 `--sub <指纹|订单号> --bind fingerprint|order [--seats 3] [--note 订单号]`
   - 输出 license 文本 + 追加本地台账 `license_ledger.csv`（不入库）
-- [ ] **T3 · 跨语言一致性测试** — `scripts/license/roundtrip_check.py` + Rust fixture
+- [x] **T3 · 跨语言一致性测试** — `scripts/license/roundtrip_check.py` + Rust fixture
   - Python 签发 → Rust 验签通过；Rust 拒绝篡改样本
   - 用 committed 测试密钥对，纳入公开 CI（不需真实私钥）
-- [ ] **T4 · 换机/重装 SOP** — 追加到 [`docs/user/08-troubleshooting.md`](../../user/08-troubleshooting.md)（**不新建 md**）
+- [x] **T4 · 换机/重装 SOP** — 追加到 [`docs/user/08-troubleshooting.md`](../../user/08-troubleshooting.md)（**不新建 md**）
   - 旧订单号 + 新指纹 → 查台账 → 重签发；明确「免费重签不限次数」
 - [ ] **T5 · 爱发电商品页** — 9.99 档位；含 00 文档 §7.3 四句话 + 指纹获取图示 + 「备注填指纹」
 - [ ] **T6 · 淘宝小店** — 同上，旺旺索取指纹
@@ -384,19 +384,19 @@ license 中**不含版本号**，校验也**不比较软件版本**。payload �
   - 内容 = 00 文档 §5 对照表 + §7.3 口径 + 购买按钮外链
   - **必须包含 open-core 说明**（核心开源可自编译，Pro 增强闭源）
   - 验证：`npm run build` 通过；中英双语无缺项
-- [ ] **T8 · README 修订** — [`README.md`](../../../README.md) / [`README.en.md`](../../../README.en.md)
+- [x] **T8 · README 修订** — [`README.md`](../../../README.md) / [`README.en.md`](../../../README.en.md)
   - 现有「MIT，完全免费」「无广告无订阅」表述需修订为准确的 open-core 描述
   - 新增「免费 vs Pro」小节（位置：「已知限制」之后）
   - 同步修订 [`01-market-research.md`](../opensource-launch/01-market-research.md) 中的自我定位措辞
-- [ ] **T9 · 隐私政策** — [`docs/privacy.md`](../../privacy.md) 补：license 校验完全离线、指纹为单向哈希不外传、无激活服务器
+- [x] **T9 · 隐私政策** — [`docs/privacy.md`](../../privacy.md) 补：license 校验完全离线、指纹为单向哈希不外传、无激活服务器
 
 ---
 
 ## 7. 阶段 U · 测试与质量门
 
-- [ ] **U1 · license 单测 ≥ 12 例** — 合法 / 篡改 payload / 篡改 sig / 错前缀 / 坏 base32 / 坏 JSON / 版本过高 / 已过期 / 永久无 exp / 指纹符 / 指纹不符 / 吊销命中
+- [x] **U1 · license 单测 ≥ 12 例** — 合法 / 篡改 payload / 篡改 sig / 错前缀 / 坏 base32 / 坏 JSON / 版本过高 / 已过期 / 永久无 exp / 指纹符 / 指纹不符 / 吊销命中
   - **全项目最不能出错的模块**（锁死付费用户风险，E1）
-- [ ] **U2 · 门控有效性测试** — 每项 Pro 能力各一例
+- [x] **U2 · 门控有效性测试** — 每项 Pro 能力各一例
   - 重点：**手工篡改 `app_config.json` 无法在免费构建下启用自动化**（S3 验收项）
   - 免费构建下 Pro 命令返回受限提示且无副作用
 - [ ] **U3 · 免费版完整性回归** — 手动清单：配对 / Android→Win 收发 / Win→Win 收发 / 参数调整 / 音量 / 设备切换 / 托盘最小化 / 日志面板 / 首次引导
@@ -407,7 +407,7 @@ license 中**不含版本号**，校验也**不比较软件版本**。payload �
 - [ ] **U6b · 升级保持演练**（对应 §4.2 / R10）— 装旧版 → 激活 → 覆盖安装新版（NSIS 升级 + 免安装 exe 替换两种路径）→ 确认**仍为 Pro 且无需重新激活**
   - 同时确认配置目录未被安装器清理、keyring 条目未失效
 - [ ] **U7 · 性能门** — 免费构建 CPU/内存与基线持平（±2%）；Pro 自动重连轮询不增加空闲 CPU（无连接时不应有忙等）
-- [ ] **U8 · 双构建 CI 绿** — 公开 CI（免费）+ 发布 CI（Pro）各通过；`cargo clippy -- -D warnings` + `npm run build` 全绿
+- [x] **U8 · 双构建 CI 绿** — 公开 CI（免费）+ 发布 CI（Pro）各通过；`cargo clippy -- -D warnings` + `npm run build` 全绿
 
 ---
 

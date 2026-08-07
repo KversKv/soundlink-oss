@@ -16,9 +16,10 @@
 use crate::audio::capture::{self, CaptureSource};
 use crate::audio::jitter_buffer::JitterMode;
 use crate::audio::output::OutputDeviceInfo;
-use crate::config::{AppConfig, AudioParams};
+use crate::config::{AppConfig, AudioParams, Profile};
 use crate::constants::{DEFAULT_AUDIO_PORT, DEFAULT_CONTROL_PORT};
 use crate::device::device_identity::DeviceIdentity;
+use crate::license::{self, LicenseState};
 use crate::network::control_server::ControlServer;
 use crate::network::discovery::{DiscoveredReceiver, MdnsBroadcaster, MdnsBrowser};
 use crate::pairing::{PairingCodeManager, TrustStore, TrustedDevice};
@@ -26,6 +27,9 @@ use crate::receiver::{ReceiverEngine, ReceiverStatus};
 use crate::sender::{SenderEngine, SenderStatus};
 use parking_lot::Mutex;
 use serde::Serialize;
+use soundlink_pro_api::{
+    AutomationInput, Entitlement, EntitlementHandle, ProCapabilities, StartupPlan,
+};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::{Manager, State};
@@ -58,12 +62,23 @@ pub struct AppState {
     pub dump_enable: bool,
     /// 设备身份加载是否失败（D5）：true 时 main.rs setup emit `identity-load-failed`。
     pub identity_load_failed: bool,
+    /// MON-01 Q4：Pro 能力对象（唯一真相源，业务代码只按能力值行事，E4）。
+    pub caps: Arc<dyn ProCapabilities>,
+    /// MON-01 R4：授权级别（AppState 与 Pro 实现共享同一份句柄）。
+    pub entitlement: EntitlementHandle,
+    /// MON-01 R4：最近一次 license 校验结论（Free 是正常状态）。
+    pub license_state: Arc<parking_lot::RwLock<LicenseState>>,
+    /// 本次是否由系统自启动拉起（命令行带 `--autostarted`，S5 静默启动判定输入）。
+    pub autostarted: bool,
+    /// 静音切换：Some(原音量) 表示当前处于静音态（PRO-5）。
+    pub muted: Mutex<Option<f32>>,
 }
 
 impl AppState {
     /// `debug`：DEBUG 模式（配对码固定 12345678）。
     /// `dump_enable`：音频各阶段 RAW Data 转储开关。
-    pub fn new(debug: bool, dump_enable: bool) -> Self {
+    /// `autostarted`：命令行带 `--autostarted`（本次由系统自启动拉起）。
+    pub fn new(debug: bool, dump_enable: bool, autostarted: bool) -> Self {
         let dir = config_dir();
         let mut identity_load_failed = false;
         let identity = DeviceIdentity::load_or_create(&dir).unwrap_or_else(|e| {
@@ -111,9 +126,25 @@ impl AppState {
         engine.set_jitter_mode(jitter_mode);
         engine.set_volume(config.volume);
         let role = parse_role(&config.role).unwrap_or_default();
+        // MON-01 R4：启动时加载并验签 license 一次（全程离线）。
+        // Free 是正常状态：加载失败仅 info 级日志，不 warn 不 error。
+        let device_id = identity.device_id.clone();
+        let license_state = license::load_and_validate(&dir, &device_id);
+        let entitlement: EntitlementHandle = Arc::new(parking_lot::RwLock::new(
+            if license_state.is_active() {
+                Entitlement::Pro
+            } else {
+                Entitlement::Free
+            },
+        ));
+        // MON-01 Q4：能力对象来自 soundlink-pro crate（免费实现 / 私有实现）。
+        // 门控判定一次性完成，不进音频热路径（E5）。
+        let caps = soundlink_pro::capabilities(entitlement.clone());
         Self {
             engine,
-            sender: Arc::new(SenderEngine::with_trust(trust.clone(), dump_enable)),
+            sender: Arc::new(
+                SenderEngine::with_trust(trust.clone(), dump_enable).with_caps(caps.clone()),
+            ),
             pairing,
             identity: Arc::new(Mutex::new(identity)),
             trust,
@@ -126,7 +157,56 @@ impl AppState {
             config_dir: dir,
             dump_enable,
             identity_load_failed,
+            caps,
+            entitlement,
+            license_state: Arc::new(parking_lot::RwLock::new(license_state)),
+            autostarted,
+            muted: Mutex::new(None),
         }
+    }
+
+    /// MON-01 S3：构造启动自动化判定输入。
+    ///
+    /// `last_peer_device_id` 仅当该设备仍在信任存储且带连接信息时提供
+    /// （否则自动连接必然失败，不应出现在计划里）。
+    pub fn automation_input(&self) -> AutomationInput {
+        let cfg = self.config.lock();
+        let role = *self.role.lock();
+        let last_peer_device_id = cfg.last_peer_device_id.clone().filter(|id| {
+            self.trust
+                .lock()
+                .get(id)
+                .map(|d| d.host.is_some() && d.control_port.is_some())
+                .unwrap_or(false)
+        });
+        AutomationInput {
+            auto_start: cfg.auto_start,
+            auto_receive_on_start: cfg.auto_receive_on_start,
+            auto_send_on_start: cfg.auto_send_on_start,
+            role: match role {
+                Role::Receiver => soundlink_pro_api::Role::Receiver,
+                Role::Sender => soundlink_pro_api::Role::Sender,
+            },
+            launched_via_autostart: self.autostarted,
+            last_peer_device_id,
+        }
+    }
+
+    /// MON-01 S3/S5：启动计划（免费实现恒 None；门控只在此一处判定）。
+    pub fn startup_plan(&self) -> Option<StartupPlan> {
+        self.caps.startup_plan(&self.automation_input())
+    }
+
+    /// MON-01 R5：刷新授权状态（激活/反激活后调用）。
+    /// 写 license_state 与 entitlement 句柄（Pro 实现即刻感知，无需重启）。
+    pub fn set_license_state(&self, state: LicenseState) {
+        let active = state.is_active();
+        *self.license_state.write() = state;
+        *self.entitlement.write() = if active {
+            Entitlement::Pro
+        } else {
+            Entitlement::Free
+        };
     }
 }
 
@@ -231,12 +311,16 @@ pub async fn start_receiver(
             Some(s.config.clone()),
             Some(s.config_dir.clone()),
             // D4：传入 AppHandle 以便配对锁定时 emit 事件给前端。
-            Some(app),
+            Some(app.clone()),
+            // MON-01 S1：设备记忆上限来自能力对象。
+            Some(s.caps.clone()),
         );
         let bind = format!("0.0.0.0:{}", DEFAULT_CONTROL_PORT);
         control.start(&bind).await?;
         *s.control.lock() = Some(control);
     }
+    // MON-01 S15：托盘菜单文字随状态翻转（「开始接收」↔「停止接收」）。
+    tray::refresh_tray(&app);
 
     Ok(StartResult {
         pairing_code: code,
@@ -248,7 +332,7 @@ pub async fn start_receiver(
 
 /// 停止接收器：停止控制服务器、mDNS 广播、UDP 接收。
 #[tauri::command]
-pub fn stop_receiver(state: State<'_, AppState>) -> Result<(), String> {
+pub fn stop_receiver(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<(), String> {
     let s = state.inner();
     if let Some(c) = s.control.lock().take() {
         c.stop();
@@ -257,6 +341,8 @@ pub fn stop_receiver(state: State<'_, AppState>) -> Result<(), String> {
         m.stop();
     }
     s.engine.stop();
+    // MON-01 S15：托盘菜单文字随状态翻转。
+    tray::refresh_tray(&app);
     Ok(())
 }
 
@@ -781,13 +867,20 @@ pub async fn start_sender(
             DEFAULT_AUDIO_PORT,
             audio_params,
         )
-        .await
+        .await?;
+    // MON-01 S7：连接成功后记录上次对端设备（供 Pro 跨启动自动重连）。
+    record_last_peer(s, &s.sender.status().receiver_device_id);
+    // MON-01 S15：托盘菜单文字随状态翻转。
+    tray::refresh_tray(&app);
+    Ok(())
 }
 
 /// 停止发送端。
 #[tauri::command]
-pub async fn stop_sender(state: State<'_, AppState>) -> Result<(), String> {
+pub async fn stop_sender(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<(), String> {
     state.inner().sender.stop().await;
+    // MON-01 S15：托盘菜单文字随状态翻转。
+    tray::refresh_tray(&app);
     Ok(())
 }
 
@@ -918,7 +1011,31 @@ pub async fn connect_trusted_receiver(
             DEFAULT_AUDIO_PORT,
             audio_params,
         )
-        .await
+        .await?;
+    // MON-01 S7：连接成功后记录上次对端设备。
+    record_last_peer(s, &device_id);
+    Ok(())
+}
+
+/// MON-01 S7：写入上次对端 device_id（空串忽略）。免费版也写入，只是不消费。
+fn record_last_peer(s: &AppState, peer_device_id: &str) {
+    if peer_device_id.is_empty() {
+        return;
+    }
+    let changed = {
+        let mut cfg = s.config.lock();
+        if cfg.last_peer_device_id.as_deref() == Some(peer_device_id) {
+            false
+        } else {
+            cfg.last_peer_device_id = Some(peer_device_id.to_string());
+            true
+        }
+    };
+    if changed {
+        if let Err(e) = save_config(s) {
+            tracing::warn!("记录上次对端设备失败：{}", e);
+        }
+    }
 }
 
 // ────────────────────────────────────────────────────────────────────
@@ -938,6 +1055,10 @@ pub struct AppSettings {
     pub onboarding_completed: bool,
     /// F6：发送端 DRM 提示是否已展示。
     pub sender_drm_hint_seen: bool,
+    /// MON-01 S4：自动化（自启 + 自动收发）是否可配置。false 时前端置灰（Pro 能力）。
+    pub automation_available: bool,
+    /// MON-01 S10：配置档是否可用（Pro 能力）。
+    pub profiles_available: bool,
 }
 
 /// 退出整个应用（非仅关闭窗口）。D3：先调 cleanup_before_quit 再 exit。
@@ -977,6 +1098,8 @@ pub fn get_app_settings(state: State<'_, AppState>) -> Result<AppSettings, Strin
         auto_send_on_start: cfg.auto_send_on_start,
         onboarding_completed: cfg.onboarding_completed,
         sender_drm_hint_seen: cfg.sender_drm_hint_seen,
+        automation_available: state.caps.automation_available(),
+        profiles_available: state.caps.profiles().is_some(),
     })
 }
 
@@ -994,6 +1117,14 @@ pub async fn set_app_settings(
     onboarding_completed: Option<bool>,
     sender_drm_hint_seen: Option<bool>,
 ) -> Result<AppSettings, String> {
+    // MON-01 S4：自动化三项为 Pro 能力。不可用时**忽略并返回当前值**
+    // （不报错、不写入、不动 autostart 注册项）。
+    let automation_available = state.caps.automation_available();
+    if !automation_available
+        && (auto_start.is_some() || auto_receive_on_start.is_some() || auto_send_on_start.is_some())
+    {
+        tracing::info!("自动化设置为 Pro 能力，本次写入被忽略（保持当前值）");
+    }
     {
         let mut cfg = state.config.lock();
         if let Some(v) = close_action {
@@ -1002,14 +1133,16 @@ pub async fn set_app_settings(
             }
             cfg.close_action = v;
         }
-        if let Some(v) = auto_start {
-            cfg.auto_start = v;
-        }
-        if let Some(v) = auto_receive_on_start {
-            cfg.auto_receive_on_start = v;
-        }
-        if let Some(v) = auto_send_on_start {
-            cfg.auto_send_on_start = v;
+        if automation_available {
+            if let Some(v) = auto_start {
+                cfg.auto_start = v;
+            }
+            if let Some(v) = auto_receive_on_start {
+                cfg.auto_receive_on_start = v;
+            }
+            if let Some(v) = auto_send_on_start {
+                cfg.auto_send_on_start = v;
+            }
         }
         if let Some(v) = onboarding_completed {
             cfg.onboarding_completed = v;
@@ -1019,8 +1152,10 @@ pub async fn set_app_settings(
         }
     }
     save_config(state.inner())?;
-    if let Some(v) = auto_start {
-        sync_autostart(&app, v)?;
+    if automation_available {
+        if let Some(v) = auto_start {
+            sync_autostart(&app, v)?;
+        }
     }
     get_app_settings(state)
 }
@@ -1041,6 +1176,11 @@ pub fn set_auto_start(
     state: State<'_, AppState>,
     enabled: bool,
 ) -> Result<bool, String> {
+    // MON-01 S4：开机自启为 Pro 能力。不可用时忽略写入，返回当前值。
+    if !state.caps.automation_available() {
+        tracing::info!("开机自启为 Pro 能力，本次写入被忽略（保持当前值）");
+        return Ok(state.config.lock().auto_start);
+    }
     state.config.lock().auto_start = enabled;
     save_config(state.inner())?;
     sync_autostart(&app, enabled)?;
@@ -1061,6 +1201,502 @@ fn sync_autostart(app: &tauri::AppHandle, enabled: bool) -> Result<(), String> {
     } else {
         let _ = mgr.disable();
         Ok(())
+    }
+}
+
+// ──────────────────────────── MON-01 R5：Pro 授权 ────────────────────────────
+
+/// 授权状态（设置页「授权」区块）。
+#[derive(Debug, Clone, Serialize)]
+pub struct LicenseInfo {
+    /// "free" | "pro"
+    pub entitlement: String,
+    /// "free" | "active" | "invalid" | "expired" | "revoked" | "device_mismatch"
+    pub state: String,
+    /// Invalid 的详细原因（其余状态为 None）。
+    pub detail: Option<String>,
+    /// 买家标识掩码回显（前 4 后 2，避免截图泄露完整指纹/订单号）。
+    pub sub_masked: Option<String>,
+    /// 本机设备指纹（单向哈希 10 位短码；下单时提供给卖家）。
+    pub fingerprint: String,
+    /// 本构建是否含 Pro 逻辑（社区构建为 false，前端据此显示「本构建不含 Pro」）。
+    pub pro_build: bool,
+}
+
+fn mask_sub(sub: &str) -> String {
+    let chars: Vec<char> = sub.chars().collect();
+    if chars.len() > 6 {
+        let head: String = chars[..4].iter().collect();
+        let tail: String = chars[chars.len() - 2..].iter().collect();
+        format!("{}…{}", head, tail)
+    } else {
+        "…".into()
+    }
+}
+
+fn license_info(state: &AppState) -> LicenseInfo {
+    let ls = state.license_state.read().clone();
+    let device_id = state.identity.lock().device_id.clone();
+    let fingerprint = license::fingerprint::fingerprint_candidates(&device_id)
+        .first()
+        .cloned()
+        .unwrap_or_default();
+    LicenseInfo {
+        entitlement: match *state.entitlement.read() {
+            Entitlement::Pro => "pro".into(),
+            Entitlement::Free => "free".into(),
+        },
+        state: ls.state_str().into(),
+        detail: ls.detail().map(String::from),
+        sub_masked: ls.active_sub().map(mask_sub),
+        fingerprint,
+        // 构建形态标识仅用于 UI 文案（不做门控，G6）。
+        pro_build: soundlink_pro::EDITION == "official",
+    }
+}
+
+/// 查询授权状态。
+#[tauri::command]
+pub fn get_license_status(state: State<'_, AppState>) -> Result<LicenseInfo, String> {
+    Ok(license_info(state.inner()))
+}
+
+/// 激活 license：验签通过则写 keyring + 更新 entitlement + emit `license-changed`。
+/// 任何非 Active 一律保持免费版（E1），并返回带原因的 LicenseInfo（不抛错，UI 内联展示）。
+#[tauri::command]
+pub fn activate_license(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    key: String,
+) -> Result<LicenseInfo, String> {
+    use tauri::Emitter;
+    let s = state.inner();
+    let device_id = s.identity.lock().device_id.clone();
+    let validated = license::validate(&key, &device_id);
+    if validated.is_active() {
+        license::save_license_text(&s.config_dir, key.trim())?;
+        s.set_license_state(validated);
+        let info = license_info(s);
+        let _ = app.emit("license-changed", &info);
+        Ok(info)
+    } else {
+        // 不写入、不改变当前授权状态；仅返回原因供 UI 展示。
+        let mut info = license_info(s);
+        info.state = validated.state_str().into();
+        info.detail = validated.detail().map(String::from);
+        Ok(info)
+    }
+}
+
+/// 反激活：清除 keyring 与文件，回落 Free（给用户「换机前先释放」的确定性）。
+#[tauri::command]
+pub fn deactivate_license(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<LicenseInfo, String> {
+    use tauri::Emitter;
+    let s = state.inner();
+    license::clear_license(&s.config_dir);
+    s.set_license_state(LicenseState::Free);
+    let info = license_info(s);
+    let _ = app.emit("license-changed", &info);
+    Ok(info)
+}
+
+// ──────────────────────── MON-01 S3：启动计划下沉到 Rust ────────────────────────
+
+/// 启动时应自动执行的计划（免费实现恒 None）。
+/// 前端只负责「拿到 plan 就执行对应现有命令 + 更新 UI 状态」。
+#[tauri::command]
+pub fn resolve_startup_plan(state: State<'_, AppState>) -> Result<Option<StartupPlan>, String> {
+    Ok(state.startup_plan())
+}
+
+// ──────────────────────────── MON-01 S11：配置档 ────────────────────────────
+
+/// 配置档列表 + 可用性。免费下 `available=false`、列表为空（字段仍保留于配置，E6）。
+#[derive(Debug, Clone, Serialize)]
+pub struct ProfilesInfo {
+    pub available: bool,
+    pub max: usize,
+    pub active_id: Option<String>,
+    pub profiles: Vec<Profile>,
+}
+
+fn profile_gate(s: &AppState) -> Result<usize, String> {
+    s.caps
+        .profiles()
+        .map(|p| p.max_profiles())
+        .ok_or_else(|| "多套配置为 Pro 功能，当前构建/授权下不可用".to_string())
+}
+
+#[tauri::command]
+pub fn list_profiles(state: State<'_, AppState>) -> Result<ProfilesInfo, String> {
+    let s = state.inner();
+    let cfg = s.config.lock();
+    match s.caps.profiles() {
+        Some(store) => Ok(ProfilesInfo {
+            available: true,
+            max: store.max_profiles(),
+            active_id: cfg.active_profile.clone(),
+            profiles: cfg.profiles.clone(),
+        }),
+        None => Ok(ProfilesInfo {
+            available: false,
+            max: 0,
+            active_id: None,
+            profiles: Vec::new(),
+        }),
+    }
+}
+
+/// 把当前运行配置快照为一个新档。
+#[tauri::command]
+pub fn save_profile(state: State<'_, AppState>, name: String) -> Result<Profile, String> {
+    let s = state.inner();
+    let max = profile_gate(s)?;
+    let name = name.trim().to_string();
+    if name.is_empty() {
+        return Err("配置档名称不能为空".into());
+    }
+    let profile = {
+        let cfg = s.config.lock();
+        if cfg.profiles.len() >= max {
+            return Err(format!("配置档已达上限（{} 个）", max));
+        }
+        if cfg.profiles.iter().any(|p| p.name == name) {
+            return Err(format!("已存在同名配置档：{}", name));
+        }
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        Profile {
+            id: format!("prof-{}", now),
+            name,
+            output_device: *s.selected_device.lock(),
+            jitter_mode: s.engine.jitter_mode().as_str().into(),
+            volume: s.engine.volume(),
+            audio_params: cfg.audio_params.clone(),
+            role: role_as_str(*s.role.lock()).into(),
+            peer_device_id: cfg.last_peer_device_id.clone(),
+        }
+    };
+    {
+        let mut cfg = s.config.lock();
+        cfg.profiles.push(profile.clone());
+        cfg.active_profile = Some(profile.id.clone());
+    }
+    save_config(s)?;
+    Ok(profile)
+}
+
+/// 应用配置档结果。`restart_required=true` 提示用户需重启流才完全生效（不静默重启）。
+#[derive(Debug, Clone, Serialize)]
+pub struct ApplyProfileResult {
+    pub profile: Profile,
+    pub restart_required: bool,
+}
+
+#[tauri::command]
+pub fn apply_profile(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<ApplyProfileResult, String> {
+    let s = state.inner();
+    profile_gate(s)?;
+    let profile = {
+        let cfg = s.config.lock();
+        cfg.profiles
+            .iter()
+            .find(|p| p.id == id)
+            .cloned()
+            .ok_or_else(|| format!("配置档不存在：{}", id))?
+    };
+    // 复用既有命令内部逻辑（不重复实现）。
+    let role = parse_role(&profile.role).unwrap_or_default();
+    *s.role.lock() = role;
+    *s.selected_device.lock() = profile.output_device;
+    let jitter = parse_jitter_mode(&profile.jitter_mode).unwrap_or(JitterMode::Balanced);
+    s.engine.set_jitter_mode(jitter);
+    s.engine.set_volume(profile.volume.clamp(0.0, 1.0));
+    let params = profile.audio_params.clone().normalized();
+    let restart_required = params.restart_required();
+    let adaptive = params.jitter_mode == "auto";
+    s.sender.set_bitrate_adaptive(adaptive);
+    if !adaptive {
+        s.sender.set_target_bitrate(params.bitrate);
+    }
+    {
+        let mut cfg = s.config.lock();
+        cfg.role = role_as_str(role).into();
+        cfg.default_output_device = profile.output_device;
+        cfg.jitter_mode = jitter.as_str().into();
+        cfg.volume = s.engine.volume();
+        cfg.audio_params = params;
+        cfg.active_profile = Some(profile.id.clone());
+    }
+    save_config(s)?;
+    Ok(ApplyProfileResult {
+        profile,
+        restart_required,
+    })
+}
+
+#[tauri::command]
+pub fn delete_profile(state: State<'_, AppState>, id: String) -> Result<(), String> {
+    let s = state.inner();
+    profile_gate(s)?;
+    {
+        let mut cfg = s.config.lock();
+        let before = cfg.profiles.len();
+        cfg.profiles.retain(|p| p.id != id);
+        if cfg.profiles.len() == before {
+            return Err(format!("配置档不存在：{}", id));
+        }
+        if cfg.active_profile.as_deref() == Some(id.as_str()) {
+            cfg.active_profile = None;
+        }
+    }
+    save_config(s)
+}
+
+#[tauri::command]
+pub fn rename_profile(
+    state: State<'_, AppState>,
+    id: String,
+    name: String,
+) -> Result<(), String> {
+    let s = state.inner();
+    profile_gate(s)?;
+    let name = name.trim().to_string();
+    if name.is_empty() {
+        return Err("配置档名称不能为空".into());
+    }
+    {
+        let mut cfg = s.config.lock();
+        if cfg.profiles.iter().any(|p| p.name == name && p.id != id) {
+            return Err(format!("已存在同名配置档：{}", name));
+        }
+        let profile = cfg
+            .profiles
+            .iter_mut()
+            .find(|p| p.id == id)
+            .ok_or_else(|| format!("配置档不存在：{}", id))?;
+        profile.name = name;
+    }
+    save_config(s)
+}
+
+// ──────────────────── MON-01 S13/S14/S15：快捷键与托盘状态 ────────────────────
+
+/// 当前生效的全局快捷键（能力驱动；免费仅「显示主窗口」）。
+#[tauri::command]
+pub fn get_shortcuts(
+    state: State<'_, AppState>,
+) -> Result<Vec<soundlink_pro_api::ShortcutBinding>, String> {
+    let custom = state.config.lock().shortcuts.clone();
+    Ok(state.caps.shortcuts(&custom))
+}
+
+/// 托盘直控状态（托盘菜单与前端 Pro 区块共用）。
+#[derive(Debug, Clone, Serialize)]
+pub struct TrayStateInfo {
+    pub receiver_running: bool,
+    pub sender_running: bool,
+    pub muted: bool,
+    pub tray_items: Vec<String>,
+    pub profiles: Vec<Profile>,
+    pub active_profile: Option<String>,
+}
+
+pub fn tray_state_info(s: &AppState) -> TrayStateInfo {
+    let cfg = s.config.lock();
+    TrayStateInfo {
+        receiver_running: s.engine.is_running(),
+        sender_running: s.sender.is_running(),
+        muted: s.muted.lock().is_some(),
+        tray_items: s
+            .caps
+            .tray_items()
+            .iter()
+            .map(|i| format!("{:?}", i))
+            .collect(),
+        profiles: if s.caps.profiles().is_some() {
+            cfg.profiles.clone()
+        } else {
+            Vec::new()
+        },
+        active_profile: cfg.active_profile.clone(),
+    }
+}
+
+#[tauri::command]
+pub fn get_tray_state(state: State<'_, AppState>) -> Result<TrayStateInfo, String> {
+    Ok(tray_state_info(state.inner()))
+}
+
+/// 静音切换（接收输出）。返回静音后的状态：true=已静音。
+/// 静音时记住原音量并置 0；取消静音恢复原音量。
+#[tauri::command]
+pub fn toggle_mute(state: State<'_, AppState>) -> Result<bool, String> {
+    Ok(toggle_mute_inner(state.inner()))
+}
+
+pub fn toggle_mute_inner(s: &AppState) -> bool {
+    let mut muted = s.muted.lock();
+    match *muted {
+        Some(prev) => {
+            s.engine.set_volume(prev);
+            *muted = None;
+            false
+        }
+        None => {
+            let prev = s.engine.volume();
+            s.engine.set_volume(0.0);
+            *muted = Some(prev);
+            true
+        }
+    }
+}
+
+// ──────────────────────── MON-01 S2：设备记忆配额（UI 标注用） ────────────────────────
+
+/// 设备记忆配额：两个方向各自 `used/max`。
+#[derive(Debug, Clone, Serialize)]
+pub struct TrustQuota {
+    pub max: usize,
+    /// 接收端视角：信任的发送端数量。
+    pub senders_used: usize,
+    /// 发送端视角：信任的接收端数量。
+    pub receivers_used: usize,
+}
+
+#[tauri::command]
+pub fn get_trust_quota(state: State<'_, AppState>) -> Result<TrustQuota, String> {
+    let s = state.inner();
+    let trust = s.trust.lock();
+    Ok(TrustQuota {
+        max: s.caps.max_remembered_devices(),
+        senders_used: trust.list().iter().filter(|d| d.host.is_none()).count(),
+        receivers_used: trust.list().iter().filter(|d| d.host.is_some()).count(),
+    })
+}
+
+// ──────────────────── MON-01 S9/S15：自动发送目标与托盘开关 ────────────────────
+
+/// MON-01 S9：自动发送目标选择 —— `last_peer_device_id` 优先，回退 `last_seen` 最新。
+/// 只考虑带完整连接信息（host + control_port）的信任接收端。
+fn pick_auto_send_target(cfg: &AppConfig, trust: &TrustStore) -> Option<String> {
+    let usable = |d: &TrustedDevice| d.host.is_some() && d.control_port.is_some();
+    if let Some(last) = &cfg.last_peer_device_id {
+        if let Some(d) = trust.get(last).filter(|d| usable(d)) {
+            return Some(d.device_id.clone());
+        }
+    }
+    trust
+        .list()
+        .iter()
+        .filter(|d| usable(d))
+        .max_by_key(|d| d.last_seen)
+        .map(|d| d.device_id.clone())
+}
+
+/// 解析自动发送目标（前端自动启动与托盘直控共用）。
+#[tauri::command]
+pub fn resolve_auto_send_target(state: State<'_, AppState>) -> Result<Option<String>, String> {
+    let s = state.inner();
+    let cfg = s.config.lock();
+    let trust = s.trust.lock();
+    Ok(pick_auto_send_target(&cfg, &trust))
+}
+
+/// MON-01 S15：托盘「开始/停止接收」共用逻辑。返回 "started" / "stopped"。
+pub async fn toggle_receiver_inner(app: tauri::AppHandle) -> Result<String, String> {
+    let state: State<'_, AppState> = app.state();
+    if state.engine.is_running() {
+        stop_receiver(app.clone(), state)?;
+        Ok("stopped".into())
+    } else {
+        start_receiver(app.clone(), state).await?;
+        Ok("started".into())
+    }
+}
+
+/// MON-01 S15：托盘「开始/停止发送」共用逻辑（目标按 S9 规则选择）。
+pub async fn toggle_sender_inner(app: tauri::AppHandle) -> Result<String, String> {
+    let state: State<'_, AppState> = app.state();
+    if state.sender.is_running() {
+        stop_sender(app.clone(), state).await?;
+        return Ok("stopped".into());
+    }
+    let target = {
+        let cfg = state.config.lock();
+        let trust = state.trust.lock();
+        pick_auto_send_target(&cfg, &trust)
+    };
+    match target {
+        Some(device_id) => {
+            connect_trusted_receiver(state, device_id, None).await?;
+            Ok("started".into())
+        }
+        None => Err("没有可自动连接的信任接收端".into()),
+    }
+}
+
+#[cfg(test)]
+mod pick_target_tests {
+    use super::*;
+
+    fn trusted(id: &str, last_seen: u64, with_addr: bool) -> TrustedDevice {
+        TrustedDevice {
+            device_id: id.into(),
+            identity_pub_b64: "pub".into(),
+            name: None,
+            last_seen,
+            host: with_addr.then(|| "192.168.1.2".to_string()),
+            control_port: with_addr.then_some(47820),
+            audio_port: with_addr.then_some(47821),
+        }
+    }
+
+    #[test]
+    fn prefers_last_peer_when_usable() {
+        let mut trust = TrustStore::in_memory();
+        trust.add(trusted("dev-old", 1000, true), 8).unwrap();
+        trust.add(trusted("dev-new", 2000, true), 8).unwrap();
+        let cfg = AppConfig {
+            last_peer_device_id: Some("dev-old".into()),
+            ..AppConfig::default()
+        };
+        // S9：last_peer 优先于 last_seen 最新。
+        assert_eq!(pick_auto_send_target(&cfg, &trust), Some("dev-old".into()));
+    }
+
+    #[test]
+    fn falls_back_to_latest_last_seen() {
+        let mut trust = TrustStore::in_memory();
+        trust.add(trusted("dev-old", 1000, true), 8).unwrap();
+        trust.add(trusted("dev-new", 2000, true), 8).unwrap();
+        let cfg = AppConfig::default();
+        assert_eq!(pick_auto_send_target(&cfg, &trust), Some("dev-new".into()));
+    }
+
+    #[test]
+    fn skips_entries_without_addr() {
+        let mut trust = TrustStore::in_memory();
+        // 接收端视角的信任条目（无 host）不参与自动发送目标选择。
+        trust.add(trusted("phone-a", 3000, false), 8).unwrap();
+        trust.add(trusted("dev-new", 2000, true), 8).unwrap();
+        let cfg = AppConfig::default();
+        assert_eq!(pick_auto_send_target(&cfg, &trust), Some("dev-new".into()));
+    }
+
+    #[test]
+    fn none_when_no_usable_receiver() {
+        let trust = TrustStore::in_memory();
+        let cfg = AppConfig::default();
+        assert_eq!(pick_auto_send_target(&cfg, &trust), None);
     }
 }
 

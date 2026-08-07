@@ -32,7 +32,7 @@
 | **scrcpy** v4.x | Android → 电脑（含镜像） | 桌面全平台 | Apache-2.0 | **需 ADB + USB 调试**；Android 11+ | 35–70 ms（默认 buffer 50 ms） | 无（ADB 通道） |
 | **AudioShare** | Windows → Android | Windows / Android | 开源 | USB 或 Wi-Fi | ~50 ms | 无 |
 | **Shairport4w** | iOS → Windows（AirPlay 接收） | Windows | 开源 | 依赖 AirPlay 协议栈 | 65–200 ms | AirPlay 自带 |
-| **SoundLink** | **手机 → 电脑** + 电脑 ↔ 电脑 | Windows ✅ / Android ✅ 实测；macOS 部分、Linux/iOS 在建 | **MIT，完全免费** | 无需 ADB / root / 虚拟声卡 | 目标 100 ms 级（Jitter 默认 80 ms） | **ChaCha20-Poly1305 端到端** |
+| **SoundLink** | **手机 → 电脑** + 电脑 ↔ 电脑 | Windows ✅ / Android ✅ 实测；macOS 部分、Linux/iOS 在建 | **核心 MIT 开源 + Pro 增强闭源（open-core）** | 无需 ADB / root / 虚拟声卡 | 目标 100 ms 级（Jitter 默认 80 ms） | **ChaCha20-Poly1305 端到端** |
 
 ### 结论要点
 
@@ -49,7 +49,7 @@
 1. 手机 → 电脑方向 + PC↔PC 互传，一套工具覆盖。
 2. 无需 ADB / USB 调试 / root / 越狱 / 虚拟声卡。
 3. 音频面端到端加密，局域网内闭环，无任何遥测上报。
-4. MIT 开源、无广告、无订阅。
+4. 核心 MIT 开源、无广告、无订阅（open-core：Pro 自动化增强闭源买断）。
 5. 参数可控：Opus 码率、Jitter 档位、桌面音量运行时可调。
 6. 桌面端体验完整：mDNS 自动发现、8 位配对码、信任持久化、断线重连、托盘、开机自启。
 
@@ -78,7 +78,7 @@
 三条主打差异（顺序即重要性）：
 1. **不用开发者模式**：装上就能配对，不像 sndcpy/scrcpy 要 USB 调试。
 2. **默认加密**：音频面 ChaCha20-Poly1305，密钥存系统钥匙串，零遥测。
-3. **真开源免费**：MIT，无订阅无广告，参数全部可调。
+3. **核心真开源**：MIT，无订阅无广告，参数全部可调（Pro 增强离线买断）。
 
 建议 Topics：`audio-streaming` `lan` `opus` `tauri` `rust` `flutter` `android` `windows` `headphones` `audio-relay` `low-latency` `encrypted`
 

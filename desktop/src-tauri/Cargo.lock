@@ -4002,6 +4002,8 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "soundlink-pro",
+ "soundlink-pro-api",
  "subtle",
  "tauri",
  "tauri-build",
@@ -4017,6 +4019,23 @@ dependencies = [
  "tracing-subscriber",
  "windows 0.58.0",
  "x25519-dalek",
+]
+
+[[package]]
+name = "soundlink-pro"
+version = "0.1.0"
+dependencies = [
+ "parking_lot",
+ "soundlink-pro-api",
+]
+
+[[package]]
+name = "soundlink-pro-api"
+version = "0.1.0"
+dependencies = [
+ "parking_lot",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

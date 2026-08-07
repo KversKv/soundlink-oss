@@ -87,6 +87,12 @@ pub struct SenderEngine {
     dump_enable: bool,
     /// 信任存储：配对成功后保存 Receiver 身份与连接信息。
     trust: Option<Arc<Mutex<TrustStore>>>,
+    /// MON-01 S1：能力对象（设备记忆上限来源）。examples 不注入时视为无上限。
+    caps: Option<Arc<dyn soundlink_pro_api::ProCapabilities>>,
+    /// MON-01 S1：信任条目被容量上限替换时的回调（commands 层注入，回调内 app.emit）。
+    /// 回调参数：(被替换的设备, 当前上限)。
+    #[allow(clippy::type_complexity)]
+    on_trust_evicted: Arc<Mutex<Option<Box<dyn Fn(TrustedDevice, usize) + Send + Sync>>>>,
     /// D1：重连相关。allow_reconnect=false 时停止重连（用户主动 stop）。
     allow_reconnect: Arc<AtomicBool>,
     reconnect_task: Mutex<Option<JoinHandle<()>>>,
@@ -135,6 +141,8 @@ impl SenderEngine {
             control_task: Mutex::new(None),
             dump_enable,
             trust: None,
+            caps: None,
+            on_trust_evicted: Arc::new(Mutex::new(None)),
             allow_reconnect: Arc::new(AtomicBool::new(false)),
             reconnect_task: Mutex::new(None),
             on_state_change: Arc::new(Mutex::new(None)),
@@ -155,6 +163,8 @@ impl SenderEngine {
             control_task: Mutex::new(None),
             dump_enable,
             trust: Some(trust),
+            caps: None,
+            on_trust_evicted: Arc::new(Mutex::new(None)),
             allow_reconnect: Arc::new(AtomicBool::new(false)),
             reconnect_task: Mutex::new(None),
             on_state_change: Arc::new(Mutex::new(None)),
@@ -163,6 +173,17 @@ impl SenderEngine {
             target_bitrate: Arc::new(AtomicU32::new(0)),
             bitrate_adaptive: Arc::new(AtomicBool::new(false)),
         }
+    }
+
+    /// MON-01 S1：注入能力对象（builder 风格）。设备记忆上限取自 `caps`。
+    pub fn with_caps(mut self, caps: Arc<dyn soundlink_pro_api::ProCapabilities>) -> Self {
+        self.caps = Some(caps);
+        self
+    }
+
+    /// MON-01 S1：注入信任条目被替换回调（commands 层调用，回调内 app.emit）。
+    pub fn set_on_trust_evicted(&self, cb: Box<dyn Fn(TrustedDevice, usize) + Send + Sync>) {
+        *self.on_trust_evicted.lock() = Some(cb);
     }
 
     /// D1：注入状态变化回调（commands 层调用，回调内 app.emit）。
@@ -345,14 +366,31 @@ impl SenderEngine {
                 control_port,
                 audio_port: Some(audio_port),
             };
-            if let Err(e) = trust.lock().add(trusted_device) {
-                tracing::warn!("保存信任 Receiver 失败：{}", e);
-            } else {
-                tracing::info!(
-                    "已记住 Receiver：{} ({})",
-                    receiver_device_id,
-                    receiver_device_name
-                );
+            // MON-01 S1：上限取自能力对象（免费 1 / Pro 8）；未注入（examples）视为无上限。
+            let max = self
+                .caps
+                .as_ref()
+                .map(|c| c.max_remembered_devices())
+                .unwrap_or(usize::MAX);
+            match trust.lock().add(trusted_device, max) {
+                Ok(evicted) => {
+                    if let Some(old) = evicted {
+                        tracing::info!(
+                            "记忆容量（{}）已满：已替换最久未用的 Receiver {}",
+                            max,
+                            old.device_id
+                        );
+                        if let Some(cb) = self.on_trust_evicted.lock().as_ref() {
+                            cb(old, max);
+                        }
+                    }
+                    tracing::info!(
+                        "已记住 Receiver：{} ({})",
+                        receiver_device_id,
+                        receiver_device_name
+                    );
+                }
+                Err(e) => tracing::warn!("保存信任 Receiver 失败：{}", e),
             }
         }
 

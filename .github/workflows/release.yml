@@ -60,6 +60,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # MON-01 Q5：检出私有 Pro 实现覆盖 desktop/pro/（官方构建 Pro-capable）。
+      # 红线：不得 set -x / echo token / ls -R desktop/pro（E7：Pro 源码不进日志）。
+      # 仅 tag 触发的本流水线可达 secret（fork PR 拿不到，公开 CI 不含此步）。
+      - name: Checkout private Pro implementation
+        env:
+          PRO_REPO_TOKEN: ${{ secrets.PRO_REPO_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf desktop/pro
+          git clone --depth 1 "https://x-access-token:${PRO_REPO_TOKEN}@github.com/KversKv/soundlink-pro.git" desktop/pro
+          rm -rf desktop/pro/.git
+
+      # G10：rust-cache 恢复的 target/ 可能带上一次构建的 soundlink-pro，必须清缓存防串味。
+      - name: Clean soundlink-pro incremental cache
+        working-directory: desktop/src-tauri
+        run: cargo clean -p soundlink-pro
+
       - name: Resolve version
         id: ver
         shell: bash

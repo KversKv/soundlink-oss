@@ -1,0 +1,16 @@
+{
+  "comment": "MON-01 T3 跨语言一致性 fixture。test_secret_key 为公开测试值（无价值），禁止替换为真实私钥。license 由 issue.py 用该测试私钥签发，Rust 侧 fixture 测试用 ed25519-dalek 验签。roundtrip_check.py 重新签发并比对一致性。",
+  "test_secret_key_hex": "9d61b19deffebc3a4d0e9e36f34b7d1b3b47d5f9dddc11e5d6c9ecdd4ba1f74b",
+  "test_public_key_b64": "BTLe84VRdnkMFszsnEwqcS5EcmTSecw+jhD8Ad3HwRU=",
+  "payload": {
+    "v": 1,
+    "sku": "desktop-pro",
+    "iat": 1780000000,
+    "exp": null,
+    "sub": "FINGERPRIN",
+    "bind": "fingerprint",
+    "seats": 3,
+    "nonce": "NONCE123"
+  },
+  "license": "SLPRO-PMRGE2LOMQRDUITGNFXGOZLSOBZGS3TUEIWCEZLYOARDU3TVNRWCYITJMF2CEORRG44DAMBQGAYDAMBMEJXG63TDMURDUISOJ5HEGRJRGIZSELBCONSWC5DTEI5DGLBCONVXKIR2EJSGK43LORXXALLQOJXSELBCON2WEIR2EJDESTSHIVJFAUSJJYRCYITWEI5DC7I-ZFBR2N3XXFRH5UKDBQB2CM6NOSYLNRPSZM6CGWOPHQRRLFQWWZJSBWTKZPPBP66ZQXLJONBRID2DKTN4GE5KLXYIY6PO7VQKL5OXUBY"
+}
