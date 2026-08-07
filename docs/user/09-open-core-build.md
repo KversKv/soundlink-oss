@@ -4,7 +4,7 @@
 > 决策与红线见 [`../NewFunctions/monetization/01-engineering-plan.md`](../NewFunctions/monetization/01-engineering-plan.md)（MON-01）与 [`../NewFunctions/monetization/02-multi-repo-guide.md`](../NewFunctions/monetization/02-multi-repo-guide.md)（含构建硬约束 G10/G11 与实测结论）。
 > 本文是**操作手册**：怎么维护、怎么编译、怎么调试。权威构建说明以上述两份文档为准，冲突时以其为准。
 
----
+***
 
 ## 1. 这是什么模型
 
@@ -28,19 +28,19 @@ SoundLink 采用 **open-core**：
 
 > ⚠️ 为什么不用 `--features pro`：Cargo 会解析**可选依赖**并写入 `Cargo.lock`，公开仓库一旦写入私有 git 依赖，无权限者连默认 `cargo build` 都失败（实测确认）。目录替换让公开依赖图里永远只有公开 crate。**不要改回 feature 方案。**
 
----
+***
 
 ## 2. 三个 crate 的职责
 
-| crate | 位置 | 开源 | 职责 | 能写 Pro 逻辑？ |
-|---|---|---|---|---|
-| `soundlink-pro-api` | 公开 `desktop/pro-api/` | MIT | 定义「有哪些能力」（`ProCapabilities` trait 与类型） | ❌ 只有签名 |
-| `soundlink-pro` | 公开 `desktop/pro/`（免费）+ 私有仓库（Pro），同名同版本 | 免费 MIT / Pro 闭源 | 定义「能力值是多少」 | 仅私有版 |
-| `soundlink` | 公开 `desktop/src-tauri/` | MIT | 调用能力值干活 | ❌ 禁止 `if is_pro` |
+| crate               | 位置                                     | 开源              | 职责                                     | 能写 Pro 逻辑？       |
+| ------------------- | -------------------------------------- | --------------- | -------------------------------------- | ---------------- |
+| `soundlink-pro-api` | 公开 `desktop/pro-api/`                  | MIT             | 定义「有哪些能力」（`ProCapabilities` trait 与类型） | ❌ 只有签名           |
+| `soundlink-pro`     | 公开 `desktop/pro/`（免费）+ 私有仓库（Pro），同名同版本 | 免费 MIT / Pro 闭源 | 定义「能力值是多少」                             | 仅私有版             |
+| `soundlink`         | 公开 `desktop/src-tauri/`                | MIT             | 调用能力值干活                                | ❌ 禁止 `if is_pro` |
 
-门控只表达为 `ProCapabilities` 返回值（设备上限 / 启动计划 / 重连策略 / 配置档 / 快捷键 / 托盘项）。**业务代码里没有 `if is_pro`**——新增 Pro 能力时给 trait 加方法、两份实现各返回对应值，而不是在业务代码里判断授权。
+门控只表达为 `ProCapabilities` 返回值（设备上限 / 启动计划 / 重连策略 / 配置档 / 快捷键 / 托盘项）。**业务代码里没有** **`if is_pro`**——新增 Pro 能力时给 trait 加方法、两份实现各返回对应值，而不是在业务代码里判断授权。
 
----
+***
 
 ## 3. 免费版：编译与调试（任何人）
 
@@ -75,13 +75,13 @@ cargo tauri dev --features tauri_app
 
 - Rust 日志：`$env:RUST_LOG="debug"; cargo tauri dev --features tauri_app`（Windows PowerShell）。
 - 前端 DevTools：开发模式下右键 → Inspect。
-- DEBUG / DUMP_ENABLE 开关见 [06-debug.md](./06-debug.md) §1.5。
+- DEBUG / DUMP\_ENABLE 开关见 [06-debug.md](./06-debug.md) §1.5。
 
 ### 3.3 社区版与免费能力
 
 社区自行编译得到的就是免费版（`EDITION="community"`）。设置页「授权」区块会显示「本构建不含 Pro（社区版）」，这是**预期行为**，不是 bug——Pro 实现代码不在公开仓库，自行编译无法得到 Pro。
 
----
+***
 
 ## 4. Pro 版：编译与调试（仅作者）
 
@@ -96,7 +96,31 @@ D:\CodeProject\TRAE_Projects\soundlink-pro\    私有仓库（独立 git）
 
 > ⚠️ 私有仓库**不要**放进公开仓库目录内部（即使加 `.gitignore`），一次 `git add -f` 就泄露。物理隔离是唯一可靠保障（红线 G3）。
 
-### 4.2 本地并行开发（推荐：junction 切换）
+### 4.2 本地并行开发（两种方式）
+
+不想反复 clone 时，把私有仓库放公开仓库之外（平级）。有两种切换方式：
+
+- **方式 A · 物理替换（推荐，最可靠）**：复制私有实现覆盖 `desktop/pro/`。物理目录 mtime 全新，Cargo 必然重编，无缓存陷阱。
+- **方式 B · junction（备选）**：零拷贝省磁盘，但**在真实工程中会触发 Cargo 增量缓存串味**（junction 下 `cargo clean -p` 失效，见 02 文档 §11 V-8），须额外全量清理。仅适合只读场景（跑 test/clippy）。
+
+#### 方式 A · 物理替换（推荐）
+
+```powershell
+cd D:\CodeProject\TRAE_Projects\SoundLink
+
+# 切到 Pro 开发
+Rename-Item -Path desktop\pro -NewName pro-free-backup
+Copy-Item D:\CodeProject\TRAE_Projects\soundlink-pro desktop\pro -Recurse
+Remove-Item desktop\pro\.git -Recurse -Force -ErrorAction SilentlyContinue
+cargo clean -p soundlink-pro --manifest-path desktop\src-tauri\Cargo.toml
+
+# 切回免费开发
+Remove-Item desktop\pro -Recurse -Force
+Rename-Item -Path desktop\pro-free-backup -NewName pro
+cargo clean -p soundlink-pro --manifest-path desktop\src-tauri\Cargo.toml
+```
+
+#### 方式 B · junction（备选，注意缓存陷阱）
 
 ```powershell
 cd D:\CodeProject\TRAE_Projects\SoundLink
@@ -112,11 +136,14 @@ Rename-Item -Path desktop\pro-free-backup -NewName pro
 cargo clean -p soundlink-pro --manifest-path desktop\src-tauri\Cargo.toml
 ```
 
+> ⚠️ **junction 切换的缓存陷阱（实测）**：junction 挂载后 crate 名/版本/path 均未变、且穿透写入不刷新挂载点 mtime，Cargo 判定「无变化」并复用旧 object——**即便日志打印 `Compiling soundlink-pro`，产物仍可能是免费实现（社区版）**；此时 `cargo clean -p soundlink-pro` 报 `Removed 0 files`（失效）。**规避**：junction 切换后额外物理删除 `target/<profile>/` 下该 crate 的 `deps/`/`.fingerprint/`/`incremental/` 残留，或直接 `cargo clean` 全量清。**若不想处理，请用方式 A。**
+> **验证产物形态**：Pro 实现的 `shortcuts()` 含 `Ctrl+Shift+R/D/M`（免费实现仅 `Ctrl+Shift+S`），检索产物字符串即可确认链接的是哪份。
+
 要点（都来自实测，见 02 文档 §11）：
 
-- **`cargo clean -p soundlink-pro` 不是可选步骤**（红线 G10）。替换目录后 crate 名/版本/path 均未变，Cargo 增量缓存**不会察觉源码已变**，会复用旧 `.rlib` 导致「免费目录跑出 Pro 产物」或反之，且**无任何报错**。双向切换都必须执行。
+- **切换目录后必须清缓存**（红线 G10）：物理替换用 `cargo clean -p soundlink-pro` 即可；**junction 下该命令不可靠（V-8），须额外物理删 `target` 残留或 `cargo clean` 全量清**（见上框）。
 - junction 在 Windows 上**免管理员权限**即可创建，Cargo 正常穿透；私有仓库里的相对路径 `../pro-api` 会按 junction 挂载后的位置解析到公开仓库。
-- **删 junction 用 `(New-Item -Force ...).Delete()` 或 `cmd /c rmdir`**，**不要用 `Remove-Item -Recurse -Force`**——后者在部分 PowerShell 版本会穿透 junction 删掉**私有仓库源码**。
+- **删 junction 用** **`(New-Item -Force ...).Delete()`** **或** **`cmd /c rmdir`**，**不要用** **`Remove-Item -Recurse -Force`**——后者在部分 PowerShell 版本会穿透 junction 删掉**私有仓库源码**。
 - `Rename-Item` 对带横杠的目录名建议用 `-Path/-NewName` 参数形式；位置参数 `Rename-Item A B` 可能报 `PSArgumentException`。
 
 ### 4.3 Pro 版构建与打包
@@ -133,55 +160,95 @@ npm exec --prefix ..\ui tauri -- build --features tauri_app --bundles nsis
 
 验证当前构建产物形态：`desktop\pro\src\lib.rs` 里 `EDITION` 为 `official` 即 Pro-capable 版，`community` 即免费版。官方产物**未激活时行为完全等同免费版**。
 
+### 4.3.1 改回免费版（社区版）
+
+从 Pro 实现切回免费实现。按你切换时用的方式选对应命令：
+
+**若用方式 A 物理替换：**
+
+```powershell
+cd D:\CodeProject\TRAE_Projects\SoundLink
+Remove-Item desktop\pro -Recurse -Force                            # 删私有副本（不动私有仓库本体）
+Rename-Item -Path desktop\pro-free-backup -NewName pro             # 恢复免费实现
+cargo clean -p soundlink-pro --manifest-path desktop\src-tauri\Cargo.toml
+```
+
+**若用方式 B junction：**
+
+```powershell
+cd D:\CodeProject\TRAE_Projects\SoundLink
+cmd /c rmdir desktop\pro                                           # 删 junction 本体（不动私有源码）
+Rename-Item -Path desktop\pro-free-backup -NewName pro
+# junction 切换后 cargo clean -p 不可靠（V-8），须全量清：
+cargo clean --manifest-path desktop\src-tauri\Cargo.toml
+```
+
+然后正常构建即得免费版：`cd desktop\src-tauri; npm exec --prefix ..\ui tauri -- build --features tauri_app`。
+
+**确认已切回免费版**（三重校验）：
+
+```powershell
+# 1. 目录是普通目录而非 junction（LinkType 应为空）
+(Get-Item desktop\pro -Force).LinkType
+# 2. 源文件 EDITION 应为 community
+Select-String -Path desktop\pro\src\lib.rs -Pattern 'EDITION: &str'
+# 3. 产物中不应含 Pro 独有字符串（应全为 False）
+$s = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes("desktop\src-tauri\target\release\soundlink.exe"))
+$s.Contains('Ctrl+Shift+R'); $s.Contains('Ctrl+Shift+D'); $s.Contains('Ctrl+Shift+M')
+```
+
+> 免费版 UI 的「授权」区块会显示「本构建不含 Pro（社区版）」并隐藏激活框——这是**预期行为**。
+
 ### 4.4 两份 soundlink-pro 的版本号必须一致
 
-`Cargo.lock` 会记录 path 依赖的 `version`；两份写不同版本号会导致官方构建无法 `--locked`。**改免费侧 `desktop/pro/Cargo.toml` 的 version 时，必须同步改私有仓库的同名 crate**（红线 G11）。pro crate 的版本号**不参与**根 `VERSION` 同步（不加入 `scripts/sync_version.py` 的 TARGETS）。
+`Cargo.lock` 会记录 path 依赖的 `version`；两份写不同版本号会导致官方构建无法 `--locked`。**改免费侧** **`desktop/pro/Cargo.toml`** **的 version 时，必须同步改私有仓库的同名 crate**（红线 G11）。pro crate 的版本号**不参与**根 `VERSION` 同步（不加入 `scripts/sync_version.py` 的 TARGETS）。
 
----
+***
 
 ## 5. CI 双流水线
 
-| 流水线 | 触发 | 用的 `desktop/pro/` | 说明 |
-|---|---|---|---|
-| 公开 CI（`ci.yml`） | push / PR（含 fork） | 公开免费实现 | 无任何 secret，fork 可全绿；含 license roundtrip 跨语言一致性检查 |
-| 发布 CI（`release.yml`） | `v*` tag | 私有实现（token 检出） | 检出后 `cargo clean -p soundlink-pro`，构建官方 Pro-capable 产物 |
+| 流水线                  | 触发                | 用的 `desktop/pro/` | 说明                                                     |
+| -------------------- | ----------------- | ----------------- | ------------------------------------------------------ |
+| 公开 CI（`ci.yml`）      | push / PR（含 fork） | 公开免费实现            | 无任何 secret，fork 可全绿；含 license roundtrip 跨语言一致性检查       |
+| 发布 CI（`release.yml`） | `v*` tag          | 私有实现（token 检出）    | 检出后 `cargo clean -p soundlink-pro`，构建官方 Pro-capable 产物 |
 
 发布 CI 检出步骤约束：用**只读、仅该仓库**的 deploy key / 细粒度 PAT（secret 名 `PRO_REPO_TOKEN`）；**不得** `set -x` / echo token / `ls -R desktop/pro`（Pro 源码不进 CI 日志，红线 E7/G9）；fork 的 PR 拿不到 secret，发布 CI 只允许 tag 触发。
 
----
+***
 
 ## 6. 排查表（构建/切换相关）
 
-| 现象 | 原因 | 处理 |
-|---|---|---|
-| `failed to load source for dependency soundlink-pro` | `desktop/pro/` 不存在或被误删 | `git checkout -- desktop/pro` 恢复免费实现 |
-| 替换了 `desktop/pro/` 但产物行为没变 | 增量缓存串味，未清 | `cargo clean -p soundlink-pro`（G10） |
-| `Updating soundlink-pro vX -> vY` 后 `--locked` 失败 | 两份 pro crate 版本号不一致 | 统一版本号（G11） |
-| `package collision in the lockfile … soundlink-pro-api` | 私有仓库用了绝对路径 path 依赖（Windows 短名） | 改用相对路径 `../pro-api` |
-| 激活后仍显示免费 / 「本构建不含 Pro」 | 用的是社区构建（免费实现） | 换官方发布产物，或确认 `desktop/pro` 挂的是私有实现 |
-| Pro 构建后 `git status` 出现 `Cargo.lock` 修改 | 私有实现引入了新依赖 | 还原 `Cargo.lock`，**不要提交**（会泄露私有依赖清单，G4） |
-| 误删私有仓库源码 | 用 `Remove-Item -Recurse` 删了 junction | 见 §4.2 警示；从远端重新 clone |
+| 现象                                                      | 原因                                   | 处理                                     |
+| ------------------------------------------------------- | ------------------------------------ | -------------------------------------- |
+| `failed to load source for dependency soundlink-pro`    | `desktop/pro/` 不存在或被误删               | `git checkout -- desktop/pro` 恢复免费实现   |
+| 替换了 `desktop/pro/` 但产物行为没变                              | 增量缓存串味，未清                            | `cargo clean -p soundlink-pro`（G10）    |
+| junction 挂载后构建了但仍是社区版 / 无 Pro（`Compiling soundlink-pro` 也照打） | junction 下 `cargo clean -p` 失效，复用旧 object（V-8） | 改用方式 A 物理替换，或 `cargo clean` 全量清；验证产物含 `Ctrl+Shift+R` |
+| `Updating soundlink-pro vX -> vY` 后 `--locked` 失败       | 两份 pro crate 版本号不一致                  | 统一版本号（G11）                             |
+| `package collision in the lockfile … soundlink-pro-api` | 私有仓库用了绝对路径 path 依赖（Windows 短名）       | 改用相对路径 `../pro-api`                    |
+| 激活后仍显示免费 / 「本构建不含 Pro」                                  | 用的是社区构建（免费实现）                        | 换官方发布产物，或确认 `desktop/pro` 挂的是私有实现      |
+| Pro 构建后 `git status` 出现 `Cargo.lock` 修改                 | 私有实现引入了新依赖                           | 还原 `Cargo.lock`，**不要提交**（会泄露私有依赖清单，G4） |
+| 误删私有仓库源码                                                | 用 `Remove-Item -Recurse` 删了 junction | 见 §4.2 警示；从远端重新 clone                  |
 
-完整排查表（含 V-1~V-5 实测失败信息）见 [`02-multi-repo-guide.md`](../NewFunctions/monetization/02-multi-repo-guide.md) §9。
+完整排查表（含 V-1\~V-5 实测失败信息）见 [`02-multi-repo-guide.md`](../NewFunctions/monetization/02-multi-repo-guide.md) §9。
 
----
+***
 
 ## 7. 维护红线（速记）
 
-| # | 禁忌 | 后果 |
-|---|---|---|
-| G1 | 公开仓库任何提交含私有实现代码/注释/fixture | Pro 逻辑外泄（E7） |
-| G2 | 公开仓库出现私有 git 依赖 | 社区无法编译（E3），fork CI 全红 |
-| G3 | 私有仓库放进公开仓库内部 | 迟早被 `git add -f` 泄露 |
-| G4 | Pro 构建的 `Cargo.lock` 回提公开仓库 | 泄露私有依赖清单 |
-| G5 | 在 `soundlink` 里写 `if is_pro` | 门控散落、绕过风险↑ |
-| G6 | 用 `EDITION` 常量做门控 | 社区改一个字符串即可伪装 |
-| G7 | 把免费实现做成空壳 / `unimplemented!()` | 开源诱饵，违反 E3 |
-| G8 | 改 keyring service 名或 `identifier` | 所有存量 license 失效（E8） |
-| G10 | 替换 `desktop/pro/` 后不 `cargo clean -p soundlink-pro` | 构建出错版本产物且无报错 |
-| G11 | 两份 `soundlink-pro` 版本号不一致 | 官方构建无法 `--locked` |
+| #   | 禁忌                                                  | 后果                    |
+| --- | --------------------------------------------------- | --------------------- |
+| G1  | 公开仓库任何提交含私有实现代码/注释/fixture                          | Pro 逻辑外泄（E7）          |
+| G2  | 公开仓库出现私有 git 依赖                                     | 社区无法编译（E3），fork CI 全红 |
+| G3  | 私有仓库放进公开仓库内部                                        | 迟早被 `git add -f` 泄露   |
+| G4  | Pro 构建的 `Cargo.lock` 回提公开仓库                         | 泄露私有依赖清单              |
+| G5  | 在 `soundlink` 里写 `if is_pro`                        | 门控散落、绕过风险↑            |
+| G6  | 用 `EDITION` 常量做门控                                   | 社区改一个字符串即可伪装          |
+| G7  | 把免费实现做成空壳 / `unimplemented!()`                      | 开源诱饵，违反 E3            |
+| G8  | 改 keyring service 名或 `identifier`                   | 所有存量 license 失效（E8）   |
+| G10 | 替换 `desktop/pro/` 后不清缓存（junction 下 `cargo clean -p` 失效，须物理删 target 残留或全量 `cargo clean`） | 构建出错版本产物且无报错（V-4/V-8） |
+| G11 | 两份 `soundlink-pro` 版本号不一致                           | 官方构建无法 `--locked`     |
 
----
+***
 
 ## 关联文档
 
@@ -189,3 +256,4 @@ npm exec --prefix ..\ui tauri -- build --features tauri_app --bundles nsis
 - 多仓库构建指南（权威，含实测结论）：[`../NewFunctions/monetization/02-multi-repo-guide.md`](../NewFunctions/monetization/02-multi-repo-guide.md)
 - 激活码生成与管理：[`10-license-management.md`](./10-license-management.md)
 - 各端通用编译/调试：[`05-build.md`](./05-build.md) / [`06-debug.md`](./06-debug.md)
+

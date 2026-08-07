@@ -147,7 +147,12 @@ cargo clean -p soundlink-pro --manifest-path desktop\src-tauri\Cargo.toml
 
 ### 3.4 本地并行开发（推荐给作者）
 
-不想反复 clone 时，把私有仓库放在**公开仓库之外**，用符号链接切换：
+不想反复 clone 时，把私有仓库放在**公开仓库之外**（平级，独立 git）。有两种切换方式：
+
+- **方式 A · 物理替换（推荐，最可靠）**：复制私有实现覆盖 `desktop/pro/`。物理目录 mtime 全新，Cargo 必然重编，无缓存陷阱。
+- **方式 B · junction（备选）**：目录联接零拷贝、省磁盘，但**在真实工程中会触发 Cargo 增量缓存串味（见下方 V-8 警告）**，须额外全量清理。
+
+#### 方式 A · 物理替换（推荐）
 
 ```powershell
 # 目录布局
@@ -156,22 +161,52 @@ cargo clean -p soundlink-pro --manifest-path desktop\src-tauri\Cargo.toml
 
 # 切到 Pro 开发
 Rename-Item desktop\pro desktop\pro-free-backup
+Copy-Item D:\CodeProject\TRAE_Projects\soundlink-pro desktop\pro -Recurse
+Remove-Item desktop\pro\.git -Recurse -Force -ErrorAction SilentlyContinue
+cargo clean -p soundlink-pro --manifest-path desktop\src-tauri\Cargo.toml
+
+# 切回免费开发
+Remove-Item desktop\pro -Recurse -Force
+Rename-Item desktop\pro-free-backup desktop\pro
+cargo clean -p soundlink-pro --manifest-path desktop\src-tauri\Cargo.toml
+```
+
+#### 方式 B · junction（备选，注意缓存陷阱）
+
+```powershell
+# 切到 Pro 开发
+Rename-Item desktop\pro desktop\pro-free-backup
 New-Item -ItemType Junction -Path desktop\pro -Target D:\CodeProject\TRAE_Projects\soundlink-pro
 cargo clean -p soundlink-pro --manifest-path desktop\src-tauri\Cargo.toml
 
 # 切回免费开发
 (Get-Item desktop\pro).Delete()          # 删 junction 本身，不碰目标目录
 Rename-Item desktop\pro-free-backup desktop\pro
-cargo clean -p soundlink-pro --manifest-path desktop\src-tauri\Cargo.toml
+# junction 切换后 cargo clean -p 不可靠（V-8），须全量清：
+cargo clean --manifest-path desktop\src-tauri\Cargo.toml
 ```
 
 实测确认（V-2）：Junction 在 Windows 上**不需要管理员权限**即可创建，Cargo 能正常穿透，且私有仓库 `Cargo.toml` 里的 `soundlink-pro-api = { path = "../pro-api" }` 这类相对路径会**按 junction 挂载后的位置解析**（即解析到公开仓库的 `desktop/pro-api`），因此私有仓库可以直接写相对路径、无需硬编码绝对路径。
+
+> ⚠️ **V-8 · junction 下 `cargo clean -p soundlink-pro` 不可靠（2026-08-07 真实工程复现）**。junction 挂载后 crate 名/版本/path 均未变、且 junction 穿透写入不刷新挂载点 mtime，Cargo 增量指纹判定「无变化」，静默复用上次实现的 object/rlib——**即便日志打印 `Compiling soundlink-pro (desktop\pro)`，链接的仍是旧 object**；此时 `cargo clean -p soundlink-pro` 报 `Removed 0 files`（junction 下指纹匹配失效）。结果：官方目录编出的产物实为免费实现（社区版，无 Pro）。
+> **规避**：junction 切换后，在 `cargo clean -p soundlink-pro` 之外，再物理删除 `target/<profile>/` 下该 crate 的 `deps/`、`.fingerprint/`、`incremental/`、`build/` 残留，或直接 `cargo clean` 全量清。**若不想处理这些，请用方式 A 物理替换。**
+> **验证产物形态**：`Pro` 实现的 `shortcuts()` 含 `Ctrl+Shift+R/D/M`（免费实现仅 `Ctrl+Shift+S`），可在产物中检索这些字符串确认链接的是哪份实现。
 
 > 反过来说，私有仓库**无法独立构建**（脱离公开仓库时 `../pro-api` 不存在，实测报 `failed to load source for dependency`）。这是预期行为：私有仓库只有在被挂载进公开仓库时才成立。若需要在私有仓库内单跑 `cargo test`，须自行挂载或临时改 path。
 
 > ⚠️ 删除 junction 用 `(Get-Item …).Delete()` 或 `cmd /c rmdir`，**不要用 `Remove-Item -Recurse -Force`** —— 后者在部分 PowerShell 版本上会穿透 junction 删除**目标目录内容**，即删掉你的私有仓库源码。
 
 > 私有仓库**不要**放在公开仓库目录内部（即使加了 `.gitignore`），一次误操作的 `git add -f` 就会泄露。物理隔离是唯一可靠的保障。
+
+#### 改回免费版并确认
+
+切回免费实现后（方式 A：`Remove-Item desktop\pro -Recurse -Force` + `Rename-Item pro-free-backup pro` + `cargo clean -p soundlink-pro`；方式 B：删 junction + `Rename-Item` + `cargo clean` 全量清），**三重校验确认产物已是社区版**：
+
+1. `(Get-Item desktop\pro -Force).LinkType` 应为空（普通目录，非 junction）。
+2. `desktop\pro\src\lib.rs` 的 `EDITION` 应为 `"community"`。
+3. 产物（`target\release\soundlink.exe`）中检索 Pro 独有字符串 `Ctrl+Shift+R/D/M` 应**全部不存在**（免费实现 `shortcuts()` 仅 `Ctrl+Shift+S`）。
+
+免费版 UI 的「授权」区块显示「本构建不含 Pro（社区版）」并隐藏激活框——这是**预期行为**，不是 bug。
 
 ---
 
@@ -306,6 +341,7 @@ SoundLink_<version>_x64-setup.exe
 | `error: failed to load source for dependency soundlink-pro` | `desktop/pro/` 不存在或被误删 | `git checkout -- desktop/pro` 恢复免费实现 |
 | 社区用户报告 `cargo build` 拉取私有仓库失败 | 公开仓库出现了私有依赖（违反 §3.1） | 立即移除私有 git 依赖，改回 path 依赖 |
 | **替换了 `desktop/pro/` 但产物行为没变**（免费目录跑出 Pro 行为，或反之） | Cargo 增量缓存串味，未察觉源码变化（V-4 已实测复现） | `cargo clean -p soundlink-pro`，见 §3.3 |
+| **junction 挂载后构建了但仍是社区版 / 无 Pro**（`Compiling soundlink-pro` 也照打） | junction 下 `cargo clean -p` 失效，复用旧 object（V-8 实测） | 改用方式 A 物理替换，或 `cargo clean` 全量清；验证产物含 `Ctrl+Shift+R` |
 | `error: package collision in the lockfile: … soundlink-pro-api … are different` | 两处 path 指向同一目录但字符串不同（Windows 短名 `ADMINI~1` vs 长名） | 私有仓库改用相对路径 `../pro-api`，见 §5.1 |
 | `Updating soundlink-pro v0.1.0 -> v2.7.3` 后 `--locked` 失败 | 两份 pro crate 的 `version` 不一致 | 统一版本号，见 §5.1 |
 | `error: cannot update the lock file … --locked was passed` | 依赖图与提交的 lock 不符 | 若私有实现新增了依赖，去掉 `--locked`，见 §5.2 |
@@ -351,6 +387,7 @@ SoundLink_<version>_x64-setup.exe
 
 - [x] **V-6** Tauri NSIS 完整打包在替换目录后的表现 — **2026-08-06 实测通过**：junction 挂载私有实现后 `tauri build --bundles nsis` 成功产出 `SoundLink_0.1.0-beta.1_x64-setup.exe`，`cargo clean -p soundlink-pro` 后打包无缓存报错。注：`targets:"all"` 时 MSI 目标不支持 `0.1.0-beta.1` 预发布号（既有配置限制，与 Pro 无关）；发布 CI 走 NSIS（release.yml 即 `--bundles nsis` 等价路径）。
 - [x] **V-7** `cargo clippy` 在 junction 下的表现 — **2026-08-06 实测通过**：junction 挂载私有实现后 `cargo clippy --features tauri_app --all-targets -- -D warnings` 全绿，与 `cargo build` 行为一致。
+- [x] **V-8 junction 下 `cargo clean -p` 不可靠，会产出错误版本 — 2026-08-07 真实工程复现**。junction 挂载私有实现（源确为 `official`、含 Pro 代码）后，`cargo build` 打印 `Compiling soundlink-pro (desktop\pro)` 但产出的 rlib/exe **不含 Pro 独有字符串**（`Ctrl+Shift+R/D/M`），实为免费实现；`cargo clean -p soundlink-pro` 报 `Removed 0 files`（junction 下失效），物理删 `deps/` 后重编仍复用旧 object（rlib hash `f865150625011d66` 在两实现间相同）。**结论：junction 仅适合只读场景（跑 test/clippy）；本地双开发切换构建产物请用方式 A 物理替换，或切换后 `cargo clean` 全量清。** 已写入 §3.4 与排查表。
 
 ---
 
