@@ -16,6 +16,8 @@
 | [06-debug.md](./06-debug.md) | 各平台调试方式与日志 |
 | [07-usage.md](./07-usage.md) | 使用操作手册（配对、连接、播放） |
 | [08-troubleshooting.md](./08-troubleshooting.md) | 常见问题与排查 |
+| [09-open-core-build.md](./09-open-core-build.md) | open-core 双仓库维护、编译与调试（免费版开源 / Pro 版私有） |
+| [10-license-management.md](./10-license-management.md) | Pro 激活码的生成与管理（签发/台账/换机/吊销/密钥轮换） |
 | [desktop-guide.md](./desktop-guide.md) | 桌面端终端用户使用指南（安装/配对/收发/设置/常见问题/卸载） |
 
 ## 平台矩阵速览

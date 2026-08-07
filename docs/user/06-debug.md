@@ -29,6 +29,13 @@ RUST_LOG=debug cargo tauri dev
 
 - Tauri command 位于 [`commands/`](../../desktop/src-tauri/src/commands)；前端调用失败时对照 Rust 侧 `tracing` 日志定位。
 
+### Pro 能力 / 授权问题定位
+
+- **门控唯一入口在 Rust 侧**：所有 Pro 差异由 `soundlink-pro` crate 的 `ProCapabilities` 返回值决定（`AppState.caps`），前端不判定授权。排查「某 Pro 功能没生效」先看 `desktop/pro/src/lib.rs` 当前是免费实现（`EDITION="community"`）还是私有实现（`official`）——社区构建下 Pro 区块显示「本构建不含 Pro」属预期。
+- **授权校验全离线**：`license/` 模块日志（`tracing::info!` 级）。无 license / 校验失败只 `info` 不 warn/error（`Free` 是正常状态）；激活失败原因通过 `get_license_status` 的 `state`/`detail` 在设置页内联展示。
+- **启动自动化**：判定已下沉到 `resolve_startup_plan`（Rust）。免费实现恒返回 `None`，即使手工改 `app_config.json` 的 `auto_*` 字段也不会自动启动——这是门控有效性的关键验收点，不是 bug。
+- **双构建切换后行为异常**：先执行 `cargo clean -p soundlink-pro`（增量缓存串味，见 [09-open-core-build.md](./09-open-core-build.md) §4.2 / G10）。
+
 ## 1.5 调试开关（DEBUG / DUMP_ENABLE）
 
 为方便开发期快速联调，各端主入口文件提供两个常量：`DEBUG` 与 `DUMP_ENABLE`（后者默认跟随 `DEBUG`）。**发布前务必改回 `false`。**

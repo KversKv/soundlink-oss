@@ -2,7 +2,7 @@
 
 各端的开发运行、编译与产物打包命令。环境搭建见对应平台文档（[桌面](./02-dev-env-desktop.md) / [iOS](./03-dev-env-ios.md) / [Android](./04-dev-env-android.md)）。
 
-> 仓库处于骨架阶段，以下命令为脚手架就绪后的目标工作流。
+> **open-core 双构建**：桌面端分**免费版（开源，默认）**与 **Pro 版（私有实现检出覆盖 `desktop/pro/`）**，两者构建命令完全相同，产物由 `desktop/pro/` 目录内容决定。完整的双仓库维护、junction 切换、缓存清理（G10/G11）与 CI 双流水线见 **[09-open-core-build.md](./09-open-core-build.md)**；本节给出默认（免费版）命令。
 
 如果只安装了 `desktop/ui` 里的本地 Tauri CLI，也可以用 npm 脚本从 `desktop/ui` 触发同一套构建流程：
 
