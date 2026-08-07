@@ -126,7 +126,8 @@ SoundLink follows an **open-core** model:
 | All bitrates + all jitter modes + encryption + pairing | ✅ | ✅ |
 | Output device / volume / audio params / stats | ✅ | ✅ |
 | Remembered paired devices | 1 | **8** |
-| Launch on boot + auto start receive/send | — | ✅ |
+| Launch on boot | ✅ | ✅ |
+| Auto start receive/send on launch (silent) | — | ✅ |
 | Auto-reconnect last device (across launches) | — | ✅ |
 | Multiple config profiles, one-click switch | — | ✅ |
 | Global shortcuts / tray direct control | — | ✅ |

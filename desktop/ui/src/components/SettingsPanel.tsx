@@ -13,7 +13,9 @@ export interface AppSettings {
   onboarding_completed: boolean;
   /// F6：发送端 DRM 提示是否已展示。
   sender_drm_hint_seen: boolean;
-  /// MON-01 S4：自动化（自启 + 自动收发）是否可配置（Pro 能力）。
+  /// 「开机自启动」是否可配置（免费，恒 true）。
+  autostart_available: boolean;
+  /// 「启动后自动开启接收/发送」是否可配置（Pro 能力）。
   automation_available: boolean;
   /// MON-01 S10：配置档是否可用（Pro 能力）。
   profiles_available: boolean;
@@ -44,6 +46,27 @@ interface DesktopSettings {
 interface Props {
   settings: AppSettings | null;
   onChange: (next: Partial<AppSettings>) => Promise<void>;
+}
+
+/// Pro 徽标（自动化/配置档等 Pro 能力标注用）。
+function ProBadge() {
+  return (
+    <span
+      className="pro-badge"
+      title="Pro 功能"
+      style={{
+        marginLeft: 6,
+        fontSize: 11,
+        padding: "1px 6px",
+        borderRadius: 4,
+        background: "#7c5cff",
+        color: "#fff",
+        verticalAlign: "middle",
+      }}
+    >
+      Pro
+    </span>
+  );
 }
 
 const CLOSE_ACTION_OPTIONS: { v: AppSettings["close_action"]; label: string }[] = [
@@ -176,43 +199,27 @@ export default function SettingsPanel({ settings, onChange }: Props) {
     }
   };
 
-  // MON-01 S6：自动化开关为 Pro 能力。免费下置灰 + Pro 徽标 + 说明。
+  // 拆分归属：开机自启动免费；自动收/发为 Pro 能力（免费下置灰 + Pro 徽标）。
   const automationLocked = !settings.automation_available;
 
   return (
     <div className="settings-panel mode-panel">
       <section className="panel-card settings-card">
-        <h2>
-          启动
-          {automationLocked && (
-            <span
-              className="pro-badge"
-              title="Pro 功能"
-              style={{
-                marginLeft: 8,
-                fontSize: 11,
-                padding: "1px 6px",
-                borderRadius: 4,
-                background: "#7c5cff",
-                color: "#fff",
-                verticalAlign: "middle",
-              }}
-            >
-              Pro
-            </span>
-          )}
-        </h2>
+        <h2>启动</h2>
         <label className="toggle-row">
           <span>开机自启动</span>
           <input
             type="checkbox"
             checked={settings.auto_start}
-            disabled={busy || automationLocked}
+            disabled={busy}
             onChange={(e) => toggle("auto_start", e.target.checked)}
           />
         </label>
         <label className="toggle-row">
-          <span>自启动后自动开启接收（仅接收模式）</span>
+          <span>
+            自启动后自动开启接收（仅接收模式）
+            <ProBadge />
+          </span>
           <input
             type="checkbox"
             checked={settings.auto_receive_on_start}
@@ -221,7 +228,10 @@ export default function SettingsPanel({ settings, onChange }: Props) {
           />
         </label>
         <label className="toggle-row">
-          <span>自启动后自动开启发送（仅发送模式）</span>
+          <span>
+            自启动后自动开启发送（仅发送模式）
+            <ProBadge />
+          </span>
           <input
             type="checkbox"
             checked={settings.auto_send_on_start}
@@ -231,7 +241,7 @@ export default function SettingsPanel({ settings, onChange }: Props) {
         </label>
         {automationLocked && (
           <small style={{ display: "block", marginTop: 6, color: "#60718d", lineHeight: 1.6 }}>
-            开机自启与自动收发为 Pro 功能；免费版每次手动一键即可完成同样的操作。
+            自动开启收/发为 Pro 功能；开机自启动免费可用，免费版启动后手动一键即可开始。
             <button
               type="button"
               className="text-button"

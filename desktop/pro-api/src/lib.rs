@@ -138,8 +138,15 @@ pub trait ProCapabilities: Send + Sync {
     /// 启动时自动进入的模式（`None` = 不自动）。
     fn startup_plan(&self, input: &AutomationInput) -> Option<StartupPlan>;
 
-    /// 自动化（开机自启 + 启动自动收发）是否可配置。
-    /// 用于设置页开关的写入门控与置灰展示。
+    /// 「开机自启动」是否可配置。**对所有用户免费**（属基本可用性，跟随系统）。
+    /// 免费实现返回 `true`；此能力恒可用，不随授权变化。
+    fn autostart_available(&self) -> bool {
+        true
+    }
+
+    /// 「启动后自动开启接收/发送」是否可配置（Pro 能力）。
+    /// 用于设置页这两个开关的写入门控与置灰展示。
+    /// 注意：不含「开机自启动」——后者免费，见 [`ProCapabilities::autostart_available`]。
     fn automation_available(&self) -> bool;
 
     /// 跨启动自动重连策略（`None` = 不提供跨启动重连）。

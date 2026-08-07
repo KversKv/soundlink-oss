@@ -23,6 +23,7 @@
 
 ### 变更
 
+- **「开机自启动」调整为免费功能**：`auto_start` 不再属 Pro 能力，所有用户可在设置页开启/关闭（同步 autostart 注册项）。仅「自启动后自动开启接收/发送」（`auto_receive_on_start` / `auto_send_on_start`）保留为 Pro 能力（免费下置灰 + Pro 徽标）。对应 `ProCapabilities` 拆分：`autostart_available()` 恒 `true`，`automation_available()` 仅指自动收发。
 - **版本号由 `0.1.0-beta.1` 调整为 `0.1.0`**（已跑 `scripts/sync_version.py` 同步 4 个清单并 `--check` 自验）：`bundle.targets:"all"` 含 MSI 目标，MSI 要求预发布标识为纯数字（≤65535），含字母的 `-beta.1` 会让 `tauri build` 在 MSI 打包阶段失败（`optional pre-release identifier ... must be numeric-only`）。去掉预发布后 MSI + NSIS 双产物均可正常打包。
 - **桌面端主界面精简：音频参数与状态迁入设置页**。输出设备、Jitter 模式、音量、音频参数（采样率/声道/帧长/码率）统一移至设置页新增「音频」分区（`AudioSettingsPanel`）；主界面接收/发送模式只保留配对码（或采集源/地址/配对码）、开始/停止按钮与 3 项关键状态（连接状态、估算延迟/目标、接收/发送码率）。完整统计（丢包/缓冲/抖动/漂移/PLC 等）不再常驻主界面。⚠ 用户动作：习惯在主界面调音量/码率/Jitter 的用户，请改到「设置 → 音频」操作。
 - **移动端导航精简：删除「广播」Tab，引导并入设备页**。原「广播」页仅提供分平台开启广播步骤引导，无实际连接能力（连接/配对均在设备页），已删除该 Tab；引导说明精简后并入设备页配对区块上方（仅未广播时显示）。⚠ 用户动作：底部导航由「设备/广播/设置」变为「设备/设置」。

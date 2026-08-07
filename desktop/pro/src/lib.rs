@@ -32,6 +32,12 @@ impl ProCapabilities for FreeCapabilities {
         None
     }
 
+    /// 「开机自启动」对所有用户免费（默认 trait 实现已返回 true，此处显式固定语义）。
+    fn autostart_available(&self) -> bool {
+        true
+    }
+
+    /// 「启动后自动开启接收/发送」为 Pro 能力，免费版不可配置。
     fn automation_available(&self) -> bool {
         false
     }

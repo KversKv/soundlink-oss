@@ -1055,7 +1055,9 @@ pub struct AppSettings {
     pub onboarding_completed: bool,
     /// F6：发送端 DRM 提示是否已展示。
     pub sender_drm_hint_seen: bool,
-    /// MON-01 S4：自动化（自启 + 自动收发）是否可配置。false 时前端置灰（Pro 能力）。
+    /// 「开机自启动」是否可配置。**免费可用**（恒 true）。
+    pub autostart_available: bool,
+    /// 「启动后自动开启接收/发送」是否可配置。false 时前端置灰（Pro 能力）。
     pub automation_available: bool,
     /// MON-01 S10：配置档是否可用（Pro 能力）。
     pub profiles_available: bool,
@@ -1098,6 +1100,7 @@ pub fn get_app_settings(state: State<'_, AppState>) -> Result<AppSettings, Strin
         auto_send_on_start: cfg.auto_send_on_start,
         onboarding_completed: cfg.onboarding_completed,
         sender_drm_hint_seen: cfg.sender_drm_hint_seen,
+        autostart_available: state.caps.autostart_available(),
         automation_available: state.caps.automation_available(),
         profiles_available: state.caps.profiles().is_some(),
     })
@@ -1117,13 +1120,12 @@ pub async fn set_app_settings(
     onboarding_completed: Option<bool>,
     sender_drm_hint_seen: Option<bool>,
 ) -> Result<AppSettings, String> {
-    // MON-01 S4：自动化三项为 Pro 能力。不可用时**忽略并返回当前值**
-    // （不报错、不写入、不动 autostart 注册项）。
+    // 「开机自启动」免费：直接写入并同步注册项。
+    // 「启动后自动收/发」为 Pro 能力（automation_available）：不可用时忽略并返回当前值
+    // （不报错、不写入）。
     let automation_available = state.caps.automation_available();
-    if !automation_available
-        && (auto_start.is_some() || auto_receive_on_start.is_some() || auto_send_on_start.is_some())
-    {
-        tracing::info!("自动化设置为 Pro 能力，本次写入被忽略（保持当前值）");
+    if !automation_available && (auto_receive_on_start.is_some() || auto_send_on_start.is_some()) {
+        tracing::info!("自动收/发为 Pro 能力，本次写入被忽略（保持当前值）");
     }
     {
         let mut cfg = state.config.lock();
@@ -1133,10 +1135,11 @@ pub async fn set_app_settings(
             }
             cfg.close_action = v;
         }
+        // 开机自启：免费，始终写入。
+        if let Some(v) = auto_start {
+            cfg.auto_start = v;
+        }
         if automation_available {
-            if let Some(v) = auto_start {
-                cfg.auto_start = v;
-            }
             if let Some(v) = auto_receive_on_start {
                 cfg.auto_receive_on_start = v;
             }
@@ -1152,10 +1155,9 @@ pub async fn set_app_settings(
         }
     }
     save_config(state.inner())?;
-    if automation_available {
-        if let Some(v) = auto_start {
-            sync_autostart(&app, v)?;
-        }
+    // 开机自启免费：始终同步注册项。
+    if let Some(v) = auto_start {
+        sync_autostart(&app, v)?;
     }
     get_app_settings(state)
 }
@@ -1176,11 +1178,7 @@ pub fn set_auto_start(
     state: State<'_, AppState>,
     enabled: bool,
 ) -> Result<bool, String> {
-    // MON-01 S4：开机自启为 Pro 能力。不可用时忽略写入，返回当前值。
-    if !state.caps.automation_available() {
-        tracing::info!("开机自启为 Pro 能力，本次写入被忽略（保持当前值）");
-        return Ok(state.config.lock().auto_start);
-    }
+    // 开机自启为免费功能（autostart_available 恒 true），不做授权门控。
     state.config.lock().auto_start = enabled;
     save_config(state.inner())?;
     sync_autostart(&app, enabled)?;
