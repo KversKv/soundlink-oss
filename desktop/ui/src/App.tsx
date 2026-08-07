@@ -188,8 +188,11 @@ export default function App() {
     invoke<CaptureSourceInfo[]>("list_capture_sources")
       .then((srcs) => {
         setCaptureSources(srcs);
-        const firstAvail = srcs.find((s) => s.available);
-        if (firstAvail) setSelectedSource(firstAvail.id);
+        // 发送模式默认采集源：优先 WASAPI Loopback（系统音频），不可用则回退第一个可用源。
+        const preferred = srcs.find((s) => s.id === "wasapi" && s.available);
+        const fallback = srcs.find((s) => s.available);
+        const chosen = preferred ?? fallback;
+        if (chosen) setSelectedSource(chosen.id);
       })
       .catch(() => {});
     loadTrustedReceivers();
@@ -202,7 +205,15 @@ export default function App() {
         setFixedPairingCode(settings.pairing.fixed_code);
         setAudioParamsState(settings.audio_params);
         setReceiverAddr(settings.last_receiver_addr);
-        if (settings.selected_capture_source) setSelectedSource(settings.selected_capture_source);
+        // 仅当持久化的采集源在当前可用列表中才覆盖（否则保留 wasapi 优先的默认）。
+        if (settings.selected_capture_source) {
+          setCaptureSources((srcs) => {
+            if (srcs.some((s) => s.id === settings.selected_capture_source && s.available)) {
+              setSelectedSource(settings.selected_capture_source);
+            }
+            return srcs;
+          });
+        }
       })
       .catch(() => {});
     invoke<string>("get_role")

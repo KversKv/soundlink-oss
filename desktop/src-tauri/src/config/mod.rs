@@ -137,6 +137,19 @@ pub struct Profile {
     pub peer_device_id: Option<String>,
 }
 
+/// 发送模式默认采集源 id：Windows + wasapi feature 时优先系统音频（WASAPI Loopback），
+/// 否则回退测试源（sine）。持久化默认值与「未显式选择」时一致。
+fn default_capture_source_id() -> &'static str {
+    #[cfg(all(windows, feature = "wasapi"))]
+    {
+        "wasapi"
+    }
+    #[cfg(not(all(windows, feature = "wasapi")))]
+    {
+        "sine"
+    }
+}
+
 fn default_profile_jitter() -> String {
     "balanced".into()
 }
@@ -170,7 +183,7 @@ impl Default for AppConfig {
                 ..AudioParams::default()
             },
             last_receiver_addr: String::new(),
-            selected_capture_source: "sine".into(),
+            selected_capture_source: default_capture_source_id().into(),
             close_action: "ask".into(),
             auto_start: false,
             auto_receive_on_start: false,
@@ -342,7 +355,8 @@ mod tests {
         assert!(!cfg.auto_start);
         assert!(!cfg.onboarding_completed);
         assert!(!cfg.sender_drm_hint_seen);
-        assert_eq!(cfg.selected_capture_source, "sine");
+        // 默认采集源随平台：Windows+wasapi 为 wasapi，否则 sine（与 default_capture_source_id 一致）。
+        assert_eq!(cfg.selected_capture_source, default_capture_source_id());
         assert_eq!(cfg.audio_params.sample_rate, SAMPLE_RATE);
         assert_eq!(cfg.audio_params.channels, 2);
         assert_eq!(cfg.audio_params.frame_duration_ms, FRAME_DURATION_MS);
