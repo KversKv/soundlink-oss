@@ -156,12 +156,12 @@ cargo clean -p soundlink-pro --manifest-path desktop\src-tauri\Cargo.toml
 
 ```powershell
 # 目录布局
-#   D:\CodeProject\TRAE_Projects\SoundLink\          公开仓库
-#   D:\CodeProject\TRAE_Projects\soundlink-pro\      私有仓库（平级，独立 git）
+#   D:\CodeProject\TRAE_Projects\SoundLink\oss\          公开仓库
+#   D:\CodeProject\TRAE_Projects\SoundLink\pro\      私有仓库（平级，独立 git）
 
 # 切到 Pro 开发
 Rename-Item desktop\pro desktop\pro-free-backup
-Copy-Item D:\CodeProject\TRAE_Projects\soundlink-pro desktop\pro -Recurse
+Copy-Item D:\CodeProject\TRAE_Projects\SoundLink\pro desktop\pro -Recurse
 Remove-Item desktop\pro\.git -Recurse -Force -ErrorAction SilentlyContinue
 cargo clean -p soundlink-pro --manifest-path desktop\src-tauri\Cargo.toml
 
@@ -176,7 +176,7 @@ cargo clean -p soundlink-pro --manifest-path desktop\src-tauri\Cargo.toml
 ```powershell
 # 切到 Pro 开发
 Rename-Item desktop\pro desktop\pro-free-backup
-New-Item -ItemType Junction -Path desktop\pro -Target D:\CodeProject\TRAE_Projects\soundlink-pro
+New-Item -ItemType Junction -Path desktop\pro -Target D:\CodeProject\TRAE_Projects\SoundLink\pro
 cargo clean -p soundlink-pro --manifest-path desktop\src-tauri\Cargo.toml
 
 # 切回免费开发

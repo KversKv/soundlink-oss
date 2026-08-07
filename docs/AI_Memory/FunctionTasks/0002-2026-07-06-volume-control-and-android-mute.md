@@ -34,18 +34,18 @@
 
 | 文件 | 改动 |
 |---|---|
-| [audio/output/mod.rs](file:///d:/CodeProject/TRAE_Projects/SoundLink/desktop/src-tauri/src/audio/output/mod.rs) | 新增 `VolumeControl`（AtomicU32 存 f32 bits，回调线程无锁读）；`AudioOutput` 加 `volume` 字段 + `set_volume`/`volume` 方法；`build_stream` 在 i16 PCM 阶段统一应用增益（带 `.clamp(-32768.0, 32767.0)` 防 clip） |
-| [receiver.rs](file:///d:/CodeProject/TRAE_Projects/SoundLink/desktop/src-tauri/src/receiver.rs) | `ReceiverEngine::set_volume` / `volume` 转发给 `AudioOutput` |
-| [commands/mod.rs](file:///d:/CodeProject/TRAE_Projects/SoundLink/desktop/src-tauri/src/commands/mod.rs) | 新增 `set_volume(volume: f32) -> f32` / `get_volume() -> f32` Tauri 命令 |
-| [main.rs](file:///d:/CodeProject/TRAE_Projects/SoundLink/desktop/src-tauri/src/main.rs) | 注册 `set_volume` / `get_volume` 命令 |
-| [App.tsx](file:///d:/CodeProject/TRAE_Projects/SoundLink/desktop/ui/src/App.tsx) | 接收模式面板新增「音量」滑块（0–100%），onChange 实时调用 `set_volume` |
+| [audio/output/mod.rs](file:///d:/CodeProject/TRAE_Projects/SoundLink/oss/desktop/src-tauri/src/audio/output/mod.rs) | 新增 `VolumeControl`（AtomicU32 存 f32 bits，回调线程无锁读）；`AudioOutput` 加 `volume` 字段 + `set_volume`/`volume` 方法；`build_stream` 在 i16 PCM 阶段统一应用增益（带 `.clamp(-32768.0, 32767.0)` 防 clip） |
+| [receiver.rs](file:///d:/CodeProject/TRAE_Projects/SoundLink/oss/desktop/src-tauri/src/receiver.rs) | `ReceiverEngine::set_volume` / `volume` 转发给 `AudioOutput` |
+| [commands/mod.rs](file:///d:/CodeProject/TRAE_Projects/SoundLink/oss/desktop/src-tauri/src/commands/mod.rs) | 新增 `set_volume(volume: f32) -> f32` / `get_volume() -> f32` Tauri 命令 |
+| [main.rs](file:///d:/CodeProject/TRAE_Projects/SoundLink/oss/desktop/src-tauri/src/main.rs) | 注册 `set_volume` / `get_volume` 命令 |
+| [App.tsx](file:///d:/CodeProject/TRAE_Projects/SoundLink/oss/desktop/ui/src/App.tsx) | 接收模式面板新增「音量」滑块（0–100%），onChange 实时调用 `set_volume` |
 
 ### Android 端自动静音
 
 | 文件 | 改动 |
 |---|---|
-| [VolumeMuteController.kt](file:///d:/CodeProject/TRAE_Projects/SoundLink/mobile/android/app/src/main/java/com/soundlink/capture/VolumeMuteController.kt) | 新建。封装 `muteMediaVolume()` / `restoreMediaVolume()`，幂等，处理 `savedVolume = -1` 边界，含详细集成指引注释 |
-| [AudioCaptureService.kt](file:///d:/CodeProject/TRAE_Projects/SoundLink/mobile/android/app/src/main/java/com/soundlink/capture/AudioCaptureService.kt) | 占位注释里加集成示例（onStartCommand 调 mute、onDestroy/onTaskRemoved 调 restore） |
+| [VolumeMuteController.kt](file:///d:/CodeProject/TRAE_Projects/SoundLink/oss/mobile/android/app/src/main/java/com/soundlink/capture/VolumeMuteController.kt) | 新建。封装 `muteMediaVolume()` / `restoreMediaVolume()`，幂等，处理 `savedVolume = -1` 边界，含详细集成指引注释 |
+| [AudioCaptureService.kt](file:///d:/CodeProject/TRAE_Projects/SoundLink/oss/mobile/android/app/src/main/java/com/soundlink/capture/AudioCaptureService.kt) | 占位注释里加集成示例（onStartCommand 调 mute、onDestroy/onTaskRemoved 调 restore） |
 
 ---
 
@@ -132,7 +132,7 @@ cargo clippy --features tauri_app --no-default-features
 
 ### Android 端集成（用户本地有自己的 AudioCaptureService.kt 实现）
 
-按 [VolumeMuteController.kt](file:///d:/CodeProject/TRAE_Projects/SoundLink/mobile/android/app/src/main/java/com/soundlink/capture/VolumeMuteController.kt) 顶部注释示例嵌入：
+按 [VolumeMuteController.kt](file:///d:/CodeProject/TRAE_Projects/SoundLink/oss/mobile/android/app/src/main/java/com/soundlink/capture/VolumeMuteController.kt) 顶部注释示例嵌入：
 
 ```kotlin
 private val mute = VolumeMuteController(this)

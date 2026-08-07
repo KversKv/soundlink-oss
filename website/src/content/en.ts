@@ -1,7 +1,7 @@
 import type { Content } from './zh'
 
 // English copy. Keys must exactly match zh.ts; the Content type enforces this at build time.
-const REPO = 'https://github.com/KversKv/SoundLink'
+const REPO = 'https://github.com/KversKv/soundlink-oss'
 const ASSET = (p: string) => `${import.meta.env.BASE_URL}${p}`
 
 export const en: Content = {

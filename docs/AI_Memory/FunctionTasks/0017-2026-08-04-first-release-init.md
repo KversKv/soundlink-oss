@@ -28,7 +28,7 @@ cargo clippy --features tauri_app --all-targets -- -D warnings
 → exit 101（lib 10 errors + lib test 12 errors）
 ```
 
-该命令即 [`ci.yml` 第 80 行](file:///d:/CodeProject/TRAE_Projects/SoundLink/.github/workflows/ci.yml#L79-L80) 的原文。**若直接打 tag 并 push，CI 立即失败，初始化目的（产出可用 Release）即未达成**，故暂停 commit/tag，先修 lint。
+该命令即 [`ci.yml` 第 80 行](file:///d:/CodeProject/TRAE_Projects/SoundLink/oss/.github/workflows/ci.yml#L79-L80) 的原文。**若直接打 tag 并 push，CI 立即失败，初始化目的（产出可用 Release）即未达成**，故暂停 commit/tag，先修 lint。
 
 根因：本地 toolchain 为 **rust 1.96.1 / clippy 0.1.96**，新增或加强的 lint 命中存量代码；不是本次改动引入的回归（`cargo test` 在修复前就是 63 passed 全绿）。
 
@@ -38,16 +38,16 @@ cargo clippy --features tauri_app --all-targets -- -D warnings
 
 | 文件 | lint | 处理 |
 |---|---|---|
-| [`audio/capture/wasapi_loopback.rs`](file:///d:/CodeProject/TRAE_Projects/SoundLink/desktop/src-tauri/src/audio/capture/wasapi_loopback.rs) | `map_identity` | `--fix` 自动移除冗余 `.map()` |
-| [`device/device_identity.rs`](file:///d:/CodeProject/TRAE_Projects/SoundLink/desktop/src-tauri/src/device/device_identity.rs) | `io_other_error` ×2 | `--fix` 改为 `std::io::Error::other(_)` |
-| [`commands/mod.rs`](file:///d:/CodeProject/TRAE_Projects/SoundLink/desktop/src-tauri/src/commands/mod.rs) | `derivable_impls` | `--fix` 改用 `#[derive(Default)]` |
-| [`config/mod.rs`](file:///d:/CodeProject/TRAE_Projects/SoundLink/desktop/src-tauri/src/config/mod.rs#L120-L142) | `field_reassign_with_default` ×2 | 手工改结构体更新语法 `Self { fixed_pairing_code: .., ..Self::default() }`，语义等价 |
-| [`config/mod.rs`](file:///d:/CodeProject/TRAE_Projects/SoundLink/desktop/src-tauri/src/config/mod.rs#L428-L438) | 同上（测试内） | `save_then_load_roundtrip` 同样改法 |
-| [`logging/mod.rs`](file:///d:/CodeProject/TRAE_Projects/SoundLink/desktop/src-tauri/src/logging/mod.rs#L88) | `ptr_arg` | `&PathBuf` → `&Path`，并在 `daily_writer` 内补 `use std::path::Path` |
-| [`sender.rs:92`](file:///d:/CodeProject/TRAE_Projects/SoundLink/desktop/src-tauri/src/sender.rs#L91-L93) | `type_complexity` | `on_state_change` 加 `#[allow]`（同文件 `on_pubkey_mismatch` 早已如此处理，保持一致） |
-| [`sender.rs:461`](file:///d:/CodeProject/TRAE_Projects/SoundLink/desktop/src-tauri/src/sender.rs#L460-L464) `handshake` | `too_many_arguments` 8/7 | `#[allow]` + 注明「握手参数均为协议必需字段」 |
-| [`sender.rs:716`](file:///d:/CodeProject/TRAE_Projects/SoundLink/desktop/src-tauri/src/sender.rs#L717-L721) `send_loop` | 同上 | `#[allow]` + 注明「音频热路径句柄，避免额外包装」 |
-| [`commands/mod.rs:967`](file:///d:/CodeProject/TRAE_Projects/SoundLink/desktop/src-tauri/src/commands/mod.rs#L964-L968) `set_app_settings` | 同上 | `#[allow]` + 注明「Tauri command 参数需与前端字段一一对应」 |
+| [`audio/capture/wasapi_loopback.rs`](file:///d:/CodeProject/TRAE_Projects/SoundLink/oss/desktop/src-tauri/src/audio/capture/wasapi_loopback.rs) | `map_identity` | `--fix` 自动移除冗余 `.map()` |
+| [`device/device_identity.rs`](file:///d:/CodeProject/TRAE_Projects/SoundLink/oss/desktop/src-tauri/src/device/device_identity.rs) | `io_other_error` ×2 | `--fix` 改为 `std::io::Error::other(_)` |
+| [`commands/mod.rs`](file:///d:/CodeProject/TRAE_Projects/SoundLink/oss/desktop/src-tauri/src/commands/mod.rs) | `derivable_impls` | `--fix` 改用 `#[derive(Default)]` |
+| [`config/mod.rs`](file:///d:/CodeProject/TRAE_Projects/SoundLink/oss/desktop/src-tauri/src/config/mod.rs#L120-L142) | `field_reassign_with_default` ×2 | 手工改结构体更新语法 `Self { fixed_pairing_code: .., ..Self::default() }`，语义等价 |
+| [`config/mod.rs`](file:///d:/CodeProject/TRAE_Projects/SoundLink/oss/desktop/src-tauri/src/config/mod.rs#L428-L438) | 同上（测试内） | `save_then_load_roundtrip` 同样改法 |
+| [`logging/mod.rs`](file:///d:/CodeProject/TRAE_Projects/SoundLink/oss/desktop/src-tauri/src/logging/mod.rs#L88) | `ptr_arg` | `&PathBuf` → `&Path`，并在 `daily_writer` 内补 `use std::path::Path` |
+| [`sender.rs:92`](file:///d:/CodeProject/TRAE_Projects/SoundLink/oss/desktop/src-tauri/src/sender.rs#L91-L93) | `type_complexity` | `on_state_change` 加 `#[allow]`（同文件 `on_pubkey_mismatch` 早已如此处理，保持一致） |
+| [`sender.rs:461`](file:///d:/CodeProject/TRAE_Projects/SoundLink/oss/desktop/src-tauri/src/sender.rs#L460-L464) `handshake` | `too_many_arguments` 8/7 | `#[allow]` + 注明「握手参数均为协议必需字段」 |
+| [`sender.rs:716`](file:///d:/CodeProject/TRAE_Projects/SoundLink/oss/desktop/src-tauri/src/sender.rs#L717-L721) `send_loop` | 同上 | `#[allow]` + 注明「音频热路径句柄，避免额外包装」 |
+| [`commands/mod.rs:967`](file:///d:/CodeProject/TRAE_Projects/SoundLink/oss/desktop/src-tauri/src/commands/mod.rs#L964-L968) `set_app_settings` | 同上 | `#[allow]` + 注明「Tauri command 参数需与前端字段一一对应」 |
 
 ### 关键决策：为何 4 处用 `#[allow]` 而非重构
 
@@ -67,8 +67,8 @@ cargo clippy --features tauri_app --all-targets -- -D warnings
 ## 6. 交付物
 
 - `CHANGELOG.md`：`[未发布]` → `[0.1.0-beta.1] - 2026-08-04` 并在其上留空 `[未发布]`；补首发免责摘要（仅实测 Android→Windows / Windows→Windows、macOS 未实装、产物未签名会触发 SmartScreen）；里程碑小节改名并修正过期 tag 名 `v0.1.0-beta` → `v0.1.0-beta.1`；按义务 A 追加 clippy 修复条目
-- [`00-launch-overview.md`](file:///d:/CodeProject/TRAE_Projects/SoundLink/docs/NewFunctions/opensource-launch/00-launch-overview.md#L50-L88)：K3 标 `[~]`（本地 tag 已打，push 待人工）；发布前必查清单 6/7 勾选并记录核验结论
-- [`12-plan.md`](file:///d:/CodeProject/TRAE_Projects/SoundLink/docs/First/12-plan.md#L28)：发布侧进度改为首版已本地定版
+- [`00-launch-overview.md`](file:///d:/CodeProject/TRAE_Projects/SoundLink/oss/docs/NewFunctions/opensource-launch/00-launch-overview.md#L50-L88)：K3 标 `[~]`（本地 tag 已打，push 待人工）；发布前必查清单 6/7 勾选并记录核验结论
+- [`12-plan.md`](file:///d:/CodeProject/TRAE_Projects/SoundLink/oss/docs/First/12-plan.md#L28)：发布侧进度改为首版已本地定版
 - commit `c41dd04`（8 files changed，46+/31-）
 - 本地 annotated tag `v0.1.0-beta.1` → `c41dd04`
 

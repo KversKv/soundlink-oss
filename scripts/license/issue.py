@@ -26,6 +26,16 @@ from ed25519_pure import publickey, signature, _self_test
 SKU = "desktop-pro"
 LEDGER_NAME = "license_ledger.csv"
 
+# 私仓中写死的签发私钥（唯一权威来源）。任何环境都读这一份，绝不重新随机生成。
+# 见 soundlink-pro/license/README.md。相对本文件：SoundLink/scripts/license/ -> ../../soundlink-pro/
+DEFAULT_KEY_PATH = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "..", "..", "soundlink-pro", "license", "vendor_sk.hex")
+)
+
+# 与 DEFAULT_KEY_PATH 私钥对应的公钥 base64（编译期写死进客户端 PUBKEYS_VENDOR_B64）。
+# 签发前自检：由私钥推导的公钥必须等于它，不等即私钥被换/拿错，立即中止，防误签无效码。
+EXPECTED_PUBKEY_B64 = "wKpxUUe0XZsacDcV2sAKXU9K7wGCiQxUk369M6PJvqU="
+
 
 def b32_encode(data: bytes) -> str:
     """RFC 4648 base32 无填充（与 Rust base32_encode 对齐）。"""
@@ -59,7 +69,11 @@ def main() -> int:
     _self_test()
 
     parser = argparse.ArgumentParser(description="签发 SoundLink Pro license")
-    parser.add_argument("--key", required=True, help="私钥 hex 文件（仓库外）")
+    parser.add_argument(
+        "--key",
+        default=DEFAULT_KEY_PATH,
+        help=f"私钥 hex 文件（默认私仓固定路径：{DEFAULT_KEY_PATH}）",
+    )
     parser.add_argument("--sub", required=True, help="买家标识：设备指纹（10 位）或订单号")
     parser.add_argument("--bind", choices=["fingerprint", "order"], required=True)
     parser.add_argument("--seats", type=int, default=3, help="允许设备数（默认 3）")
@@ -77,6 +91,15 @@ def main() -> int:
         sk = bytes.fromhex(f.read().strip())
     if len(sk) != 32:
         print("错误：私钥必须为 32 字节 hex", file=sys.stderr)
+        return 2
+
+    # 公钥指纹自检：防"拿错/重生成私钥导致签出的码在已发布软件上验不过"。
+    pk_b64 = base64.b64encode(publickey(sk)).decode()
+    if key_path == DEFAULT_KEY_PATH and pk_b64 != EXPECTED_PUBKEY_B64:
+        print("错误：私仓私钥与客户端内置公钥不匹配！", file=sys.stderr)
+        print(f"  推导公钥: {pk_b64}", file=sys.stderr)
+        print(f"  期望公钥: {EXPECTED_PUBKEY_B64}", file=sys.stderr)
+        print("  说明私钥已被更换/重新生成。请从私仓恢复正确的 vendor_sk.hex 后再签发。", file=sys.stderr)
         return 2
 
     sub = args.sub.strip().upper()

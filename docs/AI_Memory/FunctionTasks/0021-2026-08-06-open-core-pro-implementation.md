@@ -17,7 +17,7 @@ MON-01 方案已定稿（阶段 Q/R/S/T/U）。本次把方案落成代码：ope
 | 阶段 S Pro 功能 | 设备记忆上限（免费1/Pro8 替换最旧+提示）；自动化下沉 Rust（`resolve_startup_plan`，免费恒 None）；静默启动；`last_peer_device_id` + 跨启动自动重连（1s→30s 退避）；配置档五命令；快捷键/托盘能力驱动 | [trust_store.rs](../../../desktop/src-tauri/src/pairing/trust_store.rs)、[sender.rs](../../../desktop/src-tauri/src/sender.rs)、[control_server.rs](../../../desktop/src-tauri/src/network/control_server.rs)、[commands/tray.rs](../../../desktop/src-tauri/src/commands/tray.rs)、[main.rs](../../../desktop/src-tauri/src/main.rs)、[ProfilePanel.tsx](../../../desktop/ui/src/components/ProfilePanel.tsx) |
 | 阶段 T 工具链 | 纯 Python Ed25519 + keygen/issue/roundtrip；vendor 密钥对生成于仓库外；roundtrip 纳入公开 CI | [scripts/license/](../../../scripts/license/) |
 | 阶段 Q5 CI 双流水线 | 公开 CI（免费实现 + roundtrip，无 secret）；发布 CI（检出私有实现 + `cargo clean -p soundlink-pro`） | [ci.yml](../../../.github/workflows/ci.yml)、[release.yml](../../../.github/workflows/release.yml) |
-| 私有 Pro 实现 | 仓库外 `D:\CodeProject\TRAE_Projects\soundlink-pro`（junction 挂载验证） | 仓库外（物理隔离，G3） |
+| 私有 Pro 实现 | 仓库外 `D:\CodeProject\TRAE_Projects\SoundLink\pro`（junction 挂载验证） | 仓库外（物理隔离，G3） |
 
 ## 关键设计决策
 
@@ -48,7 +48,7 @@ MON-01 方案已定稿（阶段 Q/R/S/T/U）。本次把方案落成代码：ope
 ## 用户需自行完成部分
 
 1. ~~junction 切回免费实现~~ ✅ **已完成（2026-08-06）**：`cmd /c rmdir desktop\pro` 删 junction 本体 → `Rename-Item -Path desktop\pro-free-backup -NewName pro`（注意：位置参数 `Rename-Item A B` 对带横杠名报 PSArgumentException，须用 `-Path/-NewName`）→ `cargo clean -p soundlink-pro`。免费构建验证：`cargo test --features tauri_app` **150 测全绿**、`clippy -D warnings` 全绿。
-2. **私有仓库 git 化与远端**：`D:\CodeProject\TRAE_Projects\soundlink-pro` 当前仅本地文件，需 `git init` + 推到私有远端（GitHub private repo `KversKv/soundlink-pro`），并在发布 CI 配 `PRO_REPO_TOKEN`（只读细粒度 PAT / deploy key）。
+2. **私有仓库 git 化与远端**：`D:\CodeProject\TRAE_Projects\SoundLink\pro` 当前仅本地文件，需 `git init` + 推到私有远端（GitHub private repo `KversKv/soundlink-pro`），并在发布 CI 配 `PRO_REPO_TOKEN`（只读细粒度 PAT / deploy key）。
 3. **vendor 私钥离线备份**：`D:\CodeProject\TRAE_Projects\soundlink-license\vendor_sk.hex` 已生成于仓库外，请离线妥善备份（丢失 = 无法签发新 key，已发出的仍永久有效）。
 4. **提交**：切回免费实现后，把 `desktop/pro/`（免费版）+ `desktop/pro-api/` 一并 `git add` 提交（本次会话未做任何 commit）。
 5. **T5/T6/T7**：爱发电/淘宝上架、官网 Pro 页（需外部账号与 website 目录，不在本次代码范围）。

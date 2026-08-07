@@ -21,11 +21,11 @@
 
 | 文件 | 改动 |
 |---|---|
-| [AudioProcessor.swift](file:///d:/CodeProject/TRAE_Projects/SoundLink/mobile/ios/BroadcastExtension/AudioProcessor.swift) | iOS ReplayKit 归一化输出是 interleaved Int16，数据提取改为从 `audioBufferList.pointee.mBuffers.mData` 读取，避免 `int16ChannelData` 在交错格式下为空或不可靠 |
-| [opus_codec.rs](file:///d:/CodeProject/TRAE_Projects/SoundLink/desktop/src-tauri/src/audio/opus_codec.rs) | 桌面 libopus encoder 创建改用 `opusffi::OPUS_APPLICATION_AUDIO as c_int`，对应 FT-0001 坑 7 的防回归 |
-| [platform_service.dart](file:///d:/CodeProject/TRAE_Projects/SoundLink/mobile/flutter_app/lib/src/services/platform_service.dart) | 更新 dump 开关注释，明确 iOS 写 App Group，Android 写 Download/fallback |
-| [discovery_page.dart](file:///d:/CodeProject/TRAE_Projects/SoundLink/mobile/flutter_app/lib/src/pages/discovery_page.dart) | 调试 dump 开关文案改为跨平台描述，避免误导 iOS 用户去 Android 私有目录找文件 |
-| [broadcast_guide_page.dart](file:///d:/CodeProject/TRAE_Projects/SoundLink/mobile/flutter_app/lib/src/pages/broadcast_guide_page.dart) | iOS 广播引导新增本机外放/静音说明：不做 Android 式自动调系统媒体音量 |
+| [AudioProcessor.swift](file:///d:/CodeProject/TRAE_Projects/SoundLink/oss/mobile/ios/BroadcastExtension/AudioProcessor.swift) | iOS ReplayKit 归一化输出是 interleaved Int16，数据提取改为从 `audioBufferList.pointee.mBuffers.mData` 读取，避免 `int16ChannelData` 在交错格式下为空或不可靠 |
+| [opus_codec.rs](file:///d:/CodeProject/TRAE_Projects/SoundLink/oss/desktop/src-tauri/src/audio/opus_codec.rs) | 桌面 libopus encoder 创建改用 `opusffi::OPUS_APPLICATION_AUDIO as c_int`，对应 FT-0001 坑 7 的防回归 |
+| [platform_service.dart](file:///d:/CodeProject/TRAE_Projects/SoundLink/oss/mobile/flutter_app/lib/src/services/platform_service.dart) | 更新 dump 开关注释，明确 iOS 写 App Group，Android 写 Download/fallback |
+| [discovery_page.dart](file:///d:/CodeProject/TRAE_Projects/SoundLink/oss/mobile/flutter_app/lib/src/pages/discovery_page.dart) | 调试 dump 开关文案改为跨平台描述，避免误导 iOS 用户去 Android 私有目录找文件 |
+| [broadcast_guide_page.dart](file:///d:/CodeProject/TRAE_Projects/SoundLink/oss/mobile/flutter_app/lib/src/pages/broadcast_guide_page.dart) | iOS 广播引导新增本机外放/静音说明：不做 Android 式自动调系统媒体音量 |
 
 ## 三、关键判断
 

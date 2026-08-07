@@ -2,7 +2,7 @@
 // 单源约束：平台矩阵 / 已知限制 / 音频基线 / 加密算法以 README.md 与
 // docs/First/11-implementation-spec.md 为准，修改数字前必须先核对单源。
 
-const REPO = 'https://github.com/KversKv/SoundLink'
+const REPO = 'https://github.com/KversKv/soundlink-oss'
 const ASSET = (p: string) => `${import.meta.env.BASE_URL}${p}`
 
 export const zh = {

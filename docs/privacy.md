@@ -1,7 +1,7 @@
 # SoundLink 隐私政策
 
 > 生效日期：2026-07-12
-> 适用范围：SoundLink 桌面端（Windows）、移动端（iOS / Android）及相关源代码仓库 KversKv/SoundLink。
+> 适用范围：SoundLink 桌面端（Windows）、移动端（iOS / Android）及相关源代码仓库 KversKv/soundlink-oss。
 
 SoundLink 是一款面向头戴式耳机用户的**局域网音频流转**软件。本政策说明我们采集的数据范围、本地数据清单、网络传输机制与第三方组件。
 
@@ -141,8 +141,8 @@ SoundLink 在各平台申请的权限仅用于实现音频流转功能：
 
 ## 9. 联系方式
 
-- 问题反馈：[GitHub Issues](https://github.com/KversKv/SoundLink/issues)
-- 源代码仓库：https://github.com/KversKv/SoundLink
+- 问题反馈：[GitHub Issues](https://github.com/KversKv/soundlink-oss/issues)
+- 源代码仓库：https://github.com/KversKv/soundlink-oss
 
 ---
 

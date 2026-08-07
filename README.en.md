@@ -48,7 +48,7 @@ Runtime-adjustable: Opus bitrate, jitter buffer preset, desktop volume (sample r
 ### 2. Clone and build
 
 ```powershell
-git clone https://github.com/KversKv/SoundLink.git
+git clone https://github.com/KversKv/soundlink-oss.git
 cd SoundLink/desktop/ui
 npm install                 # frontend deps + local Tauri CLI
 npm run tauri:build:exe     # portable exe: desktop/src-tauri/target/release/soundlink.exe
@@ -217,5 +217,5 @@ Third-party component licenses: [`docs/privacy.md`](docs/privacy.md) §6.
 
 ## Feedback
 
-- Bugs / feature requests: [GitHub Issues](https://github.com/KversKv/SoundLink/issues)
-- Usage discussion: [GitHub Discussions](https://github.com/KversKv/SoundLink/discussions)
+- Bugs / feature requests: [GitHub Issues](https://github.com/KversKv/soundlink-oss/issues)
+- Usage discussion: [GitHub Discussions](https://github.com/KversKv/soundlink-oss/discussions)

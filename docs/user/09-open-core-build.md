@@ -90,8 +90,8 @@ cargo tauri dev --features tauri_app
 私有仓库放在**公开仓库之外的平级目录**（物理隔离，防误提交）：
 
 ```
-D:\CodeProject\TRAE_Projects\SoundLink\        公开仓库
-D:\CodeProject\TRAE_Projects\soundlink-pro\    私有仓库（独立 git）
+D:\CodeProject\TRAE_Projects\SoundLink\oss\        公开仓库
+D:\CodeProject\TRAE_Projects\SoundLink\pro\    私有仓库（独立 git）
 ```
 
 > ⚠️ 私有仓库**不要**放进公开仓库目录内部（即使加 `.gitignore`），一次 `git add -f` 就泄露。物理隔离是唯一可靠保障（红线 G3）。
@@ -106,11 +106,11 @@ D:\CodeProject\TRAE_Projects\soundlink-pro\    私有仓库（独立 git）
 #### 方式 A · 物理替换（推荐）
 
 ```powershell
-cd D:\CodeProject\TRAE_Projects\SoundLink
+cd D:\CodeProject\TRAE_Projects\SoundLink\oss
 
 # 切到 Pro 开发
 Rename-Item -Path desktop\pro -NewName pro-free-backup
-Copy-Item D:\CodeProject\TRAE_Projects\soundlink-pro desktop\pro -Recurse
+Copy-Item D:\CodeProject\TRAE_Projects\SoundLink\pro desktop\pro -Recurse
 Remove-Item desktop\pro\.git -Recurse -Force -ErrorAction SilentlyContinue
 cargo clean -p soundlink-pro --manifest-path desktop\src-tauri\Cargo.toml
 
@@ -123,11 +123,11 @@ cargo clean -p soundlink-pro --manifest-path desktop\src-tauri\Cargo.toml
 #### 方式 B · junction（备选，注意缓存陷阱）
 
 ```powershell
-cd D:\CodeProject\TRAE_Projects\SoundLink
+cd D:\CodeProject\TRAE_Projects\SoundLink\oss
 
 # 切到 Pro 开发
 Rename-Item -Path desktop\pro -NewName pro-free-backup
-New-Item -ItemType Junction -Path desktop\pro -Target D:\CodeProject\TRAE_Projects\soundlink-pro
+New-Item -ItemType Junction -Path desktop\pro -Target D:\CodeProject\TRAE_Projects\SoundLink\pro
 cargo clean -p soundlink-pro --manifest-path desktop\src-tauri\Cargo.toml
 
 # 切回免费开发
@@ -167,7 +167,7 @@ npm exec --prefix ..\ui tauri -- build --features tauri_app --bundles nsis
 **若用方式 A 物理替换：**
 
 ```powershell
-cd D:\CodeProject\TRAE_Projects\SoundLink
+cd D:\CodeProject\TRAE_Projects\SoundLink\oss
 Remove-Item desktop\pro -Recurse -Force                            # 删私有副本（不动私有仓库本体）
 Rename-Item -Path desktop\pro-free-backup -NewName pro             # 恢复免费实现
 cargo clean -p soundlink-pro --manifest-path desktop\src-tauri\Cargo.toml
@@ -176,7 +176,7 @@ cargo clean -p soundlink-pro --manifest-path desktop\src-tauri\Cargo.toml
 **若用方式 B junction：**
 
 ```powershell
-cd D:\CodeProject\TRAE_Projects\SoundLink
+cd D:\CodeProject\TRAE_Projects\SoundLink\oss
 cmd /c rmdir desktop\pro                                           # 删 junction 本体（不动私有源码）
 Rename-Item -Path desktop\pro-free-backup -NewName pro
 # junction 切换后 cargo clean -p 不可靠（V-8），须全量清：

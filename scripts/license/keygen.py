@@ -22,11 +22,19 @@ import base64
 def main() -> int:
     _self_test()  # 先自验实现正确性，再生成真密钥。
 
+    default_out = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "..", "..", "..", "soundlink-pro", "license")
+    )
     parser = argparse.ArgumentParser(description="生成 vendor Ed25519 密钥对")
     parser.add_argument(
         "--out",
-        required=True,
-        help="私钥输出目录（必须位于仓库之外，如 ..\\soundlink-license）",
+        default=default_out,
+        help=f"私钥输出目录（默认私仓：{default_out}；必须位于公开仓库之外）",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="强制重新生成（轮换等极端情况）。不加时若私钥已存在则复用，不随机生成",
     )
     args = parser.parse_args()
 
@@ -38,9 +46,21 @@ def main() -> int:
 
     os.makedirs(out_dir, exist_ok=True)
     sk_path = os.path.join(out_dir, "vendor_sk.hex")
-    if os.path.exists(sk_path):
-        print(f"错误：{sk_path} 已存在。如需重新生成，请先手动备份/删除旧私钥。", file=sys.stderr)
-        return 2
+
+    # 幂等：已存在私钥则复用（不重新随机生成），保证公钥固定、与已发布客户端一致。
+    # 仅显式 --force 才重新生成（轮换等极端情况，见 10-license-management.md §5）。
+    if os.path.exists(sk_path) and not args.force:
+        with open(sk_path, "r", encoding="ascii") as f:
+            sk = bytes.fromhex(f.read().strip())
+        pk = publickey(sk)
+        print("=" * 64)
+        print(f"私钥已存在，复用（未重新生成）：{sk_path}")
+        print("如需真正重新生成（轮换），加 --force。注意：会导致与旧客户端公钥不匹配。")
+        print()
+        print("当前公钥 base64（PUBKEYS_VENDOR_B64 应为它）：")
+        print(base64.b64encode(pk).decode())
+        print("=" * 64)
+        return 0
 
     sk = os.urandom(32)
     pk = publickey(sk)

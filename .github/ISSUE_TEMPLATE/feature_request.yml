@@ -6,7 +6,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        提建议前建议先看 [开发计划](https://github.com/KversKv/SoundLink/blob/main/docs/First/12-plan.md)与[后续优化清单](https://github.com/KversKv/SoundLink/blob/main/docs/NewFunctions/release-readiness/03-p2-future-optimizations.md)，避免与已规划项重复。
+        提建议前建议先看 [开发计划](https://github.com/KversKv/soundlink-oss/blob/main/docs/First/12-plan.md)与[后续优化清单](https://github.com/KversKv/soundlink-oss/blob/main/docs/NewFunctions/release-readiness/03-p2-future-optimizations.md)，避免与已规划项重复。
 
   - type: checkboxes
     id: preflight

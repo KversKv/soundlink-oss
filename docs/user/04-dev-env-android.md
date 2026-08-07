@@ -53,7 +53,7 @@ flutter doctor          # 按提示补齐 Android 工具链、接受 SDK 许可
 
 ```bash
 cd mobile/flutter_app
-cd D:\CodeProject\TRAE_Projects\SoundLink\mobile\flutter_app
+cd D:\CodeProject\TRAE_Projects\SoundLink\oss\mobile\flutter_app
 flutter pub get
 flutter run -d <android-device-id>     # flutter devices 查看设备 id
 flutter run -d 41091JEKB06514
@@ -366,7 +366,7 @@ Could not close incremental caches
 this and base files have different roots:
 C:\Users\Administrator\AppData\Local\Pub\Cache\...
 and
-D:\CodeProject\TRAE_Projects\SoundLink\mobile\flutter_app\android
+D:\CodeProject\TRAE_Projects\SoundLink\oss\mobile\flutter_app\android
 ```
 
 **原因**
@@ -390,7 +390,7 @@ $env:PUB_CACHE=$pubCache
 清理项目：
 
 ```powershell
-cd "D:\CodeProject\TRAE_Projects\SoundLink\mobile\flutter_app"
+cd "D:\CodeProject\TRAE_Projects\SoundLink\oss\mobile\flutter_app"
 
 cd android
 .\gradlew.bat --stop

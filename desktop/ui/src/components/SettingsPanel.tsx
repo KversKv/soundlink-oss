@@ -390,14 +390,14 @@ export default function SettingsPanel({ settings, onChange }: Props) {
           <button
             type="button"
             className="text-button"
-            onClick={() => openExternal("https://github.com/KversKv/SoundLink/tree/main/docs/First")}
+            onClick={() => openExternal("https://github.com/KversKv/soundlink-oss/tree/main/docs/First")}
           >
             查看使用文档
           </button>
           <button
             type="button"
             className="text-button"
-            onClick={() => openExternal("https://github.com/KversKv/SoundLink/issues")}
+            onClick={() => openExternal("https://github.com/KversKv/soundlink-oss/issues")}
           >
             反馈问题
           </button>

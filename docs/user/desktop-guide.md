@@ -251,8 +251,8 @@ Pro 功能一览：开机自启 + 启动自动收/发、跨启动自动重连上
 
 ## 9. 获取帮助
 
-- 问题反馈：[GitHub Issues](https://github.com/KversKv/SoundLink/issues)
-- 源代码：https://github.com/KversKv/SoundLink
+- 问题反馈：[GitHub Issues](https://github.com/KversKv/soundlink-oss/issues)
+- 源代码：https://github.com/KversKv/soundlink-oss
 - 故障排查时可在「设置 → 日志」打开日志目录，把最近一天的日志提供给开发者。
 
 ---

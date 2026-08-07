@@ -48,7 +48,7 @@
 ### 2. 克隆并构建
 
 ```powershell
-git clone https://github.com/KversKv/SoundLink.git
+git clone https://github.com/KversKv/soundlink-oss.git
 cd SoundLink/desktop/ui
 npm install                 # 安装前端依赖与本地 Tauri CLI
 npm run tauri:build:exe     # 产出免安装 exe：desktop/src-tauri/target/release/soundlink.exe
@@ -223,6 +223,6 @@ SoundLink/
 
 ## 问题反馈
 
-- Bug / 功能建议：[GitHub Issues](https://github.com/KversKv/SoundLink/issues)
-- 使用讨论：[GitHub Discussions](https://github.com/KversKv/SoundLink/discussions)
+- Bug / 功能建议：[GitHub Issues](https://github.com/KversKv/soundlink-oss/issues)
+- 使用讨论：[GitHub Discussions](https://github.com/KversKv/soundlink-oss/discussions)
 

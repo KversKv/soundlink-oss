@@ -20,10 +20,10 @@
 
 | 变更 | 文件 |
 |---|---|
-| 新增「音频」设置分区组件（输出设备/Jitter/音量/音频参数 + 自动探测），自主管理 state 直调后端命令 | [AudioSettingsPanel.tsx](file:///d:/CodeProject/TRAE_Projects/SoundLink/desktop/ui/src/components/AudioSettingsPanel.tsx) |
-| 设置页挂载 `<AudioSettingsPanel />`（位于「设备」与「日志」之间） | [SettingsPanel.tsx](file:///d:/CodeProject/TRAE_Projects/SoundLink/desktop/ui/src/components/SettingsPanel.tsx) |
-| 主界面删除：接收模式「输出设备/Jitter/音量」卡 +「音频参数」卡；发送模式「音频参数」卡；两模式状态卡精简为 3 项关键指标 | [App.tsx](file:///d:/CodeProject/TRAE_Projects/SoundLink/desktop/ui/src/App.tsx) |
-| 清理无引用：`OutputDevice` 接口、`JITTER_MODES`/`BITRATE_OPTIONS` 等常量、`pickDevice`/`pickJitterMode`/`changeVolume`/`autoDetectAudioParams`/`setAudioParams` 函数、`devices`/`volume`/`jitterMode` state 与相关 effect、派生值 `lossPct`/`recBitrateKbps`/`driftPct`/`senderRecKbps`/`senderAdoptKbps` | [App.tsx](file:///d:/CodeProject/TRAE_Projects/SoundLink/desktop/ui/src/App.tsx) |
+| 新增「音频」设置分区组件（输出设备/Jitter/音量/音频参数 + 自动探测），自主管理 state 直调后端命令 | [AudioSettingsPanel.tsx](file:///d:/CodeProject/TRAE_Projects/SoundLink/oss/desktop/ui/src/components/AudioSettingsPanel.tsx) |
+| 设置页挂载 `<AudioSettingsPanel />`（位于「设备」与「日志」之间） | [SettingsPanel.tsx](file:///d:/CodeProject/TRAE_Projects/SoundLink/oss/desktop/ui/src/components/SettingsPanel.tsx) |
+| 主界面删除：接收模式「输出设备/Jitter/音量」卡 +「音频参数」卡；发送模式「音频参数」卡；两模式状态卡精简为 3 项关键指标 | [App.tsx](file:///d:/CodeProject/TRAE_Projects/SoundLink/oss/desktop/ui/src/App.tsx) |
+| 清理无引用：`OutputDevice` 接口、`JITTER_MODES`/`BITRATE_OPTIONS` 等常量、`pickDevice`/`pickJitterMode`/`changeVolume`/`autoDetectAudioParams`/`setAudioParams` 函数、`devices`/`volume`/`jitterMode` state 与相关 effect、派生值 `lossPct`/`recBitrateKbps`/`driftPct`/`senderRecKbps`/`senderAdoptKbps` | [App.tsx](file:///d:/CodeProject/TRAE_Projects/SoundLink/oss/desktop/ui/src/App.tsx) |
 
 说明：`selectedDevice` state 保留（仍被 `Onboarding` 引用）；`audioParams` state 保留（`adaptiveOn` 用于发送码率「（自动）」角标）。
 
@@ -31,11 +31,11 @@
 
 | 变更 | 文件 |
 |---|---|
-| 底部导航由「设备/广播/设置」改为「设备/设置」，移除广播 Tab 与对应 `IndexedStack` 子页 | [home_page.dart](file:///d:/CodeProject/TRAE_Projects/SoundLink/mobile/flutter_app/lib/src/pages/home_page.dart) |
-| 设备页：未广播时在配对区块上方新增 `_buildGuideSection`（精简版 iOS/Android 开启广播步骤 + DRM 说明）；广播中 `broadcasting` 分支仅渲染 `_buildBroadcastingCard`（状态卡 + 停止按钮），隐藏扫描/设备列表/手动 IP/配对输入/连接按钮 | [discovery_page.dart](file:///d:/CodeProject/TRAE_Projects/SoundLink/mobile/flutter_app/lib/src/pages/discovery_page.dart) |
-| 配对区块 `_buildPairingSection` 移除原内嵌「停止广播」按钮（广播中已由独立卡片承担） | [discovery_page.dart](file:///d:/CodeProject/TRAE_Projects/SoundLink/mobile/flutter_app/lib/src/pages/discovery_page.dart) |
+| 底部导航由「设备/广播/设置」改为「设备/设置」，移除广播 Tab 与对应 `IndexedStack` 子页 | [home_page.dart](file:///d:/CodeProject/TRAE_Projects/SoundLink/oss/mobile/flutter_app/lib/src/pages/home_page.dart) |
+| 设备页：未广播时在配对区块上方新增 `_buildGuideSection`（精简版 iOS/Android 开启广播步骤 + DRM 说明）；广播中 `broadcasting` 分支仅渲染 `_buildBroadcastingCard`（状态卡 + 停止按钮），隐藏扫描/设备列表/手动 IP/配对输入/连接按钮 | [discovery_page.dart](file:///d:/CodeProject/TRAE_Projects/SoundLink/oss/mobile/flutter_app/lib/src/pages/discovery_page.dart) |
+| 配对区块 `_buildPairingSection` 移除原内嵌「停止广播」按钮（广播中已由独立卡片承担） | [discovery_page.dart](file:///d:/CodeProject/TRAE_Projects/SoundLink/oss/mobile/flutter_app/lib/src/pages/discovery_page.dart) |
 | 删除冗余广播引导页 | `lib/src/pages/broadcast_guide_page.dart`（已删） |
-| widget 测试同步移除「广播」Tab 断言 | [widget_test.dart](file:///d:/CodeProject/TRAE_Projects/SoundLink/mobile/flutter_app/test/widget_test.dart) |
+| widget 测试同步移除「广播」Tab 断言 | [widget_test.dart](file:///d:/CodeProject/TRAE_Projects/SoundLink/oss/mobile/flutter_app/test/widget_test.dart) |
 
 ## 关键设计决策
 

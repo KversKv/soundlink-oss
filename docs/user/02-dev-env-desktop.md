@@ -88,7 +88,7 @@ Rust 核心位于 [`desktop/src-tauri/src`](../../desktop/src-tauri/src)，前�
 > 脚手架就绪后，安装前端依赖并启动开发模式：
 
 ```powershell
-cd D:\CodeProject\TRAE_Projects\SoundLink\desktop\src-tauri
+cd D:\CodeProject\TRAE_Projects\SoundLink\oss\desktop\src-tauri
 npm install           # 或 pnpm install
 
 # 回到 src-tauri 目录启动 Tauri GUI 开发模式（热重载）
@@ -211,7 +211,7 @@ cd desktop/ui && pnpm lint
 - **原因**：未安装 Rust 版 Tauri CLI（`cargo-tauri.exe`），或 `%USERPROFILE%\.cargo\bin` 不在 PATH。
 - **修复**：
   ```powershell
-  cd D:\CodeProject\TRAE_Projects\SoundLink\desktop\src-tauri
+  cd D:\CodeProject\TRAE_Projects\SoundLink\oss\desktop\src-tauri
   cargo +stable-x86_64-pc-windows-msvc install tauri-cli --version "^2" --locked
   cargo tauri --version
   where.exe cargo-tauri
@@ -259,7 +259,7 @@ cd desktop/ui && pnpm lint
 
 - **现象**：`cargo tauri dev` 报：
   ```text
-  npm error path D:\CodeProject\TRAE_Projects\SoundLink\ui\package.json
+  npm error path D:\CodeProject\TRAE_Projects\SoundLink\oss\ui\package.json
   Could not read package.json
   ```
 - **原因**：Tauri 2 执行 `beforeDevCommand` 时路径按工作区解析；若配置为 `npm --prefix ../ui run dev`，会错误指向仓库根目录下的 `ui`。
@@ -270,7 +270,7 @@ cd desktop/ui && pnpm lint
   ```
   并确认前端依赖已安装：
   ```powershell
-  cd D:\CodeProject\TRAE_Projects\SoundLink\desktop\ui
+  cd D:\CodeProject\TRAE_Projects\SoundLink\oss\desktop\ui
   npm install
   ```
 
@@ -284,7 +284,7 @@ cd desktop/ui && pnpm lint
 - **原因**：本项目将 Tauri 外壳放在可选 feature `tauri_app` 下，默认构建只运行 Rust 核心，便于不装 Tauri 环境时自测核心库。
 - **修复**：启动 GUI 时加 feature：
   ```powershell
-  cd D:\CodeProject\TRAE_Projects\SoundLink\desktop\src-tauri
+  cd D:\CodeProject\TRAE_Projects\SoundLink\oss\desktop\src-tauri
   cargo tauri dev --features tauri_app
   ```
 
@@ -299,7 +299,7 @@ cd desktop/ui && pnpm lint
 - **原因**：这是 Trae 沙箱文件访问限制，不是 Tauri/项目代码编译失败。Tauri 运行时需要访问系统 AppData 目录保存应用状态。
 - **修复**：在普通 PowerShell 中运行：
   ```powershell
-  cd D:\CodeProject\TRAE_Projects\SoundLink\desktop\src-tauri
+  cd D:\CodeProject\TRAE_Projects\SoundLink\oss\desktop\src-tauri
   cargo tauri dev --features tauri_app
   ```
   或调整 Trae 沙箱允许访问对应 AppData 路径后再在 IDE 代理命令中运行。

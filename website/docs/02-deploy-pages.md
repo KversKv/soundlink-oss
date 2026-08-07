@@ -50,7 +50,7 @@ on:
 CI 与本地用同一套命令，建议推送前先在本地跑通：
 
 ```powershell
-cd d:\CodeProject\TRAE_Projects\SoundLink\website
+cd D:\CodeProject\TRAE_Projects\SoundLink\oss\website
 npm ci
 npm run build
 npm run preview
@@ -100,7 +100,7 @@ website/dist/
 | 两个语言入口可达 | 访问 `/SoundLink/` 与 `/SoundLink/en/` |
 | 语言切换往返正常 | 点 `EN` / `中文`，观察 URL 与 `localStorage.soundlink-lang` |
 | 静态资源无 404 | DevTools → Network，筛 `Status >= 400` |
-| 下载按钮指向最新版 | 应跳到 `github.com/KversKv/SoundLink/releases/latest`，不含硬编码版本号 |
+| 下载按钮指向最新版 | 应跳到 `github.com/KversKv/soundlink-oss/releases/latest`，不含硬编码版本号 |
 | 移动端无横向滚动 | DevTools 设备宽度 360px |
 | 性能与可访问性 | Chrome Lighthouse 移动端；目标 Performance ≥ 90 / Accessibility ≥ 95 / Best Practices ≥ 95 / SEO ≥ 95（规划 §7） |
 | 收录信息正确 | 直接访问 `/SoundLink/robots.txt` 与 `/SoundLink/sitemap.xml` |

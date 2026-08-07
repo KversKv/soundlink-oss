@@ -17,21 +17,41 @@
 
 ---
 
-## 2. 一次性准备：生成 vendor 密钥对
+## 2. 一次性准备：生成 vendor 密钥对（只生成一次，终身不变）
 
-激活码用 **Ed25519 私钥签发、公钥验签**。私钥是签发能力的唯一凭据，**绝不入库**。
+激活码用 **Ed25519 私钥签发、公钥验签**。私钥是签发能力的唯一凭据。
 
 ```powershell
-cd D:\CodeProject\TRAE_Projects\SoundLink
-.\.venv\Scripts\python.exe scripts\license\keygen.py --out D:\CodeProject\TRAE_Projects\soundlink-license
+cd D:\CodeProject\TRAE_Projects\SoundLink\oss
+.\.venv\Scripts\python.exe scripts\license\keygen.py
 ```
 
-- 私钥写入 `<out>\vendor_sk.hex`（**必须位于仓库之外**，脚本会强制校验并拒绝仓库内路径）。
+- 私钥写入**私仓** `D:\CodeProject\TRAE_Projects\SoundLink\pro\license\vendor_sk.hex`（`--out` 默认值即此；脚本强制校验必须位于公开仓库之外）。
+- **已存在私钥时 `keygen.py` 直接复用、不再随机生成**（保证公钥固定）；仅显式加 `--force` 才重新生成（轮换，见 §5）。
 - 公钥 base64 打印在终端，填入 [`desktop/src-tauri/src/license/token.rs`](../../desktop/src-tauri/src/license/token.rs) 的 `PUBKEYS_VENDOR_B64`（已在首次生成时填入）。
-- `.gitignore` 已排除 `scripts/license/*.pem`、`*_sk*`（`test_sk.hex` 例外）、`license_ledger.csv`。
+- 公开仓 `.gitignore` 已排除 `scripts/license/*.pem`、`*_sk*`（`test_sk.hex` 例外）、`license_ledger.csv`；真实私钥只在私仓 `soundlink-pro`。
 
-> ⚠️ **私钥丢失 = 无法再签发新 key**（已发出的 key 仍永久有效，E8）。请立即**离线备份**（加密 U 盘 / 离线密码管理器），并确认它不会进入任何 git 仓库。
-> ⚠️ **私钥泄露 = 任何人都能签发有效 key**。不要截图、不要发到聊天工具、不要提交。
+### 2.1 核心铁律：`vendor_sk.hex` 与发布版本强绑定，生成后禁止更改
+
+> 🔴 **`vendor_sk.hex` 一生只生成一次，与客户端内置公钥一一对应。任何"删除重生成 / 换机重生成 / 重拉代码后重生成"都会让新旧私钥不一致——新私钥签出的激活码，在已发布（内置旧公钥）的软件上验签必失败，表现为"所有用户都无法激活"。**
+
+- 客户端 `PUBKEYS_VENDOR_B64` 是**编译期写死**的。软件发出后，只有"私钥 = 生成该公钥的那一把"签出的码才能通过校验。
+- 因此 `vendor_sk.hex` **不是每次环境搭建时重新生成的临时物**，而是和某一代软件版本**永久绑定的资产**。
+
+### 2.2 推荐做法：把 `vendor_sk.hex` 写死进私仓，随代码版本化管理
+
+已落地：私钥写死在**私仓** `D:\CodeProject\TRAE_Projects\SoundLink\pro\license\`，并随该私有仓库版本管理：
+
+1. 私仓 `soundlink-pro/license/` 内含 `vendor_sk.hex`（私钥）+ `license_ledger.csv`（台账）+ `README.md`（记录当前公钥 base64 与铁律）。
+2. `issue.py` / `keygen.py` 的默认路径已指向该私仓目录——**直接运行脚本即可，无需传 `--key`/`--out`**。
+3. 换机/新环境：克隆私仓 `soundlink-pro` 到 `..\soundlink-pro`（与公开仓同级），脚本默认路径自动命中同一份私钥，**绝不重新随机生成**。
+4. 双保险：`issue.py` 签发前会**由私钥推导公钥并与内置期望值比对**，不一致立即中止（防止拿错/重生成私钥后误签无效码）。
+
+> 这样无论换电脑、重装系统、重拉源码，签发用的私钥永远唯一，从源头杜绝"环境变了→私钥变了→全员无法激活"。
+
+> ⚠️ "纳入私仓"指**私有的、仅本人可见的仓库**，绝不允许进入公开源码仓或任何他人可见的地方。公开仓的 `.gitignore` 排除规则保持不变。
+> ⚠️ **私钥丢失 = 无法再签发新 key**（已发出的 key 仍永久有效，E8）。私仓之外再留一份离线备份（加密 U 盘 / 离线密码管理器）。
+> ⚠️ **私钥泄露 = 任何人都能签发有效 key**。不要截图、不要发到聊天工具、不要提交到公开仓。
 
 ---
 
@@ -40,14 +60,25 @@ cd D:\CodeProject\TRAE_Projects\SoundLink
 用户下单时提交**设备指纹**（设置 → 授权 → 一键复制），卖家据此签发。
 
 ```powershell
-cd D:\CodeProject\TRAE_Projects\SoundLink
+cd D:\CodeProject\TRAE_Projects\SoundLink\oss
 .\.venv\Scripts\python.exe scripts\license\issue.py `
-    --key D:\CodeProject\TRAE_Projects\soundlink-license\vendor_sk.hex `
     --sub <用户设备指纹> --bind fingerprint --seats 3 --note <订单号>
 ```
 
+> 私钥默认从私仓 `soundlink-pro\license\vendor_sk.hex` 读取，无需 `--key`。
+
 - 输出的 `SLPRO-…` 即激活码，通过爱发电私信 / 淘宝旺旺回发给用户。
 - 每次签发会**追加一行台账**到 `license_ledger.csv`（与私钥同目录，不入库），字段：`iat, sub, bind, seats, nonce, note`。换机重签、泄露溯源都查它。
+
+**示例**：用户提交的设备指纹（机器码）为 `IL5OBPZCJF`，订单号 `AFD20260807-001`，签发命令：
+
+```powershell
+cd D:\CodeProject\TRAE_Projects\SoundLink\oss
+.\.venv\Scripts\python.exe scripts\license\issue.py `
+    --sub IL5OBPZCJF --bind fingerprint --seats 3 --note AFD20260807-001
+```
+
+执行后终端输出形如 `SLPRO-XXXX-XXXX-…` 的激活码，回发给用户即可；该码仅能在指纹为 `IL5OBPZCJF` 的设备上激活（含 3 台配额）。
 
 参数说明：
 
@@ -89,9 +120,9 @@ cd D:\CodeProject\TRAE_Projects\SoundLink
 
 ---
 
-## 5. 密钥轮换（将来需要时）
+## 5. 密钥轮换（仅限私钥泄露等极端情况，非常规操作）
 
-公钥一经发布**永不删除**（C1）。若必须轮换：
+正常运营中**永不轮换**（见 §2.1 铁律）。仅当私钥确定泄露、必须切断其签发能力时才执行。公钥一经发布**永不删除**（C1）。若必须轮换：
 
 1. 用 `keygen.py` 生成新密钥对。
 2. 把**新公钥追加**到 `PUBKEYS_VENDOR_B64` 数组**末尾**，旧公钥保留。

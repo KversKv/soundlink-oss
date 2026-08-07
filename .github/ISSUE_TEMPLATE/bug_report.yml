@@ -7,8 +7,8 @@ body:
     attributes:
       value: |
         感谢反馈。请先确认：
-        - 已阅读 [已知限制](https://github.com/KversKv/SoundLink#已知限制)与[排查手册](https://github.com/KversKv/SoundLink/blob/main/docs/user/08-troubleshooting.md)
-        - **安全漏洞请勿在此提交**，见 [SECURITY.md](https://github.com/KversKv/SoundLink/blob/main/SECURITY.md)
+        - 已阅读 [已知限制](https://github.com/KversKv/soundlink-oss#已知限制)与[排查手册](https://github.com/KversKv/soundlink-oss/blob/main/docs/user/08-troubleshooting.md)
+        - **安全漏洞请勿在此提交**，见 [SECURITY.md](https://github.com/KversKv/soundlink-oss/blob/main/SECURITY.md)
 
   - type: checkboxes
     id: preflight

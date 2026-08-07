@@ -15,7 +15,7 @@
 
 | # | 问题 | 证据 | 本轮处理 |
 |---|---|---|---|
-| 1 | `README.en.md` 被引用但不存在 | [README.md:7](file:///d:/CodeProject/TRAE_Projects/SoundLink/README.md#L7)、CHANGELOG.md:10 | ✅ 已补齐文件 |
+| 1 | `README.en.md` 被引用但不存在 | [README.md:7](file:///d:/CodeProject/TRAE_Projects/SoundLink/oss/README.md#L7)、CHANGELOG.md:10 | ✅ 已补齐文件 |
 | 2 | `docs/NewFunctions/opensource-launch/` 整个目录被引用但不存在（6 处引用） | README.md:150/167、AGENTS.md:51、CHANGELOG.md:11、release-readiness/00:22/33 | ✅ 已新建总览 + 市场调研 |
 | 3 | CHANGELOG `[未发布]` 含虚假完成声明 | 上述两项 | ✅ 文件补齐后声明成立，并补记 release.yml |
 | 4 | CI 已实装但文档仍写「无 CI」 | `03-p2-future-optimizations.md` H6、`00-release-overview.md` §1 | ✅ H6 勾选并写明现状与遗留 |
@@ -44,16 +44,16 @@
 
 | 类型 | 文件 | 说明 |
 |---|---|---|
-| 新增 | [docs/NewFunctions/opensource-launch/00-launch-overview.md](file:///d:/CodeProject/TRAE_Projects/SoundLink/docs/NewFunctions/opensource-launch/00-launch-overview.md) | OSL 阶段 J/K/L/M 总表、K3 打 tag 实操步骤、发布前必查清单、风险表、回填规则 |
-| 新增 | [docs/NewFunctions/opensource-launch/01-market-research.md](file:///d:/CodeProject/TRAE_Projects/SoundLink/docs/NewFunctions/opensource-launch/01-market-research.md) | 竞品对比表、优劣势、GitHub 文案卖点与 Topics、推广渠道与节奏、功能路线市场优先级 |
-| 新增 | [README.en.md](file:///d:/CodeProject/TRAE_Projects/SoundLink/README.en.md) | 与中文 README 结构对齐，含功能矩阵、构建、限制、文档索引 |
-| 新增 | [.github/workflows/release.yml](file:///d:/CodeProject/TRAE_Projects/SoundLink/.github/workflows/release.yml) | `v*` tag 触发；Windows 构建 portable exe + NSIS；Android 构建 split-per-abi APK（含 libopus 自动下载）；产出 SHA256；创建 Draft Release 并预填免责说明 |
-| 修改 | [README.md](file:///d:/CodeProject/TRAE_Projects/SoundLink/README.md) | 文档导航加市场调研入口；已知限制补「UI 仅中文」「未签名」；当前状态纠正 CI 描述 |
-| 修改 | [AGENTS.md](file:///d:/CodeProject/TRAE_Projects/SoundLink/AGENTS.md) | P2 清单把 H6 移入已完成；OSL 阶段状态细化 |
-| 修改 | [CHANGELOG.md](file:///d:/CodeProject/TRAE_Projects/SoundLink/CHANGELOG.md) | 补 release.yml 条目，细化 opensource-launch 描述 |
-| 修改 | [release-readiness/00-release-overview.md](file:///d:/CodeProject/TRAE_Projects/SoundLink/docs/NewFunctions/release-readiness/00-release-overview.md) | §1 缺口去掉「无 CI」、§3 H 行、§4 v0.2.0 范围去掉 CI |
-| 修改 | [release-readiness/03-p2-future-optimizations.md](file:///d:/CodeProject/TRAE_Projects/SoundLink/docs/NewFunctions/release-readiness/03-p2-future-optimizations.md) | H6 勾选，写明 3 个 job 现状与 fmt 阻塞化遗留 |
-| 修改 | [docs/First/12-plan.md](file:///d:/CodeProject/TRAE_Projects/SoundLink/docs/First/12-plan.md) | §1 总表后增「发布侧进度」指针块 |
+| 新增 | [docs/NewFunctions/opensource-launch/00-launch-overview.md](file:///d:/CodeProject/TRAE_Projects/SoundLink/oss/docs/NewFunctions/opensource-launch/00-launch-overview.md) | OSL 阶段 J/K/L/M 总表、K3 打 tag 实操步骤、发布前必查清单、风险表、回填规则 |
+| 新增 | [docs/NewFunctions/opensource-launch/01-market-research.md](file:///d:/CodeProject/TRAE_Projects/SoundLink/oss/docs/NewFunctions/opensource-launch/01-market-research.md) | 竞品对比表、优劣势、GitHub 文案卖点与 Topics、推广渠道与节奏、功能路线市场优先级 |
+| 新增 | [README.en.md](file:///d:/CodeProject/TRAE_Projects/SoundLink/oss/README.en.md) | 与中文 README 结构对齐，含功能矩阵、构建、限制、文档索引 |
+| 新增 | [.github/workflows/release.yml](file:///d:/CodeProject/TRAE_Projects/SoundLink/oss/.github/workflows/release.yml) | `v*` tag 触发；Windows 构建 portable exe + NSIS；Android 构建 split-per-abi APK（含 libopus 自动下载）；产出 SHA256；创建 Draft Release 并预填免责说明 |
+| 修改 | [README.md](file:///d:/CodeProject/TRAE_Projects/SoundLink/oss/README.md) | 文档导航加市场调研入口；已知限制补「UI 仅中文」「未签名」；当前状态纠正 CI 描述 |
+| 修改 | [AGENTS.md](file:///d:/CodeProject/TRAE_Projects/SoundLink/oss/AGENTS.md) | P2 清单把 H6 移入已完成；OSL 阶段状态细化 |
+| 修改 | [CHANGELOG.md](file:///d:/CodeProject/TRAE_Projects/SoundLink/oss/CHANGELOG.md) | 补 release.yml 条目，细化 opensource-launch 描述 |
+| 修改 | [release-readiness/00-release-overview.md](file:///d:/CodeProject/TRAE_Projects/SoundLink/oss/docs/NewFunctions/release-readiness/00-release-overview.md) | §1 缺口去掉「无 CI」、§3 H 行、§4 v0.2.0 范围去掉 CI |
+| 修改 | [release-readiness/03-p2-future-optimizations.md](file:///d:/CodeProject/TRAE_Projects/SoundLink/oss/docs/NewFunctions/release-readiness/03-p2-future-optimizations.md) | H6 勾选，写明 3 个 job 现状与 fmt 阻塞化遗留 |
+| 修改 | [docs/First/12-plan.md](file:///d:/CodeProject/TRAE_Projects/SoundLink/oss/docs/First/12-plan.md) | §1 总表后增「发布侧进度」指针块 |
 
 ---
 

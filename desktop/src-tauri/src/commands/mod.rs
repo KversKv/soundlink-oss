@@ -429,7 +429,7 @@ pub fn get_app_version() -> Result<AppVersionInfo, String> {
         version: env!("CARGO_PKG_VERSION"),
         name: env!("CARGO_PKG_NAME"),
         license: "MIT",
-        repository: "https://github.com/KversKv/SoundLink",
+        repository: "https://github.com/KversKv/soundlink-oss",
         build_date: env!("BUILD_DATE", "unknown"),
     })
 }

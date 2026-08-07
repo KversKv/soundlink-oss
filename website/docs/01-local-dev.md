@@ -24,7 +24,7 @@ npm -v
 `website/` 的依赖**不随仓库提交**，克隆后必须先安装，否则 `npm run build` 会报 `'tsc' 不是内部或外部命令`。
 
 ```powershell
-cd d:\CodeProject\TRAE_Projects\SoundLink\website
+cd D:\CodeProject\TRAE_Projects\SoundLink\oss\website
 npm install
 ```
 
