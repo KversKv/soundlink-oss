@@ -29,7 +29,7 @@ LEDGER_NAME = "license_ledger.csv"
 # 私仓中写死的签发私钥（唯一权威来源）。任何环境都读这一份，绝不重新随机生成。
 # 见 soundlink-pro/license/README.md。相对本文件：SoundLink/scripts/license/ -> ../../soundlink-pro/
 DEFAULT_KEY_PATH = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..", "..", "..", "soundlink-pro", "license", "vendor_sk.hex")
+    os.path.join(os.path.dirname(__file__), "..", "..", "..", "pro", "license", "vendor_sk.hex")
 )
 
 # 与 DEFAULT_KEY_PATH 私钥对应的公钥 base64（编译期写死进客户端 PUBKEYS_VENDOR_B64）。
