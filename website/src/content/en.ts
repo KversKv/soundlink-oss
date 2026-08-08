@@ -345,6 +345,7 @@ export const en: Content = {
         links: [
           { label: 'User docs', href: `${REPO}/tree/main/docs/user` },
           { label: 'Privacy policy', href: `${REPO}/blob/main/docs/privacy.md` },
+          { label: 'Disclaimer', href: `${REPO}/blob/main/docs/disclaimer.md` },
           { label: 'MIT license', href: `${REPO}/blob/main/LICENSE` },
         ],
       },

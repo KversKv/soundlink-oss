@@ -345,6 +345,7 @@ export const zh = {
         links: [
           { label: '用户文档', href: `${REPO}/tree/main/docs/user` },
           { label: '隐私政策', href: `${REPO}/blob/main/docs/privacy.md` },
+          { label: '免责声明', href: `${REPO}/blob/main/docs/disclaimer.md` },
           { label: 'MIT 许可证', href: `${REPO}/blob/main/LICENSE` },
         ],
       },
