@@ -1,0 +1,12 @@
+[package]
+name = "qr-bandwidth"
+version = "0.1.0"
+edition = "2021"
+description = "SoundLink 分辨率快速切换：显示链路带宽/像素时钟/DSC 必要性判定（纯函数，零依赖）"
+license = "MIT"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+
+[dev-dependencies]
+serde_json = "1"

@@ -129,6 +129,34 @@ fn main() {
                     }),
                 );
             }
+
+            // QR-1：显示器热插拔监听（Windows 生效）+ 启动状态自检（Stale 标记）。
+            {
+                use tauri::Listener;
+                soundlink_lib::features::quick_resolution::platform::start_display_hook(
+                    app.handle().clone(),
+                );
+                let app_handle = app.handle().clone();
+                app.listen_any("qr://display-changed", move |_| {
+                    let st: tauri::State<soundlink_lib::commands::AppState> = app_handle.state();
+                    st.qr.refresh_states(&app_handle);
+                    soundlink_lib::commands::tray::refresh_tray(&app_handle);
+                });
+                let app_handle = app.handle().clone();
+                let st: tauri::State<soundlink_lib::commands::AppState> = app.state();
+                let svc = st.qr.clone();
+                tauri::async_runtime::spawn(async move {
+                    svc.refresh_states(&app_handle);
+                });
+            }
+
+            // QR-1 L2 启动自检：上次预置未收尾 → 回滚 EDID。
+            {
+                let st: tauri::State<soundlink_lib::commands::AppState> = app.state();
+                if let Some(backup_id) = st.qr.startup_recovery() {
+                    tracing::warn!("QR 启动自检：已回滚未收尾预置（backup={}）", backup_id);
+                }
+            }
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -191,6 +219,29 @@ fn main() {
             soundlink_lib::commands::toggle_mute,
             soundlink_lib::commands::get_trust_quota,
             soundlink_lib::commands::resolve_auto_send_target,
+            // QR-1 分辨率快速切换（Pro；命令内部以能力值门控）
+            soundlink_lib::features::quick_resolution::commands::qr_get_availability,
+            soundlink_lib::features::quick_resolution::commands::qr_get_displays,
+            soundlink_lib::features::quick_resolution::commands::qr_identify_displays,
+            soundlink_lib::features::quick_resolution::commands::qr_get_settings,
+            soundlink_lib::features::quick_resolution::commands::qr_set_settings,
+            soundlink_lib::features::quick_resolution::commands::qr_list_modes,
+            soundlink_lib::features::quick_resolution::commands::qr_upsert_mode,
+            soundlink_lib::features::quick_resolution::commands::qr_delete_mode,
+            soundlink_lib::features::quick_resolution::commands::qr_reorder_modes,
+            soundlink_lib::features::quick_resolution::commands::qr_import_system_modes,
+            soundlink_lib::features::quick_resolution::commands::qr_validate_mode,
+            soundlink_lib::features::quick_resolution::commands::qr_apply,
+            soundlink_lib::features::quick_resolution::commands::qr_apply_previous,
+            soundlink_lib::features::quick_resolution::commands::qr_confirm_apply,
+            soundlink_lib::features::quick_resolution::commands::qr_revert_apply,
+            soundlink_lib::features::quick_resolution::commands::qr_list_edid_backups,
+            soundlink_lib::features::quick_resolution::commands::qr_refresh_states,
+            soundlink_lib::features::quick_resolution::commands::qr_get_dsc_status,
+            soundlink_lib::features::quick_resolution::commands::qr_install_helper,
+            soundlink_lib::features::quick_resolution::commands::qr_helper_status,
+            soundlink_lib::features::quick_resolution::commands::qr_provision,
+            soundlink_lib::features::quick_resolution::commands::qr_export_diagnostics,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

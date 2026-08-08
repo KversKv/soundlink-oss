@@ -8,6 +8,8 @@ pub mod commands;
 pub mod config;
 pub mod constants;
 pub mod device;
+#[cfg(feature = "tauri_app")]
+pub mod features;
 pub mod license;
 pub mod logging;
 pub mod network;

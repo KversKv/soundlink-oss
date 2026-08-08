@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import AudioSettingsPanel from "./AudioSettingsPanel";
 import LicensePanel from "./LicensePanel";
 import ProfilePanel from "./ProfilePanel";
+import QuickResolutionSection from "../features/quickResolution/QuickResolutionSection";
 
 export interface AppSettings {
   close_action: "ask" | "minimize" | "quit";
@@ -253,6 +254,9 @@ export default function SettingsPanel({ settings, onChange }: Props) {
           </small>
         )}
       </section>
+
+      {/* QR-1：快速分辨率切换（Pro；display.md §10.1 置于启动区域下方） */}
+      <QuickResolutionSection />
 
       <LicensePanel />
 

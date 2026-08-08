@@ -1,0 +1,13 @@
+[package]
+name = "qr-edid"
+version = "0.1.0"
+edition = "2021"
+description = "SoundLink 分辨率快速切换：EDID 解析/编辑/校验 + CVT-RB timing 计算（纯逻辑，零平台依赖）"
+license = "MIT"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+thiserror = "1"
+
+[dev-dependencies]
+serde_json = "1"

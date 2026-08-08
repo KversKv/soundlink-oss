@@ -6,6 +6,7 @@
 
 ### 新增
 
+- **分辨率快速切换（QR-1，Pro）**：按 `docs/NewFunctions/display/display.md` 落地 M0–M9。设置页新增「快速分辨率切换」区（启动区下方）：显示器编号+识别叠层、模式列表 CRUD/拖拽排序/托盘固定、从系统导入、添加/编辑弹窗（比例预设库+刷新率 chips+可行性预检）、15 秒确认窗（独立置顶小窗，超时自动回滚）、托盘「快速分辨率切换」二级菜单（多屏分组、当前项 ✓、恢复上一个、200ms 防抖）。DSC 检测三路交叉判定（带宽推算主判据 + NVAPI 链路辅证 + EDID 能力）与徽标展示。EDID 批量预置（helper 提权进程 + 计划任务一次 UAC、命名管道 nonce+ACL 加固、三层黑屏保险：helper 看门狗/启动自检/离线救援）。门控走 `ProCapabilities::quick_resolution_available()` 能力值（E4/E5），免费版设置区遮罩、命令返回 `FeatureLocked`。⚠ 仅 Windows；NVIDIA 自定义分辨率（M8）与 EDID 注入（M7）为实验性，`allowEdidOverride` 默认关闭。
 - **SoundLink Pro（open-core）工程落地**：按 `docs/NewFunctions/monetization/` 方案完成免费版与 Pro 版双构建改造。
   - **仓库切分（阶段 Q）**：新增 `desktop/pro-api`（`soundlink-pro-api`，仅 trait 与类型，MIT）与 `desktop/pro`（`soundlink-pro` 免费实现，MIT）；`soundlink` 以恒定 path 依赖二者，业务代码只按 `ProCapabilities` 能力值行事、无 `if is_pro`。私有同名 `soundlink-pro`（官方实现，闭源）检出覆盖 `desktop/pro/` 即得官方构建，构建命令与免费版完全相同；junction 下 `cargo test` / `clippy` / NSIS 打包均已实测通过。
   - **授权底座（阶段 R）**：`license/` 模块实现离线 Ed25519 签名许可证（`SLPRO-…`）验签、设备指纹（单向 SHA256 短码）、吊销名单与跨版本兼容（公钥数组化、格式版本上界、指纹候选集、SKU 白名单、新字段宽松默认）。授权存 OS keyring + `license.key` 兜底；校验失败一律降级免费版，绝不阻止启动或中断音频。新增 `get_license_status` / `activate_license` / `deactivate_license` 命令与设置页「授权」区块（指纹一键复制、激活/反激活、即时生效无需重启）。38 个 license 单测 + Python 签发 ↔ Rust 验签跨语言一致性 fixture 全绿。

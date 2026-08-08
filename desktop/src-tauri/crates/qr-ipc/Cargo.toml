@@ -1,0 +1,12 @@
+[package]
+name = "qr-ipc"
+version = "0.1.0"
+edition = "2021"
+description = "SoundLink 分辨率快速切换：主进程 <-> qr_helper 共享协议（纯 serde 类型，零平台依赖）"
+license = "MIT"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+
+[dev-dependencies]
+serde_json = "1"

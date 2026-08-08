@@ -109,6 +109,12 @@ fn build_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         }
     }
 
+    // QR-1：快速分辨率切换二级菜单（Pro + enabled + showInTray 时出现）。
+    if let Some(sub) = crate::features::quick_resolution::tray::build_qr_submenu(app) {
+        owned.push(MenuItemKind::Predefined(PredefinedMenuItem::separator(app)?));
+        owned.push(MenuItemKind::Submenu(sub));
+    }
+
     owned.push(MenuItemKind::Predefined(PredefinedMenuItem::separator(app)?));
     owned.push(MenuItemKind::MenuItem(MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?));
 
@@ -127,7 +133,31 @@ fn tooltip_for(info: &crate::commands::TrayStateInfo) -> String {
 }
 
 /// 状态变化后重建托盘菜单（文字翻转）与提示。
+///
+/// QR-1（display.md §十一）：菜单重建 200ms 防抖，避免热插拔/状态连发导致闪烁。
 pub fn refresh_tray(app: &AppHandle) {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    static PENDING: AtomicBool = AtomicBool::new(false);
+    if PENDING.swap(true, Ordering::SeqCst) {
+        return; // 已有在途重建
+    }
+    let app2 = app.clone();
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        PENDING.store(false, Ordering::SeqCst);
+        if let Ok(menu) = build_menu(&app2) {
+            if let Some(tray) = app2.tray_by_id("main-tray") {
+                let _ = tray.set_menu(Some(menu));
+                let state: State<'_, AppState> = app2.state();
+                let info = tray_state_info(state.inner());
+                let _ = tray.set_tooltip(Some(&tooltip_for(&info)));
+            }
+        }
+    });
+}
+
+/// 立即重建托盘菜单（setup 首次构建用，不走防抖）。
+pub fn refresh_tray_now(app: &AppHandle) {
     if let Ok(menu) = build_menu(app) {
         if let Some(tray) = app.tray_by_id("main-tray") {
             let _ = tray.set_menu(Some(menu));
@@ -198,6 +228,37 @@ pub fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
                 crate::commands::toggle_mute_inner(state.inner());
                 refresh_tray(app);
             }
+            // QR-1：托盘快切（只走 Apply 快路径，§十一）。
+            id if id.starts_with("qr_apply::") => {
+                let mode_id = id.trim_start_matches("qr_apply::").to_string();
+                let app_handle = app.clone();
+                tauri::async_runtime::spawn(async move {
+                    let state: State<'_, AppState> = app_handle.state();
+                    match state.qr.apply_by_id(&app_handle, &mode_id).await {
+                        Ok(r) => tracing::info!("QR 托盘切换 {:?}：{:?}", mode_id, r),
+                        Err(e) => {
+                            tracing::warn!("QR 托盘切换失败：{}", e);
+                            notify(&app_handle, "分辨率切换失败", &e.to_string());
+                        }
+                    }
+                    refresh_tray(&app_handle);
+                });
+            }
+            "qr_restore_prev" => {
+                let app_handle = app.clone();
+                tauri::async_runtime::spawn(async move {
+                    let state: State<'_, AppState> = app_handle.state();
+                    if let Err(e) = state.qr.apply_previous(&app_handle).await {
+                        tracing::warn!("QR 恢复上一个失败：{}", e);
+                        notify(&app_handle, "恢复上一个分辨率失败", &e.to_string());
+                    }
+                    refresh_tray(&app_handle);
+                });
+            }
+            "qr_pending" | "qr_manage" => {
+                show_main_window_inner(app);
+                let _ = app.emit("tray-menu-click", TrayMenuEvent::Settings);
+            }
             id if id.starts_with("profile:") => {
                 let profile_id = id.trim_start_matches("profile:").to_string();
                 let state: State<'_, AppState> = app.state();
@@ -250,11 +311,46 @@ pub fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
     Ok(())
 }
 
+/// setup 完成后的托盘自检（M2 验证 QR 子菜单接入，避免静默缺失）。
+pub fn verify_setup(app: &AppHandle) {
+    let has_qr = crate::features::quick_resolution::tray::build_qr_submenu(app).is_some();
+    tracing::debug!("QR 托盘子菜单构建自检：{}", if has_qr { "有内容" } else { "未展示（未启用/免费版）" });
+}
+
 fn show_main_window_inner(app: &AppHandle) {
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.show();
         let _ = w.set_focus();
     }
+}
+
+/// 托盘操作失败走系统通知（§十一：不强行弹主窗打断用户）。
+/// 非 Windows 平台为空操作。
+#[cfg(windows)]
+fn notify(_app: &AppHandle, title: &str, body: &str) {
+    use std::process::Command;
+    let script = format!(
+        "Add-Type -AssemblyName System.Windows.Forms;\
+         $n = New-Object System.Windows.Forms.NotifyIcon;\
+         $n.Icon = [System.Drawing.SystemIcons]::Information;\
+         $n.Visible = $true;\
+         $n.BalloonTipTitle = '{}';\
+         $n.BalloonTipText = '{}';\
+         $n.ShowBalloonTip(4000);\
+         Start-Sleep -Milliseconds 4500;\
+         $n.Dispose()",
+        title.replace('\'', "''"),
+        body.replace('\'', "''")
+    );
+    let _ = Command::new("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", &script])
+        .spawn();
+}
+
+/// 非 Windows：托盘失败仅落日志。
+#[cfg(not(windows))]
+fn notify(_app: &AppHandle, title: &str, body: &str) {
+    tracing::warn!("QR 托盘通知（{}）：{}", title, body);
 }
 
 /// 处理窗口关闭请求（在 `on_window_event` 中调用）。

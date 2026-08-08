@@ -164,6 +164,15 @@ pub trait ProCapabilities: Send + Sync {
 
     /// 托盘直控菜单项（追加在基础项之后；免费实现返回空）。
     fn tray_items(&self) -> Vec<TrayItem>;
+
+    /// 「分辨率快速切换」是否可用（Pro 能力，QR-1）。
+    ///
+    /// 后端 `qr_*` 命令的唯一门控判据：免费实现返回 `false`，
+    /// 官方实现按授权级别返回。前端据此对设置区做遮罩/置灰。
+    /// 默认返回 `false`：未升级的私有实现自动表现为免费档（编译兼容）。
+    fn quick_resolution_available(&self) -> bool {
+        false
+    }
 }
 
 #[cfg(test)]

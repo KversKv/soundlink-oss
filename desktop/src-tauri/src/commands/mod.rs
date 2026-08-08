@@ -72,6 +72,8 @@ pub struct AppState {
     pub autostarted: bool,
     /// 静音切换：Some(原音量) 表示当前处于静音态（PRO-5）。
     pub muted: Mutex<Option<f32>>,
+    /// QR-1：分辨率快速切换服务（Pro 能力；命令层以 caps.quick_resolution_available() 门控）。
+    pub qr: Arc<crate::features::quick_resolution::QrService>,
 }
 
 impl AppState {
@@ -154,7 +156,7 @@ impl AppState {
             device_name: Mutex::new(config.device_name.clone()),
             role: Mutex::new(role),
             config: Arc::new(Mutex::new(config)),
-            config_dir: dir,
+            config_dir: dir.clone(),
             dump_enable,
             identity_load_failed,
             caps,
@@ -162,6 +164,7 @@ impl AppState {
             license_state: Arc::new(parking_lot::RwLock::new(license_state)),
             autostarted,
             muted: Mutex::new(None),
+            qr: crate::features::quick_resolution::QrService::new(dir.clone()),
         }
     }
 
@@ -349,6 +352,8 @@ pub fn stop_receiver(app: tauri::AppHandle, state: State<'_, AppState>) -> Resul
 /// 优雅退出清理（D3）：停止 sender（带 1s 超时）+ receiver + control + mDNS。
 /// 在 quit_app 与 tray quit 路径调用，避免依赖 Drop 导致退出卡顿或端口残留。
 pub async fn cleanup_before_quit(state: &AppState) {
+    // QR-1：restore_on_app_exit 开启时先恢复原始分辨率（在停止引擎前做，失败不阻断退出）。
+    state.qr.restore_session_originals();
     // 1. 停止 sender（带 1s 超时，避免卡死）
     let _ = tokio::time::timeout(std::time::Duration::from_secs(1), state.sender.stop()).await;
     // 2. 停止 receiver

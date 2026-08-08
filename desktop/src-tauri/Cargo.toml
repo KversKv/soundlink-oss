@@ -14,6 +14,19 @@ path = "src/lib.rs"
 name = "soundlink"
 path = "src/main.rs"
 
+# QR-1：elevated 辅助进程（EDID 写入/设备重启/看门狗/救援还原）。
+# 仅随 tauri_app 构建（需要 windows crate 完整 feature 集）。
+[[bin]]
+name = "qr_helper"
+path = "src/bin/qr_helper.rs"
+required-features = ["tauri_app"]
+
+# QR-1 M0：平台能力探针 CLI（枚举/NVAPI/EDID/带宽实测）。
+[[bin]]
+name = "qr_probe"
+path = "src/bin/qr_probe.rs"
+required-features = ["tauri_app"]
+
 [features]
 default = []
 # 启用真实 libopus（需 cmake + C 编译器； vendored libopus 1.5）。
@@ -24,7 +37,7 @@ opus = ["dep:libopus_sys"]
 # （非 Windows 平台 wasapi feature 为 no-op，windows crate 有 target 门控。
 #   Windows 端 `cargo check --no-default-features --features tauri_app` 已验证；
 #   macOS/Linux 真机构建待 G1/G2/G3 阶段验证）。
-tauri_app = ["dep:tauri", "dep:tauri-build", "dep:dirs", "dep:tauri-plugin-opener", "dep:tauri-plugin-autostart", "dep:tauri-plugin-single-instance", "dep:tauri-plugin-window-state", "dep:tauri-plugin-global-shortcut", "opus", "wasapi"]
+tauri_app = ["dep:tauri", "dep:tauri-build", "dep:dirs", "dep:tauri-plugin-opener", "dep:tauri-plugin-autostart", "dep:tauri-plugin-single-instance", "dep:tauri-plugin-window-state", "dep:tauri-plugin-global-shortcut", "opus", "wasapi", "dep:qr-edid", "dep:qr-bandwidth", "dep:qr-ipc", "dep:zip"]
 # 启用 Windows WASAPI Loopback 采集（阶段 5，仅 Windows）。
 wasapi = ["dep:windows"]
 
@@ -53,6 +66,12 @@ mdns-sd = "0.11"
 # 构建免费版还是 Pro 版由 desktop/pro/ 目录内容决定（公开免费实现 / 私有实现检出覆盖）。
 soundlink-pro-api = { path = "../pro-api" }
 soundlink-pro = { path = "../pro" }
+# QR-1 分辨率快速切换（Pro）：纯逻辑 crates，随 tauri_app 启用（Windows 平台代码在该 feature 下编译）。
+qr-edid = { path = "crates/qr-edid", optional = true }
+qr-bandwidth = { path = "crates/qr-bandwidth", optional = true }
+qr-ipc = { path = "crates/qr-ipc", optional = true }
+# QR-1 M9：诊断包导出（zip）。
+zip = { version = "2", optional = true, default-features = false, features = ["deflate"] }
 # 本机局域网 IPv4 枚举（配对码卡片显示本机地址用）。
 local-ip-address = "0.6"
 libopus_sys = { version = "0.3", optional = true }
@@ -82,6 +101,20 @@ windows = { version = "0.58", optional = true, features = [
     "Win32_Devices_Properties",
     # MON-01 R3：读取 HKLM\SOFTWARE\Microsoft\Cryptography\MachineGuid 计算设备指纹。
     "Win32_System_Registry",
+    # QR-1 分辨率快速切换（Pro）：显示枚举/切换/EDID/helper IPC。
+    "Win32_Graphics_Gdi",
+    "Win32_Devices_Display",
+    "Win32_Devices_DeviceAndDriverInstallation",
+    "Win32_System_Pipes",
+    "Win32_System_IO",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Threading",
+    "Win32_Storage_FileSystem",
+    "Win32_Security",
+    "Win32_Security_Authorization",
+    "Win32_Security_WinTrust",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_UI_Shell",
 ] }
 
 [build-dependencies]

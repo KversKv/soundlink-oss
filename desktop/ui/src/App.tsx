@@ -5,6 +5,8 @@ import "./App.css";
 import SettingsPanel, { type AppSettings } from "./components/SettingsPanel";
 import Onboarding from "./components/Onboarding";
 import CloseDialog from "./components/CloseDialog";
+import ConfirmWindow from "./features/quickResolution/ConfirmWindow";
+import IdentifyOverlay from "./features/quickResolution/IdentifyOverlay";
 import { mapError } from "./utils/errorMap";
 
 interface StartResult {
@@ -135,6 +137,15 @@ function EmptyState({ hint }: { hint: string }) {
 }
 
 export default function App() {
+  // QR-1：独立小窗视图（15s 确认窗 / 识别叠层）直接短路渲染，不加载主 UI。
+  const subView = new URLSearchParams(window.location.search).get("view");
+  if (subView === "qr-confirm") {
+    return <ConfirmWindow />;
+  }
+  if (subView === "qr-identify") {
+    return <IdentifyOverlay />;
+  }
+
   const [role, setRole] = useState<Role>("receiver");
 
   const [running, setRunning] = useState(false);
