@@ -20,6 +20,11 @@
 - **码率自适应闭环（阶段 N）**：接收端按丢包率计算的 `recommended_bitrate` 现在能真正改变发送端实际编码码率，无需重启流。桌面/移动发送循环内检测目标码率变化并经 Opus `set_bitrate` 热下发，带 5s 最短间隔 + 归档到允许集合的节流；`jitter_mode=auto` 时建议值自动生效，手动模式仅展示。桌面 UI 发送端面板新增「建议码率」展示与一键采纳按钮。
 - **真实探测能力（阶段 O）**：桌面自动探测在样本不足（收包 < 50）时诚实返回「保持当前参数」，不再乐观误推 160kbps；`audio.params.probe_request` 实装——接收端基于真实 UDP 音频面统计回传 `probe_result`（`recommended_bitrate`/`jitter_mode`/`loss_rate`/`jitter_ms`）。移动端自动探测改走 `probe_request`/`probe_result`（替换原 5 次 TCP connect 测延迟的做法），且不再强制停止当前广播；双端探测阈值统一为 `loss_rate`/`jitter_ms` 口径。新增 AudioPacket `flags bit1=probe` 探测包标记（接收端回显且不进 Jitter Buffer/不污染统计）。
 - **参数动态化（阶段 P）**：声道（Mono/Stereo）与帧长（10/20ms）端到端可变。引入运行时 `AudioFormat` 会话参数贯穿发送/接收链路；发送端采集始终 48kHz/Stereo 基线、编码前经线性插值重采样 + 声道映射转换为会话格式（新增 `format_convert` 模块），接收端按 `stream_start` 携带的会话格式重建 Opus 解码器并将解码结果重采样回 48kHz/Stereo 设备基线输出。`restart_required` 成为真实判定。桌面 UI 声道/帧长恢复可选。端到端自测（`examples/phase_p_format.rs`）验证 48k/Mono/20ms 收发零丢失。
+- **一键构建脚本 `scripts/build-community.ps1` 与 `scripts/build-pro.ps1`**：一条命令产出 Windows 三种包（NSIS 安装包 / MSI 安装包 / 绿色便携 exe），产物收集到 `dist/community/` 与 `dist/pro/`（便携 exe 复用 `target/release/soundlink.exe`，无需二次编译）。`build-community.ps1` 执行前校验仓库确为免费实现（无 `pro-free-backup` 残留、`EDITION=community`）；`build-pro.ps1` 按 09 文档方式 A 物理替换 `desktop/pro/`（仅复制私有仓库的 `Cargo.toml` + `src/`，含 vendor 私钥的 `license/` 不进公开仓库），并通过 `try/finally` 保证**无论构建成败都把仓库还原为免费版**（还原后校验 `EDITION=community`）。
+
+### 修复
+
+- **open-core 缓存陷阱扩展（红线 G10 修订）**：`cargo clean -p soundlink-pro` 在**物理替换场景下同样失效**（此前 09 文档仅在 junction 场景标注 V-8）——`desktop/pro/` 整体替换后，Cargo 按当前源码指纹对不上旧产物，报 `Removed 0 files` 并把旧 rlib 留在 `target/release/deps/`，导致下一次构建静默链接**上一次的实现**。实测后果：先跑免费版构建再跑 Pro 构建，`dist/pro/` 产物里 `ProImpl`/`ProProfileStore`/`MAX_REMEMBERED_DEVICES` 等 Pro 专属符号全部缺失，免费版与 Pro 版在字符串层面完全相同（仅机器码字节差异）。**修复**：`scripts/build-community.ps1` 与 `build-pro.ps1` 改用**物理删除** `target/release/{deps,.fingerprint,incremental}` 下所有 `soundlink-pro*` 残留（新增 `Clear-SoundlinkProCache`），替换后与还原后各执行一次；`docs/user/09-open-core-build.md` §4.2/§4.3/§4.3.1 同步改为物理清缓存命令。⚠ 手工切换 `desktop/pro/` 的贡献者请改用文档新命令。
 
 ### 变更
 

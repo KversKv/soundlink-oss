@@ -94,6 +94,9 @@ desktop/src-tauri/target/
 desktop/src-tauri/gen/
 desktop/src-tauri/WixTools/
 
+# 一键构建脚本产物收集目录（scripts/build-community.ps1 / build-pro.ps1）
+/dist/
+
 **/*.rs.bk
 
 # 注意：

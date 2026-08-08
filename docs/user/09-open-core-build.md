@@ -112,12 +112,21 @@ cd D:\CodeProject\TRAE_Projects\SoundLink\oss
 Rename-Item -Path desktop\pro -NewName pro-free-backup
 Copy-Item D:\CodeProject\TRAE_Projects\SoundLink\pro desktop\pro -Recurse
 Remove-Item desktop\pro\.git -Recurse -Force -ErrorAction SilentlyContinue
-cargo clean -p soundlink-pro --manifest-path desktop\src-tauri\Cargo.toml
 
-# 切回免费开发
+# ⚠ 不要用 cargo clean -p soundlink-pro：物理替换后它会因指纹对不上而
+#    报 "Removed 0 files" 并留下旧 rlib，导致下次链接静默复用旧实现。
+#    必须物理删除 target/release 下所有 soundlink-pro 残留：
+$rel = 'desktop\src-tauri\target\release'
+Get-ChildItem "$rel\deps" -Filter '*soundlink_pro*' | Remove-Item -Recurse -Force
+Get-ChildItem "$rel\.fingerprint" -Directory -Filter 'soundlink-pro*' | Remove-Item -Recurse -Force
+Get-ChildItem "$rel\incremental" -Directory -Filter 'soundlink_pro*' -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force
+
+# 切回免费开发（同样物理清缓存）
 Remove-Item desktop\pro -Recurse -Force
 Rename-Item -Path desktop\pro-free-backup -NewName pro
-cargo clean -p soundlink-pro --manifest-path desktop\src-tauri\Cargo.toml
+Get-ChildItem "$rel\deps" -Filter '*soundlink_pro*' | Remove-Item -Recurse -Force
+Get-ChildItem "$rel\.fingerprint" -Directory -Filter 'soundlink-pro*' | Remove-Item -Recurse -Force
+Get-ChildItem "$rel\incremental" -Directory -Filter 'soundlink_pro*' -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force
 ```
 
 #### 方式 B · junction（备选，注意缓存陷阱）
@@ -141,7 +150,7 @@ cargo clean -p soundlink-pro --manifest-path desktop\src-tauri\Cargo.toml
 
 要点（都来自实测，见 02 文档 §11）：
 
-- **切换目录后必须清缓存**（红线 G10）：物理替换用 `cargo clean -p soundlink-pro` 即可；**junction 下该命令不可靠（V-8），须额外物理删 `target` 残留或 `cargo clean` 全量清**（见上框）。
+- **切换目录后必须清缓存**（红线 G10）：**`cargo clean -p soundlink-pro` 在物理替换与 junction 两种场景下都不可靠**——替换后 Cargo 按当前源码指纹对不上旧产物，会报 `Removed 0 files` 并留下旧 rlib，导致下一次链接静默复用旧实现（junction 场景即 02 文档 §11 V-8，物理替换场景为 2026-08-07 构建脚本实测）。**两种方式都必须物理删除 `target/release/{deps,.fingerprint,incremental}` 下的 soundlink-pro 残留**（见上框命令），或 `cargo clean` 全量清。
 - junction 在 Windows 上**免管理员权限**即可创建，Cargo 正常穿透；私有仓库里的相对路径 `../pro-api` 会按 junction 挂载后的位置解析到公开仓库。
 - **删 junction 用** **`(New-Item -Force ...).Delete()`** **或** **`cmd /c rmdir`**，**不要用** **`Remove-Item -Recurse -Force`**——后者在部分 PowerShell 版本会穿透 junction 删掉**私有仓库源码**。
 - `Rename-Item` 对带横杠的目录名建议用 `-Path/-NewName` 参数形式；位置参数 `Rename-Item A B` 可能报 `PSArgumentException`。
@@ -152,7 +161,8 @@ cargo clean -p soundlink-pro --manifest-path desktop\src-tauri\Cargo.toml
 
 ```powershell
 cd desktop\src-tauri
-cargo clean -p soundlink-pro            # 若刚切换过目录，必须执行
+# ⚠ 不要用 cargo clean -p soundlink-pro（替换后会 "Removed 0 files" 留下旧 rlib）。
+# 必须先物理清缓存（见 §4.2 命令块），再构建：
 npm exec --prefix ..\ui tauri -- build --features tauri_app --bundles nsis
 ```
 
@@ -170,7 +180,11 @@ npm exec --prefix ..\ui tauri -- build --features tauri_app --bundles nsis
 cd D:\CodeProject\TRAE_Projects\SoundLink\oss
 Remove-Item desktop\pro -Recurse -Force                            # 删私有副本（不动私有仓库本体）
 Rename-Item -Path desktop\pro-free-backup -NewName pro             # 恢复免费实现
-cargo clean -p soundlink-pro --manifest-path desktop\src-tauri\Cargo.toml
+# 物理清缓存（cargo clean -p 在替换后会失效报 "Removed 0 files"）：
+$rel = 'desktop\src-tauri\target\release'
+Get-ChildItem "$rel\deps" -Filter '*soundlink_pro*' | Remove-Item -Recurse -Force
+Get-ChildItem "$rel\.fingerprint" -Directory -Filter 'soundlink-pro*' | Remove-Item -Recurse -Force
+Get-ChildItem "$rel\incremental" -Directory -Filter 'soundlink_pro*' -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force
 ```
 
 **若用方式 B junction：**
@@ -179,8 +193,11 @@ cargo clean -p soundlink-pro --manifest-path desktop\src-tauri\Cargo.toml
 cd D:\CodeProject\TRAE_Projects\SoundLink\oss
 cmd /c rmdir desktop\pro                                           # 删 junction 本体（不动私有源码）
 Rename-Item -Path desktop\pro-free-backup -NewName pro
-# junction 切换后 cargo clean -p 不可靠（V-8），须全量清：
-cargo clean --manifest-path desktop\src-tauri\Cargo.toml
+# 与方式 A 相同：物理清缓存（junction 下 cargo clean -p 同样失效，V-8）：
+$rel = 'desktop\src-tauri\target\release'
+Get-ChildItem "$rel\deps" -Filter '*soundlink_pro*' | Remove-Item -Recurse -Force
+Get-ChildItem "$rel\.fingerprint" -Directory -Filter 'soundlink-pro*' | Remove-Item -Recurse -Force
+Get-ChildItem "$rel\incremental" -Directory -Filter 'soundlink_pro*' -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force
 ```
 
 然后正常构建即得免费版：`cd desktop\src-tauri; npm exec --prefix ..\ui tauri -- build --features tauri_app`。
