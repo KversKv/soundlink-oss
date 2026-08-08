@@ -102,6 +102,18 @@ Clear-SoundlinkProCache
 
 # --- 4. 构建（NSIS + MSI，同步产出 release exe） ----------------------------
 Write-Host "==> [4/5] tauri build --features tauri_app --bundles nsis,msi" -ForegroundColor Cyan
+# tauri-build 2.x 在 build.rs 阶段校验 tauri.conf.json resources 路径存在性。
+# qr_helper.exe 是同 crate 的另一个 bin，cargo 先跑 build.rs 再编译 bin，
+# 因此 tauri build 启动时 qr_helper.exe 还不存在，会报：
+#   resource path `target\release\qr_helper.exe` doesn't exist
+# 创建空占位文件让 build.rs 校验通过，tauri build 内部的 cargo build 会编译
+# 真正的 qr_helper.exe 覆盖它（qr_helper required-features = tauri_app，必被编译）。
+$qrHelper = Join-Path $SrcTauri 'target\release\qr_helper.exe'
+if (-not (Test-Path $qrHelper)) {
+    New-Item -ItemType Directory -Force -Path (Split-Path $qrHelper) | Out-Null
+    New-Item -ItemType File -Path $qrHelper -Force | Out-Null
+    Write-Host "    已创建 qr_helper.exe 占位文件（cargo build 会覆盖为真实产物）" -ForegroundColor DarkGray
+}
 Invoke-Native npm @('exec', '--prefix', '..\ui', 'tauri', '--', 'build', '--features', 'tauri_app', '--bundles', 'nsis,msi') $SrcTauri
 
 # --- 5. 收集产物 -----------------------------------------------------------

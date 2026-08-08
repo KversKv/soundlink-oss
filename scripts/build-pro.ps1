@@ -88,6 +88,37 @@ function Clear-SoundlinkProCache {
     Write-Host "    已物理清除 soundlink-pro 缓存残留 $removed 处"
 }
 
+function Test-TargetPathConsistent {
+    <#
+    .SYNOPSIS
+      检测 target 目录是否从其他路径搬迁过来（路径不一致）。
+
+    .DESCRIPTION
+      Cargo 的 fingerprint 基于源码内容 hash，不检测 target 绝对路径变化。
+      若仓库被重命名/移动（如 SoundLink→Soundlink、或嵌入 oss 子目录），
+      target 内 build script 的 root-output / output 仍保存旧路径，
+      Cargo 会复用旧的环境变量（如 tauri 的 CORE_PLUGIN___PERMISSION_FILES_PATH），
+      导致 tauri_build::build() 读取不存在的旧路径而失败：
+        failed to read plugin permissions: ... 系统找不到指定的路径。 (os error 3)
+      检测到不一致时返回 $false，调用方应执行 cargo clean。
+    #>
+    $buildDir = Join-Path $SrcTauri 'target\release\build'
+    if (-not (Test-Path $buildDir)) { return $true }
+
+    # 抽样 tauri build script 的 root-output（单行，即 OUT_DIR）
+    $tauriDirs = Get-ChildItem $buildDir -Directory -Filter 'tauri-*' -ErrorAction SilentlyContinue
+    foreach ($dir in $tauriDirs) {
+        $rootOutput = Join-Path $dir.FullName 'root-output'
+        if (Test-Path $rootOutput) {
+            $content = (Get-Content $rootOutput -Raw -ErrorAction SilentlyContinue).Trim()
+            if ($content -and -not $content.StartsWith($SrcTauri, [System.StringComparison]::OrdinalIgnoreCase)) {
+                return $false
+            }
+        }
+    }
+    return $true
+}
+
 # --- 1. 前置校验 -----------------------------------------------------------
 Write-Host "==> [1/5] 前置校验" -ForegroundColor Cyan
 if (-not (Test-Path (Join-Path $ProRepo 'Cargo.toml')) -or -not (Test-Path (Join-Path $ProRepo 'src\lib.rs'))) {
@@ -98,6 +129,16 @@ if (Test-Path $BackupDir) {
 }
 if ((Get-ProEdition) -ne 'community') {
     throw "desktop/pro 当前 EDITION 不是 community，无法安全切换。请先恢复免费实现。"
+}
+
+# 检测 target 目录是否从其他路径搬迁过来。Cargo fingerprint 不检测绝对路径变化，
+# 若仓库被重命名/移动，target 内 build script 缓存的 root-output 仍指向旧路径，
+# tauri_build::build() 读取旧路径下的 permissions/*.toml 会失败（os error 3）。
+# 必须先 cargo clean 才能继续。
+if (-not (Test-TargetPathConsistent)) {
+    Write-Host "    检测到 target 缓存路径与当前仓库路径不一致（仓库可能被重命名/移动过）。" -ForegroundColor Yellow
+    Write-Host "    执行 cargo clean 清理旧缓存（避免 tauri_build 读取不存在的旧路径失败）..." -ForegroundColor Yellow
+    Invoke-Native cargo @('clean') $SrcTauri
 }
 
 # --- 2~4. 切换 → 构建 → 收集；5. finally 保证还原 ---------------------------
@@ -119,6 +160,18 @@ try {
     Write-Host "==> [4/5] 前端依赖 + tauri build --features tauri_app --bundles nsis,msi" -ForegroundColor Cyan
     if (-not $SkipUiInstall -and -not (Test-Path (Join-Path $UiDir 'node_modules'))) {
         Invoke-Native npm @('ci') $UiDir
+    }
+    # tauri-build 2.x 在 build.rs 阶段校验 tauri.conf.json resources 路径存在性。
+    # qr_helper.exe 是同 crate 的另一个 bin，cargo 先跑 build.rs 再编译 bin，
+    # 因此 tauri build 启动时 qr_helper.exe 还不存在，会报：
+    #   resource path `target\release\qr_helper.exe` doesn't exist
+    # 创建空占位文件让 build.rs 校验通过，tauri build 内部的 cargo build 会编译
+    # 真正的 qr_helper.exe 覆盖它（qr_helper required-features = tauri_app，必被编译）。
+    $qrHelper = Join-Path $SrcTauri 'target\release\qr_helper.exe'
+    if (-not (Test-Path $qrHelper)) {
+        New-Item -ItemType Directory -Force -Path (Split-Path $qrHelper) | Out-Null
+        New-Item -ItemType File -Path $qrHelper -Force | Out-Null
+        Write-Host "    已创建 qr_helper.exe 占位文件（cargo build 会覆盖为真实产物）" -ForegroundColor DarkGray
     }
     Invoke-Native npm @('exec', '--prefix', '..\ui', 'tauri', '--', 'build', '--features', 'tauri_app', '--bundles', 'nsis,msi') $SrcTauri
 
