@@ -62,6 +62,8 @@ export interface DisplayModeEntry {
   pinnedToTray: boolean;
   order: number;
   hotkey?: string | null;
+  /** 切换此模式时跳过 15 秒确认窗（高危，display.md §7.4 反向开关）。 */
+  skipConfirm?: boolean;
   createdAt: number;
   lastUsedAt?: number;
 }

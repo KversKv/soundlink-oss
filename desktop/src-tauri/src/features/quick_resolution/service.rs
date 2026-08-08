@@ -307,6 +307,7 @@ impl QrService {
                 pinned_to_tray: false,
                 order,
                 hotkey: None,
+                skip_confirm: false,
                 created_at: now_secs(),
                 last_used_at: None,
             };
@@ -495,7 +496,9 @@ impl QrService {
             let s = self.settings.read();
             let m = s.modes.iter().find(|m| m.id == id).cloned()
                 .ok_or_else(|| QrError::ModeNotFound(id.into()))?;
-            (m, s.confirm_before_apply, s.auto_revert_seconds)
+            // skip_confirm 优先于全局 confirm_before_apply。
+            let confirm = s.confirm_before_apply && !m.skip_confirm;
+            (m, confirm, s.auto_revert_seconds)
         };
         if !mode.state.is_ready() {
             return Err(QrError::ModeNotReady);
@@ -582,6 +585,7 @@ impl QrService {
             pinned_to_tray: false,
             order: 0,
             hotkey: None,
+            skip_confirm: false,
             created_at: 0,
             last_used_at: None,
         };
@@ -589,7 +593,7 @@ impl QrService {
         let disp = self.resolve(&entry.target)?;
         let (confirm, timeout_secs) = {
             let s = self.settings.read();
-            (s.confirm_before_apply, s.auto_revert_seconds)
+            (s.confirm_before_apply && !entry.skip_confirm, s.auto_revert_seconds)
         };
         let guard = RollbackGuard::new(self.backend.as_ref())?;
         applier::apply(self.backend.as_ref(), &disp, &entry)?;

@@ -211,7 +211,7 @@ export default function ModeEditorDialog({ displays, initial, defaultTarget, onC
             />
           </label>
         </div>
-        <div className="qr-chip-row qr-chip-sub">
+        <div className="qr-chip-row qr-chip-sub qr-chip-gap">
           {REFRESH_QUICK.map((r) => (
             <button
               key={r}
@@ -222,6 +222,19 @@ export default function ModeEditorDialog({ displays, initial, defaultTarget, onC
               {r}
             </button>
           ))}
+        </div>
+
+        {/* 跳过切换确认（高危，红字警示） */}
+        <label className="toggle-row qr-skip-confirm-row">
+          <input
+            type="checkbox"
+            checked={entry.skipConfirm ?? false}
+            onChange={(e) => set("skipConfirm", e.target.checked)}
+          />
+          <span>切换此模式时不弹 15 秒确认窗</span>
+        </label>
+        <div className="qr-skip-confirm-warn">
+          ⚠ 高危：勾选后切换即永久生效，无法反悔。请先确认该模式在你的显示器上可正常显示，再勾选。
         </div>
 
         <details className="qr-advanced" open={advancedOpen} onToggle={(e) => setAdvancedOpen((e.currentTarget as HTMLDetailsElement).open)}>

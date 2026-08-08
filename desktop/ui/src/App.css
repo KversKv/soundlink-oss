@@ -841,6 +841,31 @@ select:focus-visible {
   margin-top: -4px;
 }
 
+.qr-chip-gap {
+  margin-top: 6px;
+  margin-bottom: 8px;
+}
+
+/* 跳过确认勾选框（高危红字） */
+.qr-skip-confirm-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--ink);
+  margin-top: 2px;
+}
+
+.qr-skip-confirm-warn {
+  font-size: 11.5px;
+  color: var(--red);
+  line-height: 1.6;
+  padding: 4px 6px;
+  background: rgba(255, 31, 89, 0.06);
+  border-radius: 6px;
+  margin: 2px 0 6px;
+}
+
 .qr-chip {
   border: 1px solid var(--line);
   background: var(--surface-subtle);

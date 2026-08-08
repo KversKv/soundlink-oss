@@ -156,6 +156,9 @@ pub struct DisplayModeEntry {
     pub order: u32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hotkey: Option<String>,
+    /// 切换此模式时跳过 15 秒确认窗（高危，display.md §7.4 反向开关，默认 false）。
+    #[serde(default)]
+    pub skip_confirm: bool,
     #[serde(default)]
     pub created_at: i64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -553,6 +556,7 @@ mod tests {
             pinned_to_tray: true,
             order: 0,
             hotkey: None,
+            skip_confirm: false,
             created_at: 0,
             last_used_at: None,
         };
