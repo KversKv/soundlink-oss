@@ -39,6 +39,13 @@
 - 文案锚定真实能力：预设档位/拖拽排序/系统导入、托盘一键切换 + 15s 确认回滚、退出恢复原始分辨率；note 标注「仅 Windows 官方版；NVIDIA 自定义分辨率与 EDID 预置为实验能力默认关闭」。
 - 验证：`website` `npm run build`（tsc + vite）通过；CHANGELOG `[未发布]` 变更节已回填。
 
+## 追加（同日）：分区顺序调整 + 终端用户文档
+
+- 快速分辨率切换分区由「三条差异化」之后移至**「平台支持」上方**（Hero 之后）。
+- 新增 `docs/user/user-readme.md`：面向终端用户的入口文档（安装含 SmartScreen/防火墙、快速上手、已知限制、免费 vs Pro 表 + QR-1 行、淘宝下单与离线激活流程、简版 FAQ），已挂入 `docs/user/00-index.md` 索引首位。
+- 官网顶部「文档」导航由 README 改指 `docs/user/user-readme.md`（zh/en 同指中文文档——桌面 UI 当前仅中文，与 README 的「文档导航」中开发者文档保持区分）。
+- 验证：`website` `tsc -b` 通过；CHANGELOG `[未发布]` 新增/变更节已回填。
+
 ## 用户需自行完成部分
 
 - 桌面端实机点击「购买 Pro」按钮验证系统浏览器跳转（`open_url` 行为与设置页既有外链一致，预期无差异）。

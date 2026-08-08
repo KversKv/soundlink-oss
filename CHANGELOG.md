@@ -6,6 +6,8 @@
 
 ### 新增
 
+- **托盘菜单新增「在任务栏显示图标…」（仅 Windows）**：一键拉起系统任务栏设置页并弹出步骤引导浮层，帮助用户把 SoundLink 托盘图标设为常驻显示（Windows 无公开 API 供应用自行设置，此为官方推荐引导路径）。
+- **终端用户文档 `docs/user/user-readme.md`**：面向下载安装包直接使用的用户，覆盖安装（SmartScreen/防火墙）、手机→电脑与电脑→电脑上手、已知限制、免费 vs Pro 能力表与激活流程（设备指纹 → 淘宝下单 → 离线激活）、简版 FAQ；官网顶部「文档」导航改指该文档。
 - **Pro 购买入口接入真实渠道**：桌面端设置页「授权」区「购买 Pro」按钮替换占位地址，官网（website）下载区新增「购买 Pro · ￥9.99 买断」按钮、页脚「项目」列新增「购买 Pro」链接（中英双语同步），统一指向淘宝小店。
 - **分辨率快速切换（QR-1，Pro）**：按 `docs/NewFunctions/display/display.md` 落地 M0–M9。设置页新增「快速分辨率切换」区（启动区下方）：显示器编号+识别叠层、模式列表 CRUD/拖拽排序/托盘固定、从系统导入、添加/编辑弹窗（比例预设库+刷新率 chips+可行性预检）、15 秒确认窗（独立置顶小窗，超时自动回滚）、托盘「快速分辨率切换」二级菜单（多屏分组、当前项 ✓、恢复上一个、200ms 防抖）。DSC 检测三路交叉判定（带宽推算主判据 + NVAPI 链路辅证 + EDID 能力）与徽标展示。EDID 批量预置（helper 提权进程 + 计划任务一次 UAC、命名管道 nonce+ACL 加固、三层黑屏保险：helper 看门狗/启动自检/离线救援）。门控走 `ProCapabilities::quick_resolution_available()` 能力值（E4/E5），免费版设置区遮罩、命令返回 `FeatureLocked`。⚠ 仅 Windows；NVIDIA 自定义分辨率（M8）与 EDID 注入（M7）为实验性，`allowEdidOverride` 默认关闭。
 - **SoundLink Pro（open-core）工程落地**：按 `docs/NewFunctions/monetization/` 方案完成免费版与 Pro 版双构建改造。
@@ -32,9 +34,9 @@
 
 ### 变更
 
-- **官网顶部「文档」导航改指 README**：由 `docs/user` 目录页改为中文站指 `README.md`、英文站指 `README.en.md`；页脚「用户文档」链接不变。
+- **官网主页「快速分辨率切换」分区移至「平台支持」上方**（Hero 之后）。
 - **官网顶部导航新增「购买 Pro」按钮**：位于「下载 Beta」左侧，桌面与移动端菜单同步，跳转淘宝小店（中英双语文案）。
-- **官网主页新增「快速分辨率切换」分区（QR-1，Pro）**：位于「三条差异化」之后，左文案右双截图（设置面板 + 托盘菜单交叠），中英双语；素材取自桌面端真实截图（`assets/desktop-quick-resolution.png`、`assets/tray-quick-resolution.png`）。
+- **官网主页新增「快速分辨率切换」分区（QR-1，Pro）**：左文案右双截图（设置面板 + 托盘菜单交叠），中英双语；素材取自桌面端真实截图（`assets/desktop-quick-resolution.png`、`assets/tray-quick-resolution.png`）。
 - **文档修正：junction 本地双开发切换降级为备选**。真实工程复现（02 文档 §11 V-8）：junction 挂载私有实现后 `cargo clean -p soundlink-pro` 失效（报 `Removed 0 files`），即便日志打印 `Compiling soundlink-pro`，产物仍可能是免费实现（社区版，无 Pro）。`docs/user/09-open-core-build.md` 与 `02-multi-repo-guide.md` 的本地切换一节改为**方式 A 物理替换（推荐）** + 方式 B junction（备选，标注缓存陷阱与验证方法），排查表与红线 G10 同步更新。
 - **「开机自启动」调整为免费功能**：`auto_start` 不再属 Pro 能力，所有用户可在设置页开启/关闭（同步 autostart 注册项）。仅「自启动后自动开启接收/发送」（`auto_receive_on_start` / `auto_send_on_start`）保留为 Pro 能力（免费下置灰 + Pro 徽标）。对应 `ProCapabilities` 拆分：`autostart_available()` 恒 `true`，`automation_available()` 仅指自动收发。
 - **版本号由 `0.1.0-beta.1` 调整为 `0.1.0`**（已跑 `scripts/sync_version.py` 同步 4 个清单并 `--check` 自验）：`bundle.targets:"all"` 含 MSI 目标，MSI 要求预发布标识为纯数字（≤65535），含字母的 `-beta.1` 会让 `tauri build` 在 MSI 打包阶段失败（`optional pre-release identifier ... must be numeric-only`）。去掉预发布后 MSI + NSIS 双产物均可正常打包。

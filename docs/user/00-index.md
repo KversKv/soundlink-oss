@@ -8,6 +8,7 @@
 
 | 文档 | 内容 |
 |---|---|
+| [user-readme.md](./user-readme.md) | **终端用户入口**（下载即用）：安装、上手、免费 vs Pro、激活流程、FAQ |
 | [01-dev-env-common.md](./01-dev-env-common.md) | 通用前置：仓库结构、通用工具链、共享层 |
 | [02-dev-env-desktop.md](./02-dev-env-desktop.md) | 桌面端（Tauri 2 + Rust）环境搭建（Windows / macOS / Linux） |
 | [03-dev-env-ios.md](./03-dev-env-ios.md) | iOS 端环境搭建（macOS + Flutter + Xcode） |

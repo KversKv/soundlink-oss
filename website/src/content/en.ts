@@ -21,7 +21,7 @@ export const en: Content = {
     license: `${REPO}/blob/main/LICENSE`,
     privacy: `${REPO}/blob/main/docs/privacy.md`,
     changelog: `${REPO}/blob/main/CHANGELOG.md`,
-    docs: `${REPO}/blob/main/README.en.md`,
+    docs: `${REPO}/blob/main/docs/user/user-readme.md`,
     guide: './guide/',
     pro: PRO_STORE,
   },

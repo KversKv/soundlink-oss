@@ -186,6 +186,8 @@ export default function App() {
   const [drmHintOpen, setDrmHintOpen] = useState(false);
   // F6：DRM 提示确认后回调 pending（确认后再执行 startSender）。
   const [drmPendingStart, setDrmPendingStart] = useState<() => void>(() => () => {});
+  // 托盘「在任务栏显示图标…」引导浮层（Windows 无公开 API，引导用户在系统设置中打开开关）。
+  const [trayPinGuideOpen, setTrayPinGuideOpen] = useState(false);
   // I5：公钥不一致提示模态。后端检测到 MITM 时 emit `pubkey-mismatch` 事件。
   const [pubkeyMismatchOpen, setPubkeyMismatchOpen] = useState(false);
   const [pubkeyMismatchInfo, setPubkeyMismatchInfo] = useState<{
@@ -251,6 +253,7 @@ export default function App() {
     const unlistenClose = listen("close-requested", () => setCloseDialogOpen(true));
     const unlistenTray = listen<{ kind: string }>("tray-menu-click", (e) => {
       if (e.payload.kind === "Settings") setView("settings");
+      if (e.payload.kind === "PinTrayIcon") setTrayPinGuideOpen(true);
     });
     const unlistenIdentity = listen<{ message: string }>("identity-load-failed", (e) => {
       setError(e.payload.message);
@@ -1063,6 +1066,50 @@ export default function App() {
               await invoke("quit_app");
             }}
           />
+        )}
+
+        {/* 托盘「在任务栏显示图标…」引导浮层：系统设置页已由后端拉起，此处给出操作步骤。 */}
+        {trayPinGuideOpen && (
+          <div
+            className="close-dialog-overlay"
+            role="dialog"
+            aria-modal="true"
+            style={{
+              position: "fixed",
+              inset: 0,
+              background: "rgba(0,0,0,0.4)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              zIndex: 1000,
+            }}
+          >
+            <div
+              className="panel-card"
+              style={{ maxWidth: 420, padding: 20, textAlign: "left" }}
+            >
+              <h3 style={{ marginTop: 0, textAlign: "center" }}>让 SoundLink 图标常驻任务栏</h3>
+              <p style={{ fontSize: 13, color: "#555", lineHeight: 1.8 }}>
+                已为你打开 Windows「任务栏」设置页，请按以下步骤操作：
+              </p>
+              <ol style={{ fontSize: 13, color: "#555", lineHeight: 1.8, paddingLeft: 20, margin: "8px 0" }}>
+                <li>在设置页中找到「任务栏角溢出」（Win11）或「选择哪些图标显示在任务栏上」（Win10）</li>
+                <li>在列表中找到 <strong>SoundLink</strong>，将开关切换为「开」</li>
+              </ol>
+              <p style={{ fontSize: 12, color: "#888", lineHeight: 1.6 }}>
+                小提示：也可以点击任务栏右下角的上箭头（^）展开隐藏图标，把 SoundLink 图标直接拖到任务栏上，效果相同。
+              </p>
+              <div style={{ textAlign: "center", marginTop: 12 }}>
+                <button
+                  type="button"
+                  className="primary-action success"
+                  onClick={() => setTrayPinGuideOpen(false)}
+                >
+                  我知道了
+                </button>
+              </div>
+            </div>
+          </div>
         )}
 
         {/* F6：DRM 受保护内容提示模态（首次开始发送时弹）。 */}

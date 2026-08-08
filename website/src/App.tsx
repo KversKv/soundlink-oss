@@ -17,10 +17,10 @@ export function App({ c }: { c: Content }) {
       <Nav c={c} />
       <main>
         <Hero c={c} />
+        <QuickResolution c={c} />
         <PlatformMatrix c={c} />
         <Scenario c={c} />
         <Differentiators c={c} />
-        <QuickResolution c={c} />
         <HowItWorks c={c} />
         <Specs c={c} />
         <Limitations c={c} />

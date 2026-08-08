@@ -21,6 +21,8 @@ use tauri::{
 pub enum TrayMenuEvent {
     /// 用户点击「设置…」
     Settings,
+    /// 用户点击「在任务栏显示图标…」（仅 Windows；前端弹引导浮层）
+    PinTrayIcon,
 }
 
 /// 关闭窗口决策（H2：从 `handle_close_requested` 抽出的纯函数结果）。
@@ -53,6 +55,16 @@ fn build_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
     let mut owned: Vec<MenuItemKind<Wry>> = Vec::new();
     owned.push(MenuItemKind::MenuItem(MenuItem::with_id(app, "show", "显示主窗口", true, None::<&str>)?));
     owned.push(MenuItemKind::MenuItem(MenuItem::with_id(app, "settings", "设置…", true, None::<&str>)?));
+    // Windows 11 托盘图标默认折叠进角溢出菜单；微软无公开 API 让应用自行常驻，
+    // 提供引导项：拉起系统任务栏设置页 + 前端步骤浮层（仅 Windows 有意义）。
+    #[cfg(windows)]
+    owned.push(MenuItemKind::MenuItem(MenuItem::with_id(
+        app,
+        "pin-tray-icon",
+        "在任务栏显示图标…",
+        true,
+        None::<&str>,
+    )?));
 
     if !tray_items.is_empty() {
         owned.push(MenuItemKind::Predefined(PredefinedMenuItem::separator(app)?));
@@ -201,6 +213,15 @@ pub fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
             "settings" => {
                 show_main_window_inner(app);
                 let _ = app.emit("tray-menu-click", TrayMenuEvent::Settings);
+            }
+            // 拉起 Windows 任务栏设置页（用户打开 SoundLink 开关即常驻），并弹引导浮层。
+            #[cfg(windows)]
+            "pin-tray-icon" => {
+                let _ = std::process::Command::new("explorer")
+                    .arg("ms-settings:taskbar")
+                    .spawn();
+                show_main_window_inner(app);
+                let _ = app.emit("tray-menu-click", TrayMenuEvent::PinTrayIcon);
             }
             // MON-01 S15：收发直控（不打开主窗口即可完成开始→停止全流程）。
             "toggle-receiver" => {
@@ -426,5 +447,12 @@ mod tests {
         let e = TrayMenuEvent::Settings;
         let s = serde_json::to_string(&e).unwrap();
         assert_eq!(s, "{\"kind\":\"Settings\"}");
+    }
+
+    #[test]
+    fn tray_menu_event_pin_tray_icon_serializes() {
+        let e = TrayMenuEvent::PinTrayIcon;
+        let s = serde_json::to_string(&e).unwrap();
+        assert_eq!(s, "{\"kind\":\"PinTrayIcon\"}");
     }
 }
