@@ -196,7 +196,7 @@ function qrErrorMessage(p: QrErrorPayload): string {
     case "ElevationDenied":
       return "管理员授权被拒绝";
     case "HelperIpc":
-      return `辅助进程通信失败：${d[0] ?? ""}`;
+      return `辅助进程通信失败：${typeof p.detail === "string" ? p.detail : ""}`;
     case "EdidNoSlot":
       return "EDID 无可用时序槽位";
     case "ActivationRequiresLogoff":
@@ -218,11 +218,11 @@ function qrErrorMessage(p: QrErrorPayload): string {
     case "ModeNotFound":
       return "模式不存在";
     case "BadRequest":
-      return `参数非法：${d[0] ?? ""}`;
+      return `参数非法：${typeof p.detail === "string" ? p.detail : ""}`;
     case "Edid":
-      return `EDID 解析/编辑失败：${d[0] ?? ""}`;
+      return `EDID 解析/编辑失败：${typeof p.detail === "string" ? p.detail : ""}`;
     case "Io":
-      return `IO 失败：${d[0] ?? ""}`;
+      return `IO 失败：${typeof p.detail === "string" ? p.detail : ""}`;
     default:
       return String(p.code);
   }

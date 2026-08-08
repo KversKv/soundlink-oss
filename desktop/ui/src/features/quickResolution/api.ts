@@ -36,6 +36,8 @@ export const qrApi = {
   listEdidBackups: (target?: ModeTarget) =>
     invoke<BackupInfo[]>("qr_list_edid_backups", { target: target ?? null }),
   refreshStates: () => invoke<void>("qr_refresh_states"),
+  // helper 安装状态（实时探测计划任务，而非落盘标志）。
+  helperStatus: () => invoke<boolean>("qr_helper_status"),
   // M7 预置（后端在 M7 实现；前端预置按钮届时接入）。
   provision: (ids: string[]) => invoke<ProvisionReport>("qr_provision", { ids }),
 };

@@ -29,6 +29,9 @@
 
 ### 修复
 
+- **快速分辨率切换「安装辅助组件」报「辅助进程通信失败：q」**：双重缺陷。① 前端 `parseQrError` 把 serde newtype 变体的字符串 `detail` 当对象取 `d[0]`，真实原因「qr_helper.exe 不存在（需随包发布）」被截成首字符 "q"（`HelperIpc`/`BadRequest`/`Edid`/`Io` 四处同修）；② NSIS/MSI 安装包未携带 `qr_helper.exe`——已加入 `tauri.conf.json` bundle resources，安装后与主程序同目录，`qr_install_helper` 可正常拉起。
+- **已装辅助组件却仍提示「需要一次管理员授权以启用 EDID 注入」**：预置前置守卫误信内存/落盘的 `helper_installed` 标志——前端点「安装」只改了 React 内存 state、从未持久化，重启 App 后标志回落 false，计划任务明明注册成功仍被误判未安装。修复：① 预置守卫改为实时探测计划任务（`helper_installed()`），不再信标志；② `qr_install_helper` 成功后回写并持久化该标志；③ 前端加载与安装成功均以实时 `qr_helper_status` 为准。
+- **便携 exe 支持「安装辅助组件」自举**：便携单文件形态下主程序旁没有 `qr_helper.exe`，安装时会把主程序复制为同目录 `qr_helper.exe`（主程序按 exe 文件名自动进入 helper 模式，先于 Tauri/单实例初始化分发），随后照常弹一次 UAC 注册计划任务。此后 EDID 注入流程与安装版一致。⚠ 便携版所在目录需可写（否则复制失败并给出明确提示）。
 - **Pro 激活码无法激活（签发/验签公钥不一致）**：客户端 `PUBKEYS_VENDOR_B64` 误填 2026-08-06 临时密钥对的公钥（其私钥未留存、且从未随任何发布版流出），与私仓权威私钥（`pro/license/vendor_sk.hex`）对应的公钥不一致——表现为签发端自检通过、但所有已签发激活码在客户端验签一律「签名校验失败」。已将客户端内置公钥更正为私仓私钥对应公钥（替换而非追加：旧公钥从未发布，C1 不适用）。⚠ 用户动作：需重新构建客户端后激活码方可验过；已签发的激活码无需重签。
 - **license 脚本默认私钥路径不鲁棒**：`issue.py`/`keygen.py` 仍按旧布局目录名 `soundlink-pro` 定位私仓私钥，双仓库布局（`oss/`+`pro/`）下报 `FileNotFoundError` 或把私钥生成到错误位置（密钥分裂隐患）。改为按工作区根探测候选路径（新布局 `pro/license/` 优先、旧布局回退、已有私钥处优先复用），私钥缺失时给出明确错误提示而非 traceback。
 - **open-core 缓存陷阱扩展（红线 G10 修订）**：`cargo clean -p soundlink-pro` 在**物理替换场景下同样失效**（此前 09 文档仅在 junction 场景标注 V-8）——`desktop/pro/` 整体替换后，Cargo 按当前源码指纹对不上旧产物，报 `Removed 0 files` 并把旧 rlib 留在 `target/release/deps/`，导致下一次构建静默链接**上一次的实现**。实测后果：先跑免费版构建再跑 Pro 构建，`dist/pro/` 产物里 `ProImpl`/`ProProfileStore`/`MAX_REMEMBERED_DEVICES` 等 Pro 专属符号全部缺失，免费版与 Pro 版在字符串层面完全相同（仅机器码字节差异）。**修复**：`scripts/build-community.ps1` 与 `build-pro.ps1` 改用**物理删除** `target/release/{deps,.fingerprint,incremental}` 下所有 `soundlink-pro*` 残留（新增 `Clear-SoundlinkProCache`），替换后与还原后各执行一次；`docs/user/09-open-core-build.md` §4.2/§4.3/§4.3.1 同步改为物理清缓存命令。⚠ 手工切换 `desktop/pro/` 的贡献者请改用文档新命令。

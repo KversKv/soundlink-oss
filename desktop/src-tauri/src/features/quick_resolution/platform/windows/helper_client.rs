@@ -176,7 +176,14 @@ pub fn install_helper() -> Result<(), QrError> {
         .map(|d| d.join("qr_helper.exe"))
         .ok_or_else(|| QrError::HelperIpc("无法定位 qr_helper.exe".into()))?;
     if !helper.exists() {
-        return Err(QrError::HelperIpc("qr_helper.exe 不存在（需随包发布）".into()));
+        // 便携单文件形态：把主程序复制为同目录 qr_helper.exe 自举
+        // （主程序按 exe 文件名进入 helper 模式，见 main.rs）。
+        std::fs::copy(&exe, &helper).map_err(|e| {
+            QrError::HelperIpc(format!(
+                "qr_helper.exe 缺失且无法在主程序旁创建（请把便携版移到可写目录后重试）：{}",
+                e
+            ))
+        })?;
     }
     let op: Vec<u16> = "runas\0".encode_utf16().collect();
     let file: Vec<u16> = helper.to_string_lossy().encode_utf16().chain(Some(0)).collect();

@@ -74,6 +74,17 @@ impl QrService {
         self.settings.read().clone()
     }
 
+    /// 标记 helper 已完成安装并持久化（安装命令成功后调用）。
+    pub fn mark_helper_installed(&self) {
+        let mut s = self.settings.write();
+        if !s.helper_installed {
+            s.helper_installed = true;
+            let saved = s.clone();
+            drop(s);
+            let _ = self.store.save_settings(&saved);
+        }
+    }
+
     /// 全量覆盖设置（前端持有完整对象）；数值字段做夹取校验。
     pub fn save_settings(&self, mut next: QuickResolutionSettings) -> Result<QuickResolutionSettings, QrError> {
         next.schema_version = 1;
@@ -716,7 +727,7 @@ impl QrService {
     /// 批量预置（M7）：把 Draft/Validated 模式一次性注入 EDID。
     pub async fn provision(&self, app: &AppHandle, ids: Vec<String>) -> Result<ProvisionReport, QrError> {
         let _lock = self.provision_lock.lock().await; // 全局串行
-        let (pending, target, helper_ok) = {
+        let (pending, target) = {
             let s = self.settings.read();
             let pending: Vec<DisplayModeEntry> = if ids.is_empty() {
                 s.modes.iter().filter(|m| m.state.is_pending()).cloned().collect()
@@ -724,14 +735,35 @@ impl QrService {
                 s.modes.iter().filter(|m| ids.contains(&m.id)).cloned().collect()
             };
             let target = pending.first().map(|m| m.target.clone());
-            let helper_ok = s.helper_installed;
-            (pending, target, helper_ok)
+            (pending, target)
         };
         if pending.is_empty() {
             return Err(QrError::BadRequest("没有待预置模式".into()));
         }
+        // 实时探测计划任务，不信内存/落盘的 helper_installed 标志
+        // （该标志可能因未持久化而过期，导致已安装却被误判为未安装）。
+        let helper_ok = {
+            #[cfg(windows)]
+            {
+                crate::features::quick_resolution::platform::windows::helper_client::helper_installed()
+            }
+            #[cfg(not(windows))]
+            {
+                false
+            }
+        };
         if !helper_ok {
             return Err(QrError::HelperNotInstalled);
+        }
+        // 同步内存标志，保持 UI 一致。
+        {
+            let mut s = self.settings.write();
+            if !s.helper_installed {
+                s.helper_installed = true;
+                let saved = s.clone();
+                drop(s);
+                let _ = self.store.save_settings(&saved);
+            }
         }
         let target = target.ok_or_else(|| QrError::BadRequest("模式无目标显示器".into()))?;
         let disp = self.resolve(&target)?;

@@ -95,9 +95,14 @@ export default function QuickResolutionSection() {
       const a = await qrApi.getAvailability();
       setAvail(a);
       if (!a.available || !a.platformSupported) return;
-      const [d, s] = await Promise.all([qrApi.getDisplays(), qrApi.getSettings()]);
+      const [d, s, helperOk] = await Promise.all([
+        qrApi.getDisplays(),
+        qrApi.getSettings(),
+        qrApi.helperStatus().catch(() => false),
+      ]);
       setDisplays(d);
-      setSettings(s);
+      // 以实时探测为准：落盘的 helperInstalled 标志可能因未持久化而过期。
+      setSettings({ ...s, helperInstalled: helperOk });
     } catch (e) {
       setError(parseQrError(e).message);
     }

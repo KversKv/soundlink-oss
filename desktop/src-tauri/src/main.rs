@@ -29,6 +29,20 @@ pub const DUMP_ENABLE: bool = DEBUG;
 #[cfg(feature = "tauri_app")]
 fn main() {
     use tauri::Manager;
+    // QR-1：主程序被复制/重命名为 qr_helper.exe 时进入提权辅助进程模式
+    // （便携单文件形态自举，见 helper_client::install_helper）。
+    // 必须先于一切插件/Tauri 初始化分发，避免单实例锁把 --serve 请求吞掉。
+    #[cfg(windows)]
+    {
+        let helper_mode = std::env::current_exe()
+            .ok()
+            .and_then(|p| p.file_stem().map(|s| s.to_string_lossy().into_owned()))
+            .is_some_and(|s| s.eq_ignore_ascii_case("qr_helper"));
+        if helper_mode {
+            let args: Vec<String> = std::env::args().collect();
+            std::process::exit(soundlink_lib::features::quick_resolution::helper_core::run(&args));
+        }
+    }
     soundlink_lib::logging::init();
     install_panic_hook();
     // MON-01 S5：系统自启动拉起标记（autostart 插件注册的启动参数）。

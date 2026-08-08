@@ -176,7 +176,9 @@ pub fn qr_install_helper(state: State<'_, AppState>) -> Result<(), QrError> {
     require_qr(state.inner())?;
     #[cfg(windows)]
     {
-        crate::features::quick_resolution::platform::windows::helper_client::install_helper()
+        crate::features::quick_resolution::platform::windows::helper_client::install_helper()?;
+        state.qr.mark_helper_installed();
+        Ok(())
     }
     #[cfg(not(windows))]
     {
