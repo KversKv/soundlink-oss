@@ -57,6 +57,11 @@ unsafe extern "system" fn wndproc(
             let _ = EndPaint(hwnd, &ps);
             LRESULT(0)
         }
+        WM_CLOSE => {
+            // 本线程销毁（窗口有线程亲和性，跨线程 DestroyWindow 会失败）。
+            let _ = DestroyWindow(hwnd);
+            LRESULT(0)
+        }
         _ => DefWindowProcW(hwnd, msg, wparam, lparam),
     }
 }
@@ -132,7 +137,7 @@ pub fn show_identify_overlays(
     Ok(())
 }
 
-/// 关闭全部 GDI 识别叠层（枚举顶层窗口，类名前缀匹配即销毁）。
+/// 关闭全部 GDI 识别叠层（PostMessage WM_CLOSE 到各窗口所在线程，由其窗口过程自毁）。
 fn close_overlays_gdi() {
     unsafe {
         unsafe extern "system" fn enum_cb(hwnd: HWND, _lp: LPARAM) -> BOOL {
@@ -141,7 +146,8 @@ fn close_overlays_gdi() {
             if n > 0 {
                 let name = String::from_utf16_lossy(&cls[..n as usize]);
                 if name.starts_with(CLASS_PREFIX) {
-                    let _ = DestroyWindow(hwnd);
+                    // PostMessage 是线程安全的（消息路由到窗口所属线程的消息队列）。
+                    let _ = PostMessageW(hwnd, WM_CLOSE, WPARAM(0), LPARAM(0));
                 }
             }
             BOOL(1)
