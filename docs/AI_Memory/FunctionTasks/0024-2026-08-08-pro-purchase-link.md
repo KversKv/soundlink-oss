@@ -29,7 +29,15 @@
 ## 追加（同日）：顶部「文档」导航改指 README
 
 - 用户要求官网顶部「文档」跳转 oss 的 README 而非 `docs/user`：`zh.ts` `links.docs` 改为 `${REPO}/blob/main/README.md`，`en.ts` 改为 `${REPO}/blob/main/README.en.md`（英文用户落英文 README）。页脚「用户文档」链接保持 `docs/user` 不变。
+- 用户要求官网顶部「下载 Beta」左侧新增「购买 Pro」按钮：zh/en `nav` 新增 `proCta`（购买 Pro / Buy Pro），`Nav.tsx` 桌面与移动端菜单各加一个 ghost 风格按钮指向 `c.links.pro`。
 - 验证：`website` `tsc -b` 通过；CHANGELOG `[未发布]` 变更节已回填。
+
+## 追加（同日）：官网主页新增「快速分辨率切换」分区
+
+- 用户要求在主页描述 QR-1（快速分辨率切换，Pro），素材取 `oss/temp/png/` 两张真实截图：设置面板（`desktop-quick-resolution.png`）与托盘菜单（`tray-quick-resolution.png`），已复制进 `website/public/assets/`。
+- 新增 `website/src/sections/QuickResolution.tsx`：左文案（Pro 徽标 + 标题 + 场景化描述 + 3 条要点 + 边界说明）右双截图交叠布局（复用 Scenario 的叠图手法），插入 `App.tsx` 中 Differentiators 之后；zh/en 新增 `quickResolution` 文案块。
+- 文案锚定真实能力：预设档位/拖拽排序/系统导入、托盘一键切换 + 15s 确认回滚、退出恢复原始分辨率；note 标注「仅 Windows 官方版；NVIDIA 自定义分辨率与 EDID 预置为实验能力默认关闭」。
+- 验证：`website` `npm run build`（tsc + vite）通过；CHANGELOG `[未发布]` 变更节已回填。
 
 ## 用户需自行完成部分
 

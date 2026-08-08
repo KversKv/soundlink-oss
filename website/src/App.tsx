@@ -4,6 +4,7 @@ import { Hero } from './sections/Hero'
 import { PlatformMatrix } from './sections/PlatformMatrix'
 import { Scenario } from './sections/Scenario'
 import { Differentiators } from './sections/Differentiators'
+import { QuickResolution } from './sections/QuickResolution'
 import { HowItWorks } from './sections/HowItWorks'
 import { Specs } from './sections/Specs'
 import { Limitations } from './sections/Limitations'
@@ -19,6 +20,7 @@ export function App({ c }: { c: Content }) {
         <PlatformMatrix c={c} />
         <Scenario c={c} />
         <Differentiators c={c} />
+        <QuickResolution c={c} />
         <HowItWorks c={c} />
         <Specs c={c} />
         <Limitations c={c} />

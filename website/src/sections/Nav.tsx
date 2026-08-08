@@ -47,6 +47,14 @@ export function Nav({ c }: { c: Content }) {
             {c.nav.langSwitch}
           </a>
           <a
+            href={c.links.pro}
+            target="_blank"
+            rel="noreferrer"
+            className="btn-press rounded-[8px] border border-border px-4 py-1.5 text-sm font-medium text-text hover:border-text-dim"
+          >
+            {c.nav.proCta}
+          </a>
+          <a
             href={c.links.releases}
             target="_blank"
             rel="noreferrer"
@@ -83,6 +91,14 @@ export function Nav({ c }: { c: Content }) {
             <div className="mt-2 flex items-center gap-3">
               <a href={c.meta.otherLangHref} className="rounded-[8px] border border-border px-3 py-1.5 text-text-dim">
                 {c.nav.langSwitch}
+              </a>
+              <a
+                href={c.links.pro}
+                target="_blank"
+                rel="noreferrer"
+                className="btn-press rounded-[8px] border border-border px-4 py-1.5 font-medium text-text"
+              >
+                {c.nav.proCta}
               </a>
               <a
                 href={c.links.releases}
