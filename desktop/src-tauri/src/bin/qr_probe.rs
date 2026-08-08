@@ -96,9 +96,8 @@ fn main() {
         println!("  \"registry_variants\": {{");
         for v in [qr_ipc::RegVariant::MonitorInstanceOverride, qr_ipc::RegVariant::ClassMonitorOverride, qr_ipc::RegVariant::GraphicsDriversConfiguration] {
             let sub = edid_reg::resolve_variant_subkey(&d.key.instance_path, v);
-            let has_override = sub.as_ref().map(|s| {
-                edid_reg::read_override(&d.key.instance_path, v).is_ok()
-            }).unwrap_or(false);
+            let has_override = sub.is_ok()
+                && edid_reg::read_override(&d.key.instance_path, v).is_ok();
             println!("    \"{:?}\": {{ \"resolved\": {}, \"has_override\": {} }},",
                 v, sub.is_ok(), has_override);
         }

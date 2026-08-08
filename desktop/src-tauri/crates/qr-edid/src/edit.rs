@@ -9,8 +9,8 @@
 use crate::parse;
 use crate::timing::TimingParams;
 use crate::{
-    EdidErr, BLOCK_SIZE, DISPLAYID_BLOCK_TYPE_VII, DTD_MAX_PIXEL_CLOCK_KHZ, EDID_HEADER,
-    EXT_TAG_CTA, EXT_TAG_DISPLAYID,
+    EdidErr, BLOCK_SIZE, DISPLAYID_BLOCK_TYPE_VII, DTD_MAX_PIXEL_CLOCK_KHZ, EXT_TAG_CTA,
+    EXT_TAG_DISPLAYID,
 };
 
 /// timing 写入位置（返回给调用方记录）。
@@ -385,6 +385,7 @@ fn aspect_code(h: u32, v: u32) -> u8 {
 mod tests {
     use super::*;
     use crate::timing::{generate, TimingStandard};
+    use crate::EDID_HEADER;
 
     /// 基础 fixture：base DTD 占用 1 槽，其余 3 槽 dummy(0x10)。
     fn fixture_with_dummy_slots() -> Vec<u8> {
