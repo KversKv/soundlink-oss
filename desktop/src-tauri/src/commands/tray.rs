@@ -360,6 +360,11 @@ fn notify(_app: &AppHandle, title: &str, body: &str) {
 /// - `quit`：直接 `app.exit(0)`
 /// - `ask`（默认）：阻止关闭 + emit `close-requested` 给前端弹窗
 pub fn handle_close_requested(window: &tauri::Window, event: &WindowEvent) {
+    // QR-1 子窗（确认窗/识别叠层）直接放行，不拦截（display.md §8.2/§7.4）。
+    let label = window.label();
+    if label == "qr-confirm" || label.starts_with("qr-identify-") {
+        return;
+    }
     if let WindowEvent::CloseRequested { api, .. } = event {
         let app = window.app_handle();
         let state: State<'_, AppState> = app.state();

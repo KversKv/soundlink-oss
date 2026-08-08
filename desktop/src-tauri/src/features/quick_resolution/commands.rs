@@ -6,7 +6,7 @@
 
 use crate::commands::AppState;
 use crate::features::quick_resolution::model::*;
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
 
 /// 能力门控：后端唯一权威。
 fn require_qr(state: &AppState) -> Result<(), QrError> {
@@ -141,16 +141,23 @@ pub async fn qr_apply_previous(
 }
 
 #[tauri::command]
-pub fn qr_confirm_apply(state: State<'_, AppState>) -> Result<(), QrError> {
+pub fn qr_confirm_apply(app: AppHandle, state: State<'_, AppState>) -> Result<(), QrError> {
     require_qr(state.inner())?;
     state.qr.confirm_apply();
+    // 主动关确认窗（前端 window.close() 在 Tauri webview 里不可靠）。
+    if let Some(w) = app.get_webview_window("qr-confirm") {
+        let _ = w.close();
+    }
     Ok(())
 }
 
 #[tauri::command]
-pub fn qr_revert_apply(state: State<'_, AppState>) -> Result<(), QrError> {
+pub fn qr_revert_apply(app: AppHandle, state: State<'_, AppState>) -> Result<(), QrError> {
     require_qr(state.inner())?;
     state.qr.revert_apply();
+    if let Some(w) = app.get_webview_window("qr-confirm") {
+        let _ = w.close();
+    }
     Ok(())
 }
 

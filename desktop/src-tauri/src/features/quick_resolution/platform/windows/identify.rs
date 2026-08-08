@@ -1,25 +1,84 @@
 //! 识别叠层（display.md §8.2）：每块屏幕中央显示巨大编号，3 秒后自动关闭。
 //!
-//! 实现：无边框/置顶/点击穿透的 Tauri 小窗，URL `index.html?view=qr-identify&n=<编号>`，
-//! 由前端渲染数字本体（同一份 bundle，CSP 无新增面）。
+//! 实现：纯 Win32 GDI 无边框置顶窗口（**不依赖 Tauri webview**，避免 webview 加载
+//! 失败导致「白块但无数字」）。数字用 GDI `DrawTextW` 直接画，零前端不确定性。
 
 use crate::features::quick_resolution::model::{DisplayInfo, QrError};
 use crate::features::quick_resolution::platform::DisplayBackend;
-use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
+use windows::core::PCWSTR;
+use windows::Win32::Foundation::*;
+use windows::Win32::Graphics::Gdi::*;
+use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+use windows::Win32::UI::WindowsAndMessaging::*;
 
-const OVERLAY_W: f64 = 220.0;
-const OVERLAY_H: f64 = 180.0;
 const SHOW_MS: u64 = 3000;
+const CLASS_NAME: &str = "SoundLinkQrIdentify";
 
-/// 为全部显示器弹出编号叠层。
+/// 窗口过程：画深色底 + 白色大数字。
+unsafe extern "system" fn wndproc(
+    hwnd: HWND,
+    msg: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+) -> LRESULT {
+    match msg {
+        WM_PAINT => {
+            let mut ps = PAINTSTRUCT::default();
+            let hdc = BeginPaint(hwnd, &mut ps);
+            // 读编号（存在 GWLP_USERDATA 里，ASCII 字符串指针）。
+            let n_ptr = GetWindowLongPtrW(hwnd, GWLP_USERDATA) as *const u8;
+            let text = if !n_ptr.is_null() {
+                let mut len = 0usize;
+                while *n_ptr.add(len) != 0 {
+                    len += 1;
+                }
+                String::from_utf8_lossy(std::slice::from_raw_parts(n_ptr, len)).into_owned()
+            } else {
+                "?".into()
+            };
+            let mut rc = RECT::default();
+            let _ = GetClientRect(hwnd, &mut rc);
+            // 深色底。
+            let brush = CreateSolidBrush(COLORREF(0x00382214)); // BGR: 20,34,56
+            FillRect(hdc, &rc, brush);
+            let _ = DeleteObject(brush);
+            // 白色大数字居中。
+            SetBkMode(hdc, TRANSPARENT);
+            SetTextColor(hdc, COLORREF(0x00FFFFFF));
+            let font = CreateFontW(
+                -96, 0, 0, 0, FW_HEAVY.0 as i32, 0, 0, 0,
+                DEFAULT_CHARSET.0 as u32, OUT_DEFAULT_PRECIS.0 as u32, CLIP_DEFAULT_PRECIS.0 as u32,
+                CLEARTYPE_QUALITY.0 as u32, DEFAULT_PITCH.0 as u32, windows::core::w!("Segoe UI"),
+            );
+            let old = SelectObject(hdc, font);
+            let mut wide: Vec<u16> = text.encode_utf16().chain(Some(0)).collect();
+            let _ = DrawTextW(hdc, &mut wide, &mut rc, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+            SelectObject(hdc, old);
+            let _ = DeleteObject(font);
+            let _ = EndPaint(hwnd, &ps);
+            LRESULT(0)
+        }
+        WM_DESTROY => {
+            // 释放 USERDATA 里的字符串。
+            let p = GetWindowLongPtrW(hwnd, GWLP_USERDATA) as *mut u8;
+            if !p.is_null() {
+                let _ = Box::from_raw(p);
+                SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
+            }
+            LRESULT(0)
+        }
+        _ => DefWindowProcW(hwnd, msg, wparam, lparam),
+    }
+}
+
+/// 为全部显示器弹出编号叠层（GDI 直绘，不依赖 webview）。
 pub fn show_identify_overlays(
-    app: &tauri::AppHandle,
+    _app: &tauri::AppHandle,
     backend: &dyn DisplayBackend,
     displays: &[DisplayInfo],
 ) -> Result<(), QrError> {
-    // 先关旧叠层（连点防护）。
-    close_overlays(app);
-    let mut created_any = false;
+    close_overlays_gdi();
+    let mut created = 0usize;
     for d in displays {
         let (mx, my, mw, mh) = match backend.monitor_rect(&d.gdi_name) {
             Ok(r) => r,
@@ -28,54 +87,84 @@ pub fn show_identify_overlays(
                 continue;
             }
         };
-        // 用逻辑坐标（Tauri inner_size/position 是逻辑像素；monitor_rect 是物理像素，
-        // 高 DPI 下会错位）。除以 scale_factor 换算。
-        let scale = backend.scale_factor_of(&d.gdi_name).unwrap_or(1.0);
-        let (lw, lh) = (mw as f64 / scale, mh as f64 / scale);
-        let (lx, ly) = (mx as f64 / scale, my as f64 / scale);
-        let cx = lx + lw / 2.0 - OVERLAY_W / 2.0;
-        let cy = ly + lh / 2.0 - OVERLAY_H / 2.0;
-        let label = format!("qr-identify-{}", d.index);
-        let url = format!("index.html?view=qr-identify&n={}", d.index);
-        match WebviewWindowBuilder::new(app, &label, WebviewUrl::App(url.into()))
-            .title("")
-            .decorations(false)
-            .transparent(false) // 透明在某些 GPU 上渲染异常导致白块
-            .always_on_top(true)
-            .skip_taskbar(true)
-            .resizable(false)
-            .inner_size(OVERLAY_W, OVERLAY_H)
-            .position(cx, cy)
-            .build()
-        {
-            Ok(win) => {
-                let _ = win.set_ignore_cursor_events(true);
-                // 深色背景直接由窗口承载，前端只画数字。
-                let _ = win.set_background_color(Some(tauri::window::Color(20, 34, 56, 230)));
-                created_any = true;
-            }
-            Err(e) => {
-                tracing::warn!("QR 识别叠层：创建 {} 失败：{}", label, e);
+        // GDI 窗口用物理像素（SetWindowPos 是物理坐标）。
+        let w = 220i32;
+        let h = 180i32;
+        let x = mx + (mw as i32 - w) / 2;
+        let y = my + (mh as i32 - h) / 2;
+        let text = d.index.to_string();
+        let text_box = Box::into_raw(text.into_bytes().into_boxed_slice()) as *mut u8;
+        unsafe {
+            let hinst = GetModuleHandleW(None).unwrap_or_default();
+            let class: Vec<u16> = CLASS_NAME.encode_utf16().chain(Some(0)).collect();
+            // 注册类（重复注册失败无碍）。
+            let wc = WNDCLASSW {
+                lpfnWndProc: Some(wndproc),
+                hInstance: hinst.into(),
+                lpszClassName: windows::core::PCWSTR(class.as_ptr()),
+                hbrBackground: HBRUSH::default(),
+                ..Default::default()
+            };
+            let _ = RegisterClassW(&wc);
+            let hwnd = CreateWindowExW(
+                WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE,
+                PCWSTR(class.as_ptr()),
+                PCWSTR(class.as_ptr()),
+                WS_POPUP | WS_VISIBLE,
+                x,
+                y,
+                w,
+                h,
+                HWND::default(),
+                HMENU::default(),
+                HINSTANCE(hinst.0),
+                None,
+            );
+            match hwnd {
+                Ok(h) => {
+                    SetWindowLongPtrW(h, GWLP_USERDATA, text_box as isize);
+                    let _ = ShowWindow(h, SW_SHOWNA);
+                    let _ = UpdateWindow(h);
+                    created += 1;
+                }
+                Err(e) => {
+                    let _ = Box::from_raw(text_box);
+                    tracing::warn!("QR 识别叠层：CreateWindowExW 失败：{}", e);
+                }
             }
         }
     }
-    if !created_any {
+    if created == 0 {
         return Err(QrError::Io("未能创建任何识别叠层".into()));
     }
-    // 到时自动关闭（用 Tauri 运行时而非裸线程，确保退出时窗口句柄仍有效）。
-    let app2 = app.clone();
-    tauri::async_runtime::spawn(async move {
-        tokio::time::sleep(std::time::Duration::from_millis(SHOW_MS)).await;
-        close_overlays(&app2);
+    // 3 秒后统一销毁（独立线程 + FindWindow 枚举我们的类名）。
+    std::thread::spawn(|| {
+        std::thread::sleep(std::time::Duration::from_millis(SHOW_MS));
+        close_overlays_gdi();
     });
     Ok(())
 }
 
-/// 关闭全部识别叠层。
-pub fn close_overlays(app: &tauri::AppHandle) {
-    for (label, win) in app.webview_windows() {
-        if label.starts_with("qr-identify-") {
-            let _ = win.close();
+/// 关闭全部 GDI 识别叠层（枚举线程窗口不可行，用广播 WM_CLOSE 给我们的类）。
+fn close_overlays_gdi() {
+    unsafe {
+        // EnumWindows 找我们的类名，逐个 DestroyWindow。
+        unsafe extern "system" fn enum_cb(hwnd: HWND, _lp: LPARAM) -> BOOL {
+            let mut cls = [0u16; 64];
+            let n = GetClassNameW(hwnd, &mut cls);
+            if n > 0 {
+                let name = String::from_utf16_lossy(&cls[..n as usize]);
+                if name == CLASS_NAME {
+                    let _ = DestroyWindow(hwnd);
+                }
+            }
+            BOOL(1)
         }
+        let _ = EnumWindows(Some(enum_cb), LPARAM(0));
     }
+}
+
+/// 供 service 层调用的关闭入口（保持旧签名兼容）。
+pub fn close_overlays(_app: &tauri::AppHandle) {
+    close_overlays_gdi();
 }
