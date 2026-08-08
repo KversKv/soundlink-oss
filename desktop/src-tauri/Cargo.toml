@@ -114,6 +114,7 @@ windows = { version = "0.58", optional = true, features = [
     "Win32_Security_Authorization",
     "Win32_Security_WinTrust",
     "Win32_UI_WindowsAndMessaging",
+    "Win32_UI_HiDpi",
     "Win32_UI_Shell",
 ] }
 

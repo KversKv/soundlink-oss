@@ -43,6 +43,11 @@ pub trait DisplayBackend: Send + Sync {
     /// 显示器屏幕矩形（识别叠层定位用）：(x, y, w, h)。
     fn monitor_rect(&self, gdi_name: &str) -> Result<(i32, i32, u32, u32), QrError>;
 
+    /// DPI 缩放因子（识别叠层物理→逻辑坐标换算）。默认 1.0。
+    fn scale_factor_of(&self, _gdi_name: &str) -> Option<f64> {
+        None
+    }
+
     /// 检测是否有全屏独占程序在跑（预置前置守卫，display.md §7.3 step 0）。
     fn fullscreen_exclusive_active(&self) -> Option<String> {
         None

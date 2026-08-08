@@ -578,6 +578,100 @@ select:focus-visible {
   color: var(--muted);
 }
 
+/* 滑动开关（开/关） */
+.qr-switch {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
+}
+
+.qr-switch-knob {
+  position: relative;
+  width: 44px;
+  height: 24px;
+  border-radius: 999px;
+  background: #c9d4e2;
+  transition: background 200ms ease;
+  flex-shrink: 0;
+}
+
+.qr-switch-knob::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(18, 32, 55, 0.25);
+  transition: transform 200ms ease;
+}
+
+.qr-switch-on .qr-switch-knob {
+  background: var(--green);
+}
+
+.qr-switch-on .qr-switch-knob::after {
+  transform: translateX(20px);
+}
+
+.qr-switch-label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink);
+  min-width: 26px;
+  text-align: left;
+}
+
+.qr-switch:not(.qr-switch-on) .qr-switch-label {
+  color: var(--muted);
+}
+
+.qr-switch:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* 内容区容器（关闭态毛玻璃遮挡） */
+.qr-content {
+  position: relative;
+}
+
+.qr-content-off > *:not(.qr-off-mask) {
+  filter: blur(3px) saturate(0.7);
+  opacity: 0.45;
+  pointer-events: none;
+  user-select: none;
+}
+
+.qr-off-mask {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: rgba(238, 243, 248, 0.55);
+  backdrop-filter: blur(6px) saturate(0.8);
+  -webkit-backdrop-filter: blur(6px) saturate(0.8);
+}
+
+.qr-off-mask span {
+  font-size: 12.5px;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.75);
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+}
+
 .qr-locked {
   padding: 14px;
   border: 1px dashed var(--line);
@@ -871,22 +965,23 @@ select:focus-visible {
   padding: 6px 16px;
 }
 
-/* 识别叠层（qr-identify-* 透明置顶小窗） */
+/* 识别叠层（qr-identify-* 置顶小窗，背景色由 Rust 窗口承载） */
 .qr-identify-root {
   height: 100vh;
+  margin: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(20, 34, 56, 0.45);
-  border-radius: 16px;
+  background: transparent;
 }
 
 .qr-identify-num {
-  font-size: 96px;
+  font-size: 110px;
   font-weight: 800;
   color: #ffffff;
-  text-shadow: 0 2px 18px rgba(0, 0, 0, 0.45);
+  text-shadow: 0 2px 18px rgba(0, 0, 0, 0.5);
   font-variant-numeric: tabular-nums;
+  line-height: 1;
 }
 
 /* M3：DSC 徽标 */

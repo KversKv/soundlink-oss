@@ -74,6 +74,10 @@ impl DisplayBackend for WindowsBackend {
         gdi::monitor_rect(gdi_name)
     }
 
+    fn scale_factor_of(&self, gdi_name: &str) -> Option<f64> {
+        gdi::scale_factor_of(gdi_name)
+    }
+
     fn fullscreen_exclusive_active(&self) -> Option<String> {
         gdi::fullscreen_exclusive_process()
     }

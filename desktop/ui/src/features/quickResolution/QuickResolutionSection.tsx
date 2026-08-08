@@ -243,15 +243,17 @@ export default function QuickResolutionSection() {
           <span className="pro-badge" style={{ marginLeft: 6, fontSize: 11, padding: "1px 6px", borderRadius: 4, background: "#7c5cff", color: "#fff", verticalAlign: "middle" }}>Pro</span>
         </h2>
         {!locked && settings && (
-          <label className="toggle-row qr-enable-toggle">
-            <span>{settings.enabled ? "● 开启" : "○ 关闭"}</span>
-            <input
-              type="checkbox"
-              checked={settings.enabled}
-              disabled={busy}
-              onChange={(e) => persist({ ...settings, enabled: e.target.checked })}
-            />
-          </label>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={settings.enabled}
+            className={`qr-switch ${settings.enabled ? "qr-switch-on" : ""}`}
+            disabled={busy}
+            onClick={() => persist({ ...settings, enabled: !settings.enabled })}
+          >
+            <span className="qr-switch-knob" />
+            <span className="qr-switch-label">{settings.enabled ? "开启" : "关闭"}</span>
+          </button>
         )}
       </div>
 
@@ -269,7 +271,13 @@ export default function QuickResolutionSection() {
       ) : !settings ? (
         <div className="settings-empty">加载中…</div>
       ) : (
-        <>
+        <div className={`qr-content ${!settings.enabled ? "qr-content-off" : ""}`}>
+          {/* 关闭态毛玻璃遮挡层 */}
+          {!settings.enabled && (
+            <div className="qr-off-mask">
+              <span>功能已关闭，点右上角开关开启</span>
+            </div>
+          )}
           {/* 显示器选择 + 识别 */}
           <div className="qr-display-row">
             <label className="field-shell" style={{ flex: 1 }}>
@@ -504,7 +512,7 @@ export default function QuickResolutionSection() {
               />
             </label>
           </div>
-        </>
+        </div>
       )}
 
       {editorOpen && (

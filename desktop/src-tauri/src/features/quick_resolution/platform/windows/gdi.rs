@@ -189,6 +189,61 @@ pub fn monitor_rect(gdi_name: &str) -> Result<(i32, i32, u32, u32), QrError> {
         .ok_or_else(|| QrError::DisplayNotFound(gdi_name.to_string()))
 }
 
+/// DPI 缩放因子（识别叠层物理→逻辑坐标换算）。
+pub fn scale_factor_of(gdi_name: &str) -> Option<f64> {
+    struct Ctx {
+        target: String,
+        hmon: Option<HMONITOR>,
+    }
+    unsafe extern "system" fn cb(
+        hmon: HMONITOR,
+        _hdc: HDC,
+        _rect: *mut RECT,
+        lparam: LPARAM,
+    ) -> BOOL {
+        let ctx = &mut *(lparam.0 as *mut Ctx);
+        let mut info = MONITORINFOEXW::default();
+        info.monitorInfo.cbSize = std::mem::size_of::<MONITORINFOEXW>() as u32;
+        if GetMonitorInfoW(hmon, &mut info as *mut _ as *mut MONITORINFO).as_bool() {
+            let name = super::ccd::wide_to_string(&info.szDevice);
+            if name == ctx.target {
+                ctx.hmon = Some(hmon);
+                return BOOL(0);
+            }
+        }
+        BOOL(1)
+    }
+    let mut ctx = Ctx { target: gdi_name.to_string(), hmon: None };
+    unsafe {
+        let _ = EnumDisplayMonitors(
+            HDC::default(),
+            None,
+            Some(cb),
+            LPARAM(&mut ctx as *mut Ctx as isize),
+        );
+    }
+    let hmon = ctx.hmon?;
+    // GetDpiForMonitor（Vista+）：MDT_EFFECTIVE_DPI。
+    let mut dpi_x = 0u32;
+    let mut dpi_y = 0u32;
+    unsafe {
+        if windows::Win32::UI::HiDpi::GetDpiForMonitor(
+            hmon,
+            windows::Win32::UI::HiDpi::MDT_EFFECTIVE_DPI,
+            &mut dpi_x,
+            &mut dpi_y,
+        )
+        .is_err()
+        {
+            return None;
+        }
+    }
+    if dpi_x == 0 {
+        return None;
+    }
+    Some(dpi_x as f64 / 96.0)
+}
+
 /// 全屏独占启发式检测（预置前置守卫，display.md §7.3 step 0）。
 ///
 /// 规则：前台窗口 == 所在显示器完整矩形，且无标题栏/边框样式，
