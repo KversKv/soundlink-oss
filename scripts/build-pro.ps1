@@ -25,10 +25,19 @@
 [CmdletBinding()]
 param(
     # node_modules 已就绪时传此开关可跳过前端依赖检查
-    [switch]$SkipUiInstall
+    [switch]$SkipUiInstall,
+    # HTTP(S) 代理地址（如 http://127.0.0.1:7897），用于 tauri 下载 nsis/wix 等
+    [string]$Proxy
 )
 
 $ErrorActionPreference = 'Stop'
+
+# 设置代理环境变量（tauri 下载 nsis/wix、cargo 拉取 crates 均会读取）
+if ($Proxy) {
+    $env:HTTP_PROXY  = $Proxy
+    $env:HTTPS_PROXY = $Proxy
+    Write-Host "==> 已设置代理：$Proxy（HTTP_PROXY / HTTPS_PROXY）" -ForegroundColor DarkGray
+}
 
 $OssRoot   = Split-Path -Parent $PSScriptRoot
 $ProRepo   = Join-Path (Split-Path -Parent $OssRoot) 'pro'   # 与 oss 平级的私有仓库
