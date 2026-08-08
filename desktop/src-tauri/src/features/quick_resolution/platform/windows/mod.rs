@@ -2,6 +2,7 @@
 
 pub mod ccd;
 pub mod device_restart;
+pub mod direct_admin;
 pub mod dsc;
 pub mod edid_reg;
 pub mod gdi;

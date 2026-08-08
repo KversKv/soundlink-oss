@@ -740,19 +740,21 @@ impl QrService {
         if pending.is_empty() {
             return Err(QrError::BadRequest("没有待预置模式".into()));
         }
-        // 实时探测计划任务，不信内存/落盘的 helper_installed 标志
-        // （该标志可能因未持久化而过期，导致已安装却被误判为未安装）。
-        let helper_ok = {
+        // 实时探测提权能力，不信内存/落盘的 helper_installed 标志
+        // （该标志可能因未持久化而过期，导致已具备能力却被误判）。
+        // 放行条件二选一：① 主进程自身已是管理员（直写路径）；② 计划任务已注册（helper 转发）。
+        let capable = {
             #[cfg(windows)]
             {
-                crate::features::quick_resolution::platform::windows::helper_client::helper_installed()
+                crate::features::quick_resolution::platform::windows::direct_admin::is_elevated()
+                    || crate::features::quick_resolution::platform::windows::helper_client::helper_installed()
             }
             #[cfg(not(windows))]
             {
                 false
             }
         };
-        if !helper_ok {
+        if !capable {
             return Err(QrError::HelperNotInstalled);
         }
         // 同步内存标志，保持 UI 一致。

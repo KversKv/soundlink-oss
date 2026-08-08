@@ -12,6 +12,109 @@ use crate::features::quick_resolution::model::*;
 use crate::features::quick_resolution::platform::DisplayBackend;
 use crate::features::quick_resolution::store::{RecoveryMarker, Store};
 use qr_ipc::{ActivationMethod, HelperRequest, HelperResponse, MonitorKey, RegVariant, RestartTarget};
+
+#[cfg(windows)]
+use crate::features::quick_resolution::platform::windows::{direct_admin, helper_client::HelperSession};
+
+/// 提权操作执行器：写/删 override 与设备重启。
+/// 看门狗不在此列——它必须常驻 helper（独立进程盯着主进程，崩溃自动还原）。
+#[cfg(windows)]
+enum PrivilegedOps {
+    /// 主进程已是管理员：直写 HKLM / 直重启设备，不经计划任务转发。
+    Direct,
+    /// 普通权限：经 helper 命名管道转发。
+    Helper(HelperSession),
+}
+
+#[cfg(windows)]
+impl PrivilegedOps {
+    /// 按当前进程提权状态选择路径。
+    fn connect() -> Result<Self, QrError> {
+        if direct_admin::is_elevated() {
+            return Ok(Self::Direct);
+        }
+        Ok(Self::Helper(HelperSession::connect()?))
+    }
+
+    fn write_override(&mut self, monitor: &MonitorKey, variant: RegVariant, edid: &[u8]) -> Result<(), QrError> {
+        match self {
+            Self::Direct => direct_admin::write_override(monitor, variant, edid).map(|_| ()),
+            Self::Helper(s) => s
+                .call(&HelperRequest::WriteEdidOverride {
+                    monitor: monitor.clone(),
+                    edid: edid.to_vec(),
+                    backup_id: String::new(),
+                    variant,
+                })
+                .map(|_| ()),
+        }
+    }
+
+    fn remove_override(&mut self, monitor: &MonitorKey, variant: RegVariant) -> Result<(), QrError> {
+        match self {
+            Self::Direct => direct_admin::remove_override(monitor, variant),
+            Self::Helper(s) => s
+                .call(&HelperRequest::RemoveEdidOverride { monitor: monitor.clone(), variant })
+                .map(|_| ()),
+        }
+    }
+
+    /// 重启显示器，失败再尝试适配器。返回生效的激活方式。
+    fn restart(&mut self, monitor: &MonitorKey) -> ActivationMethod {
+        let monitor_ok = match self {
+            Self::Direct => direct_admin::restart_monitor(monitor).is_ok(),
+            Self::Helper(s) => matches!(
+                s.call(&HelperRequest::RestartDevice { target: RestartTarget::Monitor, monitor: monitor.clone() }),
+                Ok(HelperResponse::Restarted { .. })
+            ),
+        };
+        if monitor_ok {
+            return ActivationMethod::MonitorRestart;
+        }
+        let adapter_ok = match self {
+            Self::Direct => direct_admin::restart_adapter().is_ok(),
+            Self::Helper(s) => matches!(
+                s.call(&HelperRequest::RestartDevice { target: RestartTarget::Adapter, monitor: monitor.clone() }),
+                Ok(HelperResponse::Restarted { .. })
+            ),
+        };
+        if adapter_ok {
+            ActivationMethod::AdapterRestart
+        } else {
+            ActivationMethod::LogoffRequired
+        }
+    }
+
+    /// 武装看门狗。Direct 模式下也走 helper（独立进程守护，主进程崩溃可还原）。
+    fn arm_watchdog(&mut self, seconds: u32, backup_id: &str, monitor: &MonitorKey, variant: RegVariant) -> Result<(), QrError> {
+        self.helper_session()?
+            .call(&HelperRequest::ArmWatchdog {
+                seconds,
+                backup_id: backup_id.to_string(),
+                monitor: monitor.clone(),
+                variant,
+            })
+            .map(|_| ())
+    }
+
+    fn disarm_watchdog(&mut self) -> Result<(), QrError> {
+        self.helper_session()?
+            .call(&HelperRequest::DisarmWatchdog)
+            .map(|_| ())
+    }
+
+    /// 取 helper 会话：Direct 模式下按需建立（仅用于看门狗）。
+    fn helper_session(&mut self) -> Result<&mut HelperSession, QrError> {
+        if matches!(self, Self::Direct) {
+            // Direct 直写保留看门狗：临时建立 helper 会话仅用于武装/解除。
+            *self = Self::Helper(HelperSession::connect()?);
+        }
+        match self {
+            Self::Helper(s) => Ok(s),
+            Self::Direct => unreachable!("已转换为 Helper"),
+        }
+    }
+}
 use std::sync::Arc;
 
 /// 批量预置（串行锁由 service 层持有，本函数假设已独占）。
@@ -95,46 +198,21 @@ pub async fn provision_batch(
     doc.recompute_all_checksums();
     let new_edid = doc.to_bytes();
 
-    // 4) helper：写 override + 武装看门狗。
-    let mut session = crate::features::quick_resolution::platform::windows::helper_client::HelperSession::connect()
-        .map_err(|e| {
-            store.clear_recovery_marker();
-            e
-        })?;
+    // 4) 提权执行器：管理员直写 或 经 helper 转发（按进程提权状态自动选择）。
+    let mut ops = PrivilegedOps::connect().map_err(|e| {
+        store.clear_recovery_marker();
+        e
+    })?;
 
     // 写 override
-    session.call(&HelperRequest::WriteEdidOverride {
-        monitor: monitor.clone(),
-        edid: new_edid,
-        backup_id: backup_id.clone(),
-        variant,
-    })?;
+    ops.write_override(monitor, variant, &new_edid)?;
 
     // L1：武装看门狗（60s 内未 disarm → helper 自动还原并重启）。
-    session.call(&HelperRequest::ArmWatchdog {
-        seconds: 60,
-        backup_id: backup_id.clone(),
-        monitor: monitor.clone(),
-        variant,
-    })?;
+    // 直写模式下也经 helper（独立进程守护，主进程崩溃可还原）。
+    ops.arm_watchdog(60, &backup_id, monitor, variant)?;
 
     // 5) 激活方式阶梯：Monitor 重启 → Adapter 重启。
-    let activation = match session.call(&HelperRequest::RestartDevice {
-        target: RestartTarget::Monitor,
-        monitor: monitor.clone(),
-    }) {
-        Ok(HelperResponse::Restarted { method, .. }) => method,
-        _ => {
-            // 显示器重启失败 → 适配器重启（代价更大）。
-            match session.call(&HelperRequest::RestartDevice {
-                target: RestartTarget::Adapter,
-                monitor: monitor.clone(),
-            }) {
-                Ok(HelperResponse::Restarted { method, .. }) => method,
-                _ => ActivationMethod::LogoffRequired,
-            }
-        }
-    };
+    let activation = ops.restart(monitor);
 
     // 6) 验证闭环：模式是否进入系统列表。
     let sys_modes = backend.enum_modes(gdi_name)?;
@@ -145,15 +223,15 @@ pub async fn provision_batch(
 
     if ok_ids.is_empty() {
         // 全部失败：自动回滚 EDID + 重启设备。
-        let _ = session.call(&HelperRequest::RemoveEdidOverride { monitor: monitor.clone(), variant });
-        let _ = session.call(&HelperRequest::RestartDevice { target: RestartTarget::Monitor, monitor: monitor.clone() });
-        let _ = session.call(&HelperRequest::DisarmWatchdog);
+        let _ = ops.remove_override(monitor, variant);
+        let _ = ops.restart(monitor);
+        let _ = ops.disarm_watchdog();
         store.clear_recovery_marker();
         return Err(QrError::ProvisionVerifyFailed { attempted: pending.len() });
     }
 
     // 7) 成功：解除看门狗 + 清恢复标记。
-    session.call(&HelperRequest::DisarmWatchdog)?;
+    ops.disarm_watchdog()?;
     store.clear_recovery_marker();
 
     Ok(ProvisionReport {

@@ -96,6 +96,12 @@ fn query_active_paths() -> Result<Vec<DISPLAYCONFIG_PATH_INFO>, QrError> {
     }
 }
 
+/// 第一条活动路径的 (adapter LUID, source id)，供直写路径重启适配器用。
+pub(crate) fn first_active_adapter() -> Option<(LUID, u32)> {
+    let paths = query_active_paths().ok()?;
+    paths.first().map(|p| (p.sourceInfo.adapterId, p.sourceInfo.id))
+}
+
 /// source → GDI 设备名（`\\.\DISPLAY1`）。
 fn source_gdi_name(adapter: LUID, source_id: u32) -> Option<String> {
     unsafe {

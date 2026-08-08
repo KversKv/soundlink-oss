@@ -66,6 +66,24 @@ RunLevel=Highest、exe 存在、版本一致），但点「立即预置」仍报
    都弹 UAC 且以完整管理员身份执行；计划任务 + 管道 + nonce + 命令白名单的方案把提权
    面缩到最小（display.md §4.2）。如确需该模式可后续加 sidecar fallback。
 
+## 追加功能（用户要求）：管理员直写路径
+
+需求：主程序检测到自身已是管理员时，跳过计划任务，直接在本进程内做 EDID 注入。
+
+| 文件 | 改动 |
+|---|---|
+| `platform/windows/direct_admin.rs`（新增） | `is_elevated()`（OpenProcessToken+TokenElevation）+ `write_override`/`remove_override`/`restart_monitor`/`restart_adapter`（复用 edid_reg/device_restart） |
+| `platform/windows/ccd.rs` | 新增 `first_active_adapter()`（pub(crate)，取第一条活动路径 adapter LUID+source id，供适配器重启） |
+| `platform/windows/mod.rs` | 注册 `direct_admin` 模块 |
+| `provisioner.rs` | 新增 `PrivilegedOps` 双路径执行器（Direct 直写 / Helper 转发，按 `is_elevated()` 自动选）；预置第 4-7 段改用执行器 |
+| `service.rs` | 预置守卫放宽为「is_elevated() 或 helper_installed()」任一放行 |
+
+**关键决策（用户拍板）**：看门狗保留走 helper——直写仅替代「写/删 override + 设备重启」，
+武装/解除看门狗仍建立 helper 会话。原因：看门狗是独立进程守护，主进程崩溃时由它还原 EDID
+防黑屏，主进程无法自我守护。故直写路径下计划任务仍需存在（仅用于看门狗，不再用于写入转发）。
+
+验证：`cargo check` 0 error；`cargo test ... quick_resolution` 42 全绿；clippy 0 error。
+
 ## 建议版本级别
 
 PATCH（缺陷修复，无协议/格式变更；安装包内容变化属构建产物修正）。
