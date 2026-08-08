@@ -57,6 +57,38 @@ select:disabled {
   opacity: 0.62;
 }
 
+/* 主操作按钮（保存/确认等） */
+.primary-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px 18px;
+  border-radius: 9px;
+  background: var(--blue);
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 600;
+  border: 1px solid transparent;
+  box-shadow: 0 1px 3px rgba(36, 107, 255, 0.28);
+  transition: background 140ms ease, box-shadow 140ms ease, transform 120ms ease;
+}
+
+.primary-button:not(:disabled):hover {
+  background: #1a5cf0;
+  box-shadow: 0 3px 10px rgba(36, 107, 255, 0.36);
+}
+
+.primary-button:not(:disabled):active {
+  transform: translateY(1px);
+  box-shadow: 0 1px 2px rgba(36, 107, 255, 0.24);
+}
+
+.primary-button:disabled {
+  background: #b9c8dd;
+  box-shadow: none;
+}
+
 button:focus-visible,
 input:focus-visible,
 select:focus-visible {
@@ -984,10 +1016,6 @@ select:focus-visible {
   display: flex;
   gap: 10px;
   margin-top: 6px;
-}
-
-.qr-confirm-actions .primary-button {
-  padding: 6px 16px;
 }
 
 /* 识别叠层（qr-identify-* 置顶小窗，背景色由 Rust 窗口承载） */
