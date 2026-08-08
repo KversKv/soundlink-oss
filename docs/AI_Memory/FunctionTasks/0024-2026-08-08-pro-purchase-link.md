@@ -26,6 +26,11 @@
 - `website`：`tsc -b` 通过（exit 0），zh/en 键一致性由 `Content` 类型编译期强制。
 - `desktop/ui`：`tsc -b` 通过（exit 0）。
 
+## 追加（同日）：顶部「文档」导航改指 README
+
+- 用户要求官网顶部「文档」跳转 oss 的 README 而非 `docs/user`：`zh.ts` `links.docs` 改为 `${REPO}/blob/main/README.md`，`en.ts` 改为 `${REPO}/blob/main/README.en.md`（英文用户落英文 README）。页脚「用户文档」链接保持 `docs/user` 不变。
+- 验证：`website` `tsc -b` 通过；CHANGELOG `[未发布]` 变更节已回填。
+
 ## 用户需自行完成部分
 
 - 桌面端实机点击「购买 Pro」按钮验证系统浏览器跳转（`open_url` 行为与设置页既有外链一致，预期无差异）。

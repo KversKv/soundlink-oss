@@ -32,6 +32,7 @@
 
 ### 变更
 
+- **官网顶部「文档」导航改指 README**：由 `docs/user` 目录页改为中文站指 `README.md`、英文站指 `README.en.md`；页脚「用户文档」链接不变。
 - **文档修正：junction 本地双开发切换降级为备选**。真实工程复现（02 文档 §11 V-8）：junction 挂载私有实现后 `cargo clean -p soundlink-pro` 失效（报 `Removed 0 files`），即便日志打印 `Compiling soundlink-pro`，产物仍可能是免费实现（社区版，无 Pro）。`docs/user/09-open-core-build.md` 与 `02-multi-repo-guide.md` 的本地切换一节改为**方式 A 物理替换（推荐）** + 方式 B junction（备选，标注缓存陷阱与验证方法），排查表与红线 G10 同步更新。
 - **「开机自启动」调整为免费功能**：`auto_start` 不再属 Pro 能力，所有用户可在设置页开启/关闭（同步 autostart 注册项）。仅「自启动后自动开启接收/发送」（`auto_receive_on_start` / `auto_send_on_start`）保留为 Pro 能力（免费下置灰 + Pro 徽标）。对应 `ProCapabilities` 拆分：`autostart_available()` 恒 `true`，`automation_available()` 仅指自动收发。
 - **版本号由 `0.1.0-beta.1` 调整为 `0.1.0`**（已跑 `scripts/sync_version.py` 同步 4 个清单并 `--check` 自验）：`bundle.targets:"all"` 含 MSI 目标，MSI 要求预发布标识为纯数字（≤65535），含字母的 `-beta.1` 会让 `tauri build` 在 MSI 打包阶段失败（`optional pre-release identifier ... must be numeric-only`）。去掉预发布后 MSI + NSIS 双产物均可正常打包。
