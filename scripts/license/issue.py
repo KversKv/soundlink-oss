@@ -7,8 +7,8 @@ Rust 验签直接对解码后的原始字节验签，不重新序列化）。
 
 用法（项目根 .venv python）：
     .venv/Scripts/python scripts/license/issue.py \
-        --key ..\\soundlink-license\\vendor_sk.hex \
         --sub <设备指纹|订单号> --bind fingerprint|order [--seats 3] [--note 订单号]
+    （私钥默认取私仓 <工作区根>/pro/license/vendor_sk.hex，无需 --key）
 
 输出 license 文本（stdout）+ 追加本地台账 license_ledger.csv（与私钥同目录，不入库）。
 """
@@ -27,10 +27,21 @@ SKU = "desktop-pro"
 LEDGER_NAME = "license_ledger.csv"
 
 # 私仓中写死的签发私钥（唯一权威来源）。任何环境都读这一份，绝不重新随机生成。
-# 见 soundlink-pro/license/README.md。相对本文件：SoundLink/scripts/license/ -> ../../soundlink-pro/
-DEFAULT_KEY_PATH = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..", "..", "..", "pro", "license", "vendor_sk.hex")
-)
+# 见私仓 license/README.md。工作区布局：SoundLink/{oss,pro}；本文件在 oss/scripts/license/，
+# 向上三级即工作区根。旧布局（私仓目录名 soundlink-pro）仅作存在性回退。
+def _default_key_path() -> str:
+    ws_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+    candidates = [
+        os.path.join(ws_root, "pro", "license", "vendor_sk.hex"),
+        os.path.join(ws_root, "soundlink-pro", "license", "vendor_sk.hex"),
+    ]
+    for path in candidates:
+        if os.path.isfile(path):
+            return path
+    return candidates[0]
+
+
+DEFAULT_KEY_PATH = _default_key_path()
 
 # 与 DEFAULT_KEY_PATH 私钥对应的公钥 base64（编译期写死进客户端 PUBKEYS_VENDOR_B64）。
 # 签发前自检：由私钥推导的公钥必须等于它，不等即私钥被换/拿错，立即中止，防误签无效码。
@@ -86,6 +97,12 @@ def main() -> int:
     repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
     if key_path.startswith(repo_root + os.sep) and "test" not in os.path.basename(key_path):
         print("警告：私钥位于仓库目录内，存在误提交风险！", file=sys.stderr)
+
+    if not os.path.isfile(key_path):
+        print(f"错误：找不到签发私钥：{key_path}", file=sys.stderr)
+        print("  默认路径指向私仓 <工作区根>/pro/license/vendor_sk.hex。", file=sys.stderr)
+        print("  请确认已克隆私仓（见私仓 license/README.md），或用 --key 显式指定。", file=sys.stderr)
+        return 2
 
     with open(key_path, "r", encoding="ascii") as f:
         sk = bytes.fromhex(f.read().strip())

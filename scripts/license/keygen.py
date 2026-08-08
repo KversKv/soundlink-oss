@@ -22,8 +22,16 @@ import base64
 def main() -> int:
     _self_test()  # 先自验实现正确性，再生成真密钥。
 
-    default_out = os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "..", "..", "..", "soundlink-pro", "license")
+    # 工作区布局：SoundLink/{oss,pro}；本文件在 oss/scripts/license/，向上三级即工作区根。
+    # 现布局私仓为 pro/；旧布局 soundlink-pro/ 仅当其中已有私钥时沿用（幂等复用，防密钥分裂）。
+    ws_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+    candidates = [
+        os.path.join(ws_root, "pro", "license"),
+        os.path.join(ws_root, "soundlink-pro", "license"),
+    ]
+    default_out = next(
+        (d for d in candidates if os.path.isfile(os.path.join(d, "vendor_sk.hex"))),
+        candidates[0],
     )
     parser = argparse.ArgumentParser(description="生成 vendor Ed25519 密钥对")
     parser.add_argument(

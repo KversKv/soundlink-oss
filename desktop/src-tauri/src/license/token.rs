@@ -22,11 +22,13 @@ pub const SKU_WHITELIST: &[&str] = &["desktop-pro"];
 /// vendor 验签公钥（base64，Ed25519 32 字节）。
 ///
 /// C1：一经发布永不删除；轮换密钥时新公钥**追加**到数组末尾。
-/// 私钥绝不入库（由 scripts/license/keygen.py 生成并保存在仓库外）。
+/// 签发私钥写死于私仓 `pro/license/vendor_sk.hex`（唯一权威来源，
+/// 见私仓 `license/README.md`），与本数组第一项一一对应。
 pub const PUBKEYS_VENDOR_B64: &[&str] = &[
-    // MON-01 R2：首发 vendor 公钥（2026-08-06 由 scripts/license/keygen.py 生成，
-    // 私钥保存于仓库外）。C1：永不删除；轮换时新公钥追加到末尾。
-    "qJB6vRNa+Xg+n0+cOvIt7Dp/X9qdTtx9OIW7OlVrtGk=",
+    // MON-01 R2：首发 vendor 公钥（私仓 pro/license/vendor_sk.hex 对应公钥；
+    // 曾误填 2026-08-06 临时密钥对的公钥，因该对私钥未留存且从未随发布版流出，已更正）。
+    // C1：永不删除；轮换时新公钥追加到末尾。
+    "wKpxUUe0XZsacDcV2sAKXU9K7wGCiQxUk369M6PJvqU=",
 ];
 
 /// 拒绝原因 → 映射到 `LicenseState`（任何非 Active 一律等价免费版，E1）。

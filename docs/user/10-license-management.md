@@ -42,9 +42,9 @@ cd D:\CodeProject\TRAE_Projects\SoundLink\oss
 
 已落地：私钥写死在**私仓** `D:\CodeProject\TRAE_Projects\SoundLink\pro\license\`，并随该私有仓库版本管理：
 
-1. 私仓 `soundlink-pro/license/` 内含 `vendor_sk.hex`（私钥）+ `license_ledger.csv`（台账）+ `README.md`（记录当前公钥 base64 与铁律）。
+1. 私仓 `pro/license/` 内含 `vendor_sk.hex`（私钥）+ `license_ledger.csv`（台账）+ `README.md`（记录当前公钥 base64 与铁律）。
 2. `issue.py` / `keygen.py` 的默认路径已指向该私仓目录——**直接运行脚本即可，无需传 `--key`/`--out`**。
-3. 换机/新环境：克隆私仓 `soundlink-pro` 到 `..\soundlink-pro`（与公开仓同级），脚本默认路径自动命中同一份私钥，**绝不重新随机生成**。
+3. 换机/新环境：克隆私仓 `soundlink-pro` 到 `..\pro`（与公开仓 `oss` 同级），脚本默认路径自动命中同一份私钥，**绝不重新随机生成**。
 4. 双保险：`issue.py` 签发前会**由私钥推导公钥并与内置期望值比对**，不一致立即中止（防止拿错/重生成私钥后误签无效码）。
 
 > 这样无论换电脑、重装系统、重拉源码，签发用的私钥永远唯一，从源头杜绝"环境变了→私钥变了→全员无法激活"。
@@ -65,7 +65,7 @@ cd D:\CodeProject\TRAE_Projects\SoundLink\oss
     --sub <用户设备指纹> --bind fingerprint --seats 3 --note <订单号>
 ```
 
-> 私钥默认从私仓 `soundlink-pro\license\vendor_sk.hex` 读取，无需 `--key`。
+> 私钥默认从私仓 `pro\license\vendor_sk.hex` 读取，无需 `--key`。
 
 - 输出的 `SLPRO-…` 即激活码，通过爱发电私信 / 淘宝旺旺回发给用户。
 - 每次签发会**追加一行台账**到 `license_ledger.csv`（与私钥同目录，不入库），字段：`iat, sub, bind, seats, nonce, note`。换机重签、泄露溯源都查它。
