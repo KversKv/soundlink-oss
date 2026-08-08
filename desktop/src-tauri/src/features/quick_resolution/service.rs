@@ -111,19 +111,45 @@ impl QrService {
                 DscOverride::ForceOff => Some(false),
             };
             // NVAPI 会话一次加载，多块显示器复用。
-            let api = NvApi::load().ok();
-            let handles = api.as_ref().map(|a| a.display_handles()).unwrap_or_default();
+            let api_result = NvApi::load();
+            let api = api_result.as_ref().ok();
+            let handles = api.map(|a| a.display_handles()).unwrap_or_default();
             for (i, d) in displays.iter_mut().enumerate() {
-                let link = api
-                    .as_ref()
-                    .and_then(|a| handles.get(i).and_then(|h| a.link_info(*h).ok()));
-                let edid_dsc = self
-                    .backend
-                    .read_edid(&d.key)
-                    .ok()
-                    .and_then(|e| dsc::edid_dsc_support(&e));
+                let mut debug: Vec<String> = Vec::new();
+                if let Err(e) = &api_result {
+                    debug.push(format!("NVAPI 加载失败：{}", e));
+                }
+                if api.is_some() && handles.is_empty() {
+                    debug.push("NVAPI 枚举显示句柄为空".into());
+                }
+                let link = api.and_then(|a| {
+                    handles.get(i).and_then(|h| {
+                        a.link_info(*h)
+                            .map_err(|e| {
+                                debug.push(format!("link_info 失败：{}", e));
+                            })
+                            .ok()
+                    })
+                });
+                if api.is_some() && link.is_none() && !handles.is_empty() {
+                    debug.push("link_info 返回 Err（驱动不支持该字段）".into());
+                }
+                let edid_dsc = match self.backend.read_edid(&d.key) {
+                    Ok(e) => dsc::edid_dsc_support(&e),
+                    Err(e) => {
+                        debug.push(format!("EDID 读取失败：{}", e));
+                        None
+                    }
+                };
                 let cur = d.current.map(|c| (c.width, c.height, c.refresh_hz));
-                let report = dsc::detect(cur, link.as_ref(), edid_dsc, forced);
+                if cur.is_none() {
+                    debug.push("当前模式缺失".into());
+                }
+                let mut report = dsc::detect(cur, link.as_ref(), edid_dsc, forced);
+                // Unknown 时把采集层诊断合并进 state（前端诊断抽屉展示）。
+                if let DscState::Unknown { debug: ref mut dd, .. } = report.state {
+                    dd.extend(debug);
+                }
                 d.dsc = report.state.clone();
                 if let Some(label) = report.link_label {
                     d.link = Some(DisplayLinkInfo {

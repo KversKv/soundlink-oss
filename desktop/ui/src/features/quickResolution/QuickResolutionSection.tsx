@@ -40,6 +40,11 @@ function DscBadge({ display }: { display: DisplayInfo }) {
         <div className="qr-dsc-detail">
           <div>状态：{d.state}{d.state === "likelyActive" ? `（置信 ${(d.confidence * 100).toFixed(0)}%）` : ""}</div>
           {"reason" in d && <div>原因：{d.reason}</div>}
+          {"debug" in d && (d.debug ?? []).length > 0 && (
+            <div style={{ marginTop: 4, borderTop: "1px solid var(--line)", paddingTop: 4 }}>
+              诊断：{(d.debug ?? []).map((s, i) => <div key={i}>· {s}</div>)}
+            </div>
+          )}
           {link && (
             <>
               <div>链路：{link.linkLabel}（{link.laneCount} lanes × {link.ratePerLaneGbps} Gbps，{link.source}）</div>

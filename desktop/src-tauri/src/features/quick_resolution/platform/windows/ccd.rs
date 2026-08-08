@@ -52,7 +52,7 @@ pub fn enumerate_displays() -> Result<Vec<DisplayInfo>, QrError> {
                 is_primary,
                 current,
                 link: None,
-                dsc: DscState::Unknown { reason: "未检测".into() },
+                dsc: DscState::Unknown { reason: "未检测".into(), debug: Vec::new() },
                 max_pixel_clock_khz,
             },
         ));

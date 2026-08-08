@@ -104,7 +104,7 @@ export type DscState =
   | { state: "active" }
   | { state: "inactive" }
   | { state: "likelyActive"; confidence: number; basis: string[] }
-  | { state: "unknown"; reason: string }
+  | { state: "unknown"; reason: string; debug?: string[] }
   | { state: "forcedByUser"; on: boolean };
 
 export interface DisplayInfo {

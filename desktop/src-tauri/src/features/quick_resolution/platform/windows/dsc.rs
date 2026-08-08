@@ -130,7 +130,10 @@ pub fn detect(
     }
 
     DscReport {
-        state: DscState::Unknown { reason: "证据不足（非 NVAPI 或链路信息缺失）".into() },
+        state: DscState::Unknown {
+            reason: "证据不足（NVAPI 未取到链路信息）".into(),
+            debug: basis.clone(),
+        },
         required_gbps: required,
         available_gbps: available,
         link_label,

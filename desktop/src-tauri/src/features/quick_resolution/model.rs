@@ -334,14 +334,14 @@ pub enum DscState {
     Active,
     Inactive,
     LikelyActive { confidence: f32, basis: Vec<String> },
-    Unknown { reason: String },
+    Unknown { reason: String, #[serde(skip_serializing_if = "Vec::is_empty", default)] debug: Vec<String> },
     ForcedByUser { on: bool },
 }
 
 #[allow(clippy::derivable_impls)]
 impl Default for DscState {
     fn default() -> Self {
-        DscState::Unknown { reason: "未检测".into() }
+        DscState::Unknown { reason: "未检测".into(), debug: Vec::new() }
     }
 }
 
