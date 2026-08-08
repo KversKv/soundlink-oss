@@ -14,6 +14,9 @@ interface LicenseInfo {
   pro_build: boolean;
 }
 
+/// Pro 购买页（淘宝小店，见 docs/NewFunctions/monetization/00-monetization-overview.md）。
+const PRO_PURCHASE_URL = "https://e.tb.cn/h.85qPaoTYnCLX5Js?tk=YNdLgzkcHTH";
+
 const STATE_TEXT: Record<LicenseInfo["state"], string> = {
   free: "未激活",
   active: "已激活 Pro",
@@ -179,7 +182,7 @@ export default function LicensePanel() {
             <button
               type="button"
               className="text-button"
-              onClick={() => openExternal("https://soundlink.example.com/pro")}
+              onClick={() => openExternal(PRO_PURCHASE_URL)}
             >
               购买 Pro（￥9.99 买断）
             </button>

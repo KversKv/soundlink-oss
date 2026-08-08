@@ -6,6 +6,7 @@
 
 ### 新增
 
+- **Pro 购买入口接入真实渠道**：桌面端设置页「授权」区「购买 Pro」按钮替换占位地址，官网（website）下载区新增「购买 Pro · ￥9.99 买断」按钮、页脚「项目」列新增「购买 Pro」链接（中英双语同步），统一指向淘宝小店。
 - **分辨率快速切换（QR-1，Pro）**：按 `docs/NewFunctions/display/display.md` 落地 M0–M9。设置页新增「快速分辨率切换」区（启动区下方）：显示器编号+识别叠层、模式列表 CRUD/拖拽排序/托盘固定、从系统导入、添加/编辑弹窗（比例预设库+刷新率 chips+可行性预检）、15 秒确认窗（独立置顶小窗，超时自动回滚）、托盘「快速分辨率切换」二级菜单（多屏分组、当前项 ✓、恢复上一个、200ms 防抖）。DSC 检测三路交叉判定（带宽推算主判据 + NVAPI 链路辅证 + EDID 能力）与徽标展示。EDID 批量预置（helper 提权进程 + 计划任务一次 UAC、命名管道 nonce+ACL 加固、三层黑屏保险：helper 看门狗/启动自检/离线救援）。门控走 `ProCapabilities::quick_resolution_available()` 能力值（E4/E5），免费版设置区遮罩、命令返回 `FeatureLocked`。⚠ 仅 Windows；NVIDIA 自定义分辨率（M8）与 EDID 注入（M7）为实验性，`allowEdidOverride` 默认关闭。
 - **SoundLink Pro（open-core）工程落地**：按 `docs/NewFunctions/monetization/` 方案完成免费版与 Pro 版双构建改造。
   - **仓库切分（阶段 Q）**：新增 `desktop/pro-api`（`soundlink-pro-api`，仅 trait 与类型，MIT）与 `desktop/pro`（`soundlink-pro` 免费实现，MIT）；`soundlink` 以恒定 path 依赖二者，业务代码只按 `ProCapabilities` 能力值行事、无 `if is_pro`。私有同名 `soundlink-pro`（官方实现，闭源）检出覆盖 `desktop/pro/` 即得官方构建，构建命令与免费版完全相同；junction 下 `cargo test` / `clippy` / NSIS 打包均已实测通过。

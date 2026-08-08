@@ -16,6 +16,9 @@ export function Download({ c }: { c: Content }) {
           <Button variant="ghost" href={c.links.repo} target="_blank" rel="noreferrer">
             {c.download.secondaryCta}
           </Button>
+          <Button variant="ghost" href={c.links.pro} target="_blank" rel="noreferrer">
+            {c.download.proCta}
+          </Button>
         </div>
       </div>
 

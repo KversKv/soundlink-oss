@@ -2,6 +2,8 @@ import type { Content } from './zh'
 
 // English copy. Keys must exactly match zh.ts; the Content type enforces this at build time.
 const REPO = 'https://github.com/KversKv/soundlink-oss'
+// Pro store page (Taobao; see oss/docs/NewFunctions/monetization/00-monetization-overview.md)
+const PRO_STORE = 'https://e.tb.cn/h.85qPaoTYnCLX5Js?tk=YNdLgzkcHTH'
 const ASSET = (p: string) => `${import.meta.env.BASE_URL}${p}`
 
 export const en: Content = {
@@ -21,6 +23,7 @@ export const en: Content = {
     changelog: `${REPO}/blob/main/CHANGELOG.md`,
     docs: `${REPO}/tree/main/docs/user`,
     guide: './guide/',
+    pro: PRO_STORE,
   },
   nav: {
     features: 'Features',
@@ -175,6 +178,7 @@ export const en: Content = {
     body: 'Get the latest pre-release installers from GitHub Releases.',
     primaryCta: 'Download Beta',
     secondaryCta: 'View source',
+    proCta: 'Buy Pro · ¥9.99 one-time',
     shaTitle: 'Verify your download',
     shaBody: 'Each release lists the SHA256 of every installer. After downloading, compare it in PowerShell:',
     shaCmd: 'Get-FileHash .\\SoundLink-Setup.exe -Algorithm SHA256',
@@ -316,6 +320,7 @@ export const en: Content = {
         links: [
           { label: 'GitHub repo', href: REPO },
           { label: 'Download Beta', href: `${REPO}/releases/latest` },
+          { label: 'Buy Pro', href: PRO_STORE },
           { label: 'CHANGELOG', href: `${REPO}/blob/main/CHANGELOG.md` },
         ],
       },

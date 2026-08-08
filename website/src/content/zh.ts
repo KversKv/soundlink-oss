@@ -3,6 +3,8 @@
 // docs/First/11-implementation-spec.md 为准，修改数字前必须先核对单源。
 
 const REPO = 'https://github.com/KversKv/soundlink-oss'
+// Pro 购买页（淘宝小店，收款渠道见 oss/docs/NewFunctions/monetization/00-monetization-overview.md）
+const PRO_STORE = 'https://e.tb.cn/h.85qPaoTYnCLX5Js?tk=YNdLgzkcHTH'
 const ASSET = (p: string) => `${import.meta.env.BASE_URL}${p}`
 
 export const zh = {
@@ -22,6 +24,7 @@ export const zh = {
     changelog: `${REPO}/blob/main/CHANGELOG.md`,
     docs: `${REPO}/tree/main/docs/user`,
     guide: './guide/',
+    pro: PRO_STORE,
   },
   nav: {
     features: '特性',
@@ -175,6 +178,7 @@ export const zh = {
     body: '从 GitHub Releases 获取最新的 Pre-release 安装包。',
     primaryCta: '下载 Beta',
     secondaryCta: '查看源码',
+    proCta: '购买 Pro · ￥9.99 买断',
     shaTitle: '校验安装包',
     shaBody: 'Release 页提供每个安装包的 SHA256。下载后可在 PowerShell 中执行以下命令比对：',
     shaCmd: 'Get-FileHash .\\SoundLink-Setup.exe -Algorithm SHA256',
@@ -316,6 +320,7 @@ export const zh = {
         links: [
           { label: 'GitHub 仓库', href: REPO },
           { label: '下载 Beta', href: `${REPO}/releases/latest` },
+          { label: '购买 Pro', href: PRO_STORE },
           { label: 'CHANGELOG', href: `${REPO}/blob/main/CHANGELOG.md` },
         ],
       },
