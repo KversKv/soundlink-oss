@@ -313,6 +313,9 @@ pub struct DisplayInfo {
     /// EDID 上报的最大像素时钟（kHz，来自 range limits）。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_pixel_clock_khz: Option<u32>,
+    /// EDID 上报的最大行频（kHz，来自 range limits）——驱动按此裁剪自定义模式。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_h_freq_khz: Option<u32>,
 }
 
 /// 链路信息（DSC 徽标/诊断）。

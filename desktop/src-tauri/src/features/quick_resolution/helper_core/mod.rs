@@ -75,7 +75,9 @@ fn parse_nonce(hex: &str) -> Option<[u8; 32]> {
 }
 
 /// 读取 nonce 临时文件（读后删除，防复用）。
-fn read_nonce_file() -> Option<[u8; 32]> {
+/// pipe_server 每个新连接也会重读一次——helper 空闲驻留期间，
+/// 主进程的新会话会写入新 nonce，而 `schtasks /Run` 不会拉起第二个实例。
+pub(crate) fn read_nonce_file() -> Option<[u8; 32]> {
     let path = crate::features::quick_resolution::platform::windows::helper_client::nonce_file_path();
     let text = std::fs::read_to_string(&path).ok()?;
     let _ = std::fs::remove_file(&path);

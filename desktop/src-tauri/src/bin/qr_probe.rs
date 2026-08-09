@@ -55,6 +55,15 @@ fn main() {
     if let Ok(api) = &nv {
         let handles = api.display_handles();
         println!("    \"display_handles\": {},", handles.len());
+        for (hi, h) in handles.iter().enumerate() {
+            match api.link_info(*h) {
+                Ok(link) => println!(
+                    "    \"link_{}\": {{ \"lanes\": {}, \"rate_gbps\": {}, \"bpc\": {:?}, \"dsc_sup\": {:?}, \"dsc_en\": {:?} }},",
+                    hi, link.lane_count, link.rate_gbps, link.bpc, link.dsc_supported, link.dsc_enabled
+                ),
+                Err(e) => println!("    \"link_{}\": \"err {}\",", hi, e),
+            }
+        }
         if let Some(h) = handles.first() {
             if let Ok(link) = api.link_info(*h) {
                 println!("    \"lane_count\": {},", link.lane_count);
@@ -67,6 +76,8 @@ fn main() {
             if let Ok(t) = api.current_timing(*h) {
                 println!("    \"timing\": \"{}x{} total {}x{} pclk {}kHz\",",
                     t.h_active, t.v_active, t.h_total, t.v_total, t.pclk_khz);
+            } else if let Err(e) = api.current_timing(*h) {
+                println!("    \"timing_err\": \"{}\",", e);
             }
         }
     }
@@ -147,6 +158,201 @@ fn main() {
             }
             println!("  }},");
         }
+    }
+
+    // 7) helper 会话诊断（--test-helper-session）：连续两次握手。
+    //    复现/验证「helper 驻留期间第二次会话 nonce 不匹配」。
+    if args.iter().any(|a| a == "--test-helper-session") {
+        use soundlink_lib::features::quick_resolution::platform::windows::helper_client::HelperSession;
+        println!("  \"helper_session_test\": {{");
+        for i in 1..=2u8 {
+            match HelperSession::connect() {
+                Ok(_) => println!("    \"session{}\": \"ok\",", i),
+                Err(e) => println!("    \"session{}\": \"fail: {}\",", i, e),
+            }
+        }
+        println!("  }},");
+    }
+
+    // 8) 端到端预置测试（--test-provision 2304x1440@165）：
+    //    走真实 provision_batch（EDID 注入 + 设备重启 + 系统列表验证，失败自动回滚）。
+    if let Some(mode_str) = parse_flag(&args, "--test-provision") {
+        println!("  \"provision_test\": {{");
+        println!("    \"mode\": \"{}\",", mode_str);
+        match parse_mode(&mode_str) {
+            Some((w, h, hz)) => {
+                use soundlink_lib::features::quick_resolution::{
+                    model::*, platform::default_backend, provisioner, store::Store,
+                };
+                let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
+                let outcome = rt.block_on(async {
+                    let backend: std::sync::Arc<dyn soundlink_lib::features::quick_resolution::platform::DisplayBackend> =
+                        std::sync::Arc::from(default_backend());
+                    let mut cfg = dirs::config_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
+                    cfg.push("soundlink");
+                    let store = Store::new(cfg);
+                    let ds = ccd::enumerate_displays()?;
+                    let d = ds
+                        .iter()
+                        .find(|d| d.is_primary)
+                        .or(ds.first())
+                        .ok_or_else(|| QrError::BadRequest("无可用显示器".into()))?;
+                    let entry = DisplayModeEntry {
+                        id: format!("probe-{}x{}-{}", w, h, hz),
+                        label: format!("probe {}x{}@{}", w, h, hz),
+                        width: w,
+                        height: h,
+                        refresh_hz: hz,
+                        bit_depth: None,
+                        color_format: None,
+                        scaling: None,
+                        target: ModeTarget::default(),
+                        timing_standard: TimingStandardKind::Auto,
+                        manual_timing: None,
+                        state: ModeState::Validated,
+                        provision_path: None,
+                        last_error: None,
+                        pinned_to_tray: false,
+                        order: 0,
+                        hotkey: None,
+                        skip_confirm: false,
+                        created_at: 0,
+                        last_used_at: None,
+                    };
+                    provisioner::provision_batch(&backend, &store, &d.key, &d.gdi_name, std::slice::from_ref(&entry)).await
+                });
+                match outcome {
+                    Ok(r) => {
+                        println!("    \"result\": \"ok\",");
+                        println!("    \"succeeded\": {:?},", r.succeeded);
+                        println!("    \"failed\": {:?},", r.failed);
+                        println!("    \"activation\": \"{}\",", r.activation);
+                        println!("    \"backup_id\": \"{}\",", r.backup_id);
+                    }
+                    Err(e) => println!("    \"result\": \"fail: {}\",", e),
+                }
+            }
+            None => println!("    \"result\": \"fail: 无法解析模式（应形如 2304x1440@165）\","),
+        }
+        println!("  }},");
+    }
+
+    // 9) EDID 还原（--test-restore）：移除主显示器 override 并重启显示器。
+    if args.iter().any(|a| a == "--test-restore") {
+        use soundlink_lib::features::quick_resolution::platform::windows::helper_client::HelperSession;
+        println!("  \"restore_test\": {{");
+        let r = (|| -> Result<(), soundlink_lib::features::quick_resolution::model::QrError> {
+            let ds = ccd::enumerate_displays()?;
+            let d = ds
+                .iter()
+                .find(|d| d.is_primary)
+                .or(ds.first())
+                .ok_or_else(|| soundlink_lib::features::quick_resolution::model::QrError::BadRequest("无可用显示器".into()))?;
+            let mut s = HelperSession::connect()?;
+            s.call(&qr_ipc::HelperRequest::RemoveEdidOverride {
+                monitor: d.key.clone(),
+                variant: qr_ipc::RegVariant::MonitorInstanceOverride,
+            })?;
+            s.call(&qr_ipc::HelperRequest::RestartDevice {
+                target: qr_ipc::RestartTarget::Monitor,
+                monitor: d.key.clone(),
+            })?;
+            Ok(())
+        })();
+        match r {
+            Ok(()) => println!("    \"result\": \"ok\","),
+            Err(e) => println!("    \"result\": \"fail: {}\",", e),
+        }
+        println!("  }},");
+    }
+
+    // 10) 注入诊断（--test-inject 2304x1440@165 [--standard rb2|rb3|auto]）：生成 timing → 注入 override →
+    //     重启显示器 → 枚举系统列表中含目标宽度的模式。**不回滚**（用 --test-restore 清理）。
+    if let Some(mode_str) = parse_flag(&args, "--test-inject") {
+        let std_arg = parse_flag(&args, "--standard").unwrap_or_else(|| "auto".into());
+        let standard = match std_arg.as_str() {
+            "rb2" => qr_edid::timing::TimingStandard::CvtRb2,
+            "rb3" => qr_edid::timing::TimingStandard::CvtRb3,
+            _ => qr_edid::timing::TimingStandard::Auto,
+        };
+        println!("  \"inject_standard\": \"{}\",", std_arg);
+        println!("  \"inject_test\": {{");
+        println!("    \"mode\": \"{}\",", mode_str);
+        let r = (|| -> Result<(), soundlink_lib::features::quick_resolution::model::QrError> {
+            use soundlink_lib::features::quick_resolution::model::QrError;
+            use soundlink_lib::features::quick_resolution::platform::windows::direct_admin;
+            let (w, h, hz) = parse_mode(&mode_str)
+                .ok_or_else(|| QrError::BadRequest("模式格式应形如 2304x1440@165".into()))?;
+            let ds = ccd::enumerate_displays()?;
+            let d = ds
+                .iter()
+                .find(|d| d.is_primary)
+                .or(ds.first())
+                .ok_or_else(|| QrError::BadRequest("无可用显示器".into()))?;
+            let original = edid_reg::read_effective_edid(&d.key.instance_path)?;
+            let edid_info = qr_edid::EdidDoc::parse(&original).ok().map(|doc| doc.info());
+            let native = edid_info
+                .as_ref()
+                .and_then(|i| qr_edid::parse::native_timing(i).copied());
+            let max_h = edid_info.as_ref().and_then(|i| i.max_h_freq_khz);
+            if let Some(n) = &native {
+                println!("    \"native_timing\": \"{}x{} total {}x{}\",", n.h_active, n.v_active, n.h_total(), n.v_total());
+            }
+            if let Some(m) = max_h {
+                println!("    \"max_h_freq_khz\": {},", m);
+            }
+            let t = qr_edid::timing::generate_for_display(standard, w, h, hz, native.as_ref(), max_h)?;
+            println!(
+                "    \"generated\": \"{}x{} total {}x{} pclk {}kHz hfreq {:.1}kHz\",",
+                t.h_active, t.v_active, t.h_total(), t.v_total(),
+                t.pixel_clock_khz(hz), t.h_freq_khz(hz)
+            );
+            let mut doc = qr_edid::EdidDoc::parse(&original)?;
+            let slot = match doc.insert_timing(&t, hz) {
+                Ok(s) => s,
+                Err(qr_edid::EdidErr::NoSlot) => {
+                    doc.append_displayid_block()?;
+                    doc.insert_timing(&t, hz)?
+                }
+                Err(e) => return Err(e.into()),
+            };
+            println!("    \"slot\": \"{:?}\",", slot);
+            doc.fix_extension_count();
+            doc.recompute_all_checksums();
+            let edid = doc.to_bytes();
+            println!("    \"edid_len\": {},", edid.len());
+            direct_admin::write_override(&d.key, qr_ipc::RegVariant::MonitorInstanceOverride, &edid)?;
+            direct_admin::restart_monitor(&d.key)?;
+            std::thread::sleep(std::time::Duration::from_millis(1500));
+            let modes = gdi::enum_modes(&d.gdi_name)?;
+            let hit = modes.iter().any(|m| m.width == w && m.height == h && m.refresh_hz == hz);
+            if !hit {
+                println!("    \"monitor_restart\": \"no-match, trying adapter restart (3s 黑屏)\",");
+                direct_admin::restart_adapter()?;
+                std::thread::sleep(std::time::Duration::from_millis(2000));
+                let modes2 = gdi::enum_modes(&d.gdi_name)?;
+                let hits2: Vec<String> = modes2
+                    .iter()
+                    .filter(|m| m.width == w)
+                    .map(|m| format!("{}x{}@{}Hz", m.width, m.height, m.refresh_hz))
+                    .collect();
+                println!("    \"system_modes_after_adapter\": {},", modes2.len());
+                println!("    \"matching_after_adapter\": {:?},", hits2);
+            }
+            let hits: Vec<String> = modes
+                .iter()
+                .filter(|m| m.width == w)
+                .map(|m| format!("{}x{}@{}Hz", m.width, m.height, m.refresh_hz))
+                .collect();
+            println!("    \"system_modes_after\": {},", modes.len());
+            println!("    \"matching_width_modes\": {:?},", hits);
+            Ok(())
+        })();
+        match r {
+            Ok(()) => println!("    \"result\": \"ok\","),
+            Err(e) => println!("    \"result\": \"fail: {}\",", e),
+        }
+        println!("  }},");
     }
 
     println!("  \"done\": true");

@@ -128,7 +128,11 @@ fn cvt_rb(h: u32, v: u32, refresh_hz: u32, v3: bool) -> Result<TimingParams, cra
 
 /// native-blanking 继承：沿用原生 timing 的 H/V total，只改 active 与 refresh。
 ///
-/// 原生 blanking 不足以容纳新 active（total - active < 最小 blank）时回退 CVT-RB2。
+/// 回退 CVT-RB2 的情形：
+/// - 原生 blanking 不足以容纳新 active（total - active < 最小 blank）；
+/// - 继承产物的像素时钟超 DTD 编码上限（655.35MHz）——超限 timing 只能写入
+///   DisplayID Type VII，而 Windows 显示驱动栈普遍不把它枚举为系统模式（实机验证），
+///   必须用 RB2 的小 blanking 把像素时钟压回 DTD 可编码区间。
 fn inherit_native(
     h: u32,
     v: u32,
@@ -154,7 +158,46 @@ fn inherit_native(
         interlaced: false,
     };
     t.sane()?;
+    if t.pixel_clock_khz(refresh_hz) > crate::DTD_MAX_PIXEL_CLOCK_KHZ {
+        return cvt_rb(h, v, refresh_hz, false);
+    }
     Ok(t)
+}
+
+/// 按显示器能力约束生成 timing（预置/校验统一入口）。
+///
+/// 在 `generate` 基础上：若产物行频超显示器 range limits 上限（`max_h_freq_khz`），
+/// 压缩垂直 back porch 把行频压回上限内——否则驱动会直接丢弃该模式
+/// （实机：AOC CU34G10X maxH=250kHz，RB2 的 460µs 最小 vblank 会把 2304×1440@165
+/// 推到 257kHz 而被裁剪出系统模式列表）。压缩后 v_back 不足 8 行时放弃压缩，
+/// 保持原 timing（由预置验证环节兜底）。手动 timing 尊重用户直填，不压缩。
+pub fn generate_for_display(
+    standard: TimingStandard,
+    h: u32,
+    v: u32,
+    refresh_hz: u32,
+    native: Option<&TimingParams>,
+    max_h_freq_khz: Option<u32>,
+) -> Result<TimingParams, crate::EdidErr> {
+    let t = generate(standard, h, v, refresh_hz, native)?;
+    if matches!(standard, TimingStandard::Manual(_)) {
+        return Ok(t);
+    }
+    let max_h = match max_h_freq_khz {
+        Some(m) if m > 0 => m,
+        _ => return Ok(t),
+    };
+    if t.h_freq_khz(refresh_hz) <= max_h as f32 {
+        return Ok(t);
+    }
+    let target_v_total = (max_h as u64 * 1000 / refresh_hz as u64) as u32;
+    let v_back = target_v_total.saturating_sub(v + t.v_front + t.v_sync);
+    if target_v_total <= v || v_back < 8 {
+        return Ok(t);
+    }
+    let clamped = TimingParams { v_back, ..t };
+    clamped.sane()?;
+    Ok(clamped)
 }
 
 /// 生成 timing。`native` 为显示器原生（最高像素时钟）timing，`Auto` 时使用。
@@ -223,7 +266,8 @@ mod tests {
             v_sync_pol: true,
             interlaced: false,
         };
-        let t = generate(TimingStandard::Auto, 1920, 1440, 480, Some(&native)).unwrap();
+        // @60：继承 pclk≈533MHz 仍在 DTD 上限内（超限回退由另一测试覆盖）。
+        let t = generate(TimingStandard::Auto, 1920, 1440, 60, Some(&native)).unwrap();
         // total 保持原生，active 变更，back porch 吸收差值。
         assert_eq!(t.h_total(), native.h_total());
         assert_eq!(t.v_total(), native.v_total());
@@ -249,6 +293,50 @@ mod tests {
         };
         let t = generate(TimingStandard::Auto, 1920, 1440, 480, Some(&native)).unwrap();
         assert_eq!(t.h_total(), 2000); // RB2 结构
+    }
+
+    #[test]
+    fn inherit_native_falls_back_when_pclk_exceeds_dtd() {
+        // 实机案例（AOC CU34G10X）：3440×1440 原生 total 继承给 2304×1440@165
+        // → pclk≈930MHz 超 DTD 上限 655.35MHz，必须回退 RB2（≈586MHz，可进 DTD）。
+        let native = TimingParams {
+            h_active: 3440,
+            v_active: 1440,
+            h_front: 48,
+            h_sync: 32,
+            h_back: 80,
+            v_front: 3,
+            v_sync: 10,
+            v_back: 113,
+            h_sync_pol: false,
+            v_sync_pol: true,
+            interlaced: false,
+        };
+        let t = generate(TimingStandard::Auto, 2304, 1440, 165, Some(&native)).unwrap();
+        assert_eq!(t.h_blank(), 80, "应回退为 RB2 结构");
+        assert!(t.pixel_clock_khz(165) <= crate::DTD_MAX_PIXEL_CLOCK_KHZ);
+    }
+
+    #[test]
+    fn generate_for_display_clamps_hfreq() {
+        // CU34G10X 实机：RB2 的 460µs vblank 使 2304×1440@165 行频 ≈257kHz，
+        // 超 maxH 250kHz → 必须压缩 v_back 把行频压回 250kHz 内。
+        let t = generate_for_display(TimingStandard::CvtRb2, 2304, 1440, 165, None, Some(250)).unwrap();
+        assert!(t.h_freq_khz(165) <= 250.0, "hfreq={}", t.h_freq_khz(165));
+        assert!(t.pixel_clock_khz(165) <= crate::DTD_MAX_PIXEL_CLOCK_KHZ);
+        assert!(t.v_back >= 8);
+    }
+
+    #[test]
+    fn generate_for_display_keeps_within_limit() {
+        // 行频未超限：产物与 generate 完全一致（不压缩）。
+        let a = generate(TimingStandard::CvtRb2, 2560, 1440, 60, None).unwrap();
+        let b = generate_for_display(TimingStandard::CvtRb2, 2560, 1440, 60, None, Some(250)).unwrap();
+        assert_eq!(a, b);
+        // 无 max_h 信息：也不压缩。
+        let c = generate_for_display(TimingStandard::CvtRb2, 2304, 1440, 165, None, None).unwrap();
+        let d = generate(TimingStandard::CvtRb2, 2304, 1440, 165, None).unwrap();
+        assert_eq!(c, d);
     }
 
     #[test]

@@ -365,33 +365,35 @@ impl QrService {
         }
 
         // 系统列表成员检查（目标显示器在线时）。
-        let (in_system_list, max_pix) = match self.resolve(&entry.target) {
+        let (in_system_list, max_pix, max_h) = match self.resolve(&entry.target) {
             Ok(disp) => {
                 let in_list = self
                     .backend
                     .enum_modes(&disp.gdi_name)?
                     .iter()
                     .any(|m| m.width == entry.width && m.height == entry.height && m.refresh_hz == entry.refresh_hz);
-                let max_pix = self
+                let info = self
                     .backend
                     .enumerate()
                     .ok()
-                    .and_then(|ds| ds.into_iter().find(|d| d.gdi_name == disp.gdi_name))
-                    .and_then(|d| d.max_pixel_clock_khz);
-                (in_list, max_pix)
+                    .and_then(|ds| ds.into_iter().find(|d| d.gdi_name == disp.gdi_name));
+                let max_pix = info.as_ref().and_then(|d| d.max_pixel_clock_khz);
+                let max_h = info.and_then(|d| d.max_h_freq_khz);
+                (in_list, max_pix, max_h)
             }
-            Err(_) => (false, None),
+            Err(_) => (false, None, None),
         };
 
-        // timing 生成 + 像素时钟（native-blanking 继承用原生 timing）。
+        // timing 生成 + 像素时钟（native-blanking 继承用原生 timing；行频超显示器上限自动压缩消隐）。
         let native = self.native_timing_of(&entry.target);
         let standard = to_edid_standard(entry);
-        let timing = qr_edid::timing::generate(
+        let timing = qr_edid::timing::generate_for_display(
             standard,
             entry.width,
             entry.height,
             entry.refresh_hz,
             native.as_ref(),
+            max_h,
         );
         let pixel_clock_khz = timing
             .as_ref()

@@ -167,7 +167,17 @@ fn disconnect(pipe: &std::fs::File) {
 }
 
 /// 单会话处理：握手 → 客户端校验 → 请求循环（直到断开）。
-fn handle_session(pipe: &std::fs::File, expected_nonce: [u8; 32]) -> Result<(), QrError> {
+fn handle_session(pipe: &std::fs::File, startup_nonce: [u8; 32]) -> Result<(), QrError> {
+    // helper 空闲驻留期间，主进程每次新会话都会重写 nonce 文件，
+    // 而 `schtasks /Run` 对已运行的任务不会拉起新实例——启动 nonce 早已过期。
+    // 客户端总在连接前写好 nonce 文件，故每个新连接刷新一次期望值。
+    let expected_nonce = match super::read_nonce_file() {
+        Some(n) => {
+            audit::log("NONCE-REFRESH", "采用新会话 nonce");
+            n
+        }
+        None => startup_nonce,
+    };
     // 1) 首帧必须 Handshake 且 nonce 匹配。
     let first = read_frame(pipe)?;
     let req: HelperRequest =

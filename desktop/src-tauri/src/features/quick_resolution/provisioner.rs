@@ -152,12 +152,12 @@ pub async fn provision_batch(
     })?;
 
     // 3) 合并注入全部 timing 到 EDID。
-    let native = qr_edid::EdidDoc::parse(&original)
-        .ok()
-        .and_then(|d| {
-            let info = d.info();
-            qr_edid::parse::native_timing(&info).copied()
-        });
+    let edid_info = qr_edid::EdidDoc::parse(&original).ok().map(|d| d.info());
+    let native = edid_info
+        .as_ref()
+        .and_then(|i| qr_edid::parse::native_timing(i).copied());
+    // 显示器行频上限（range limits）：驱动按此裁剪自定义模式，超限必失败。
+    let max_h = edid_info.as_ref().and_then(|i| i.max_h_freq_khz);
     let mut doc = qr_edid::EdidDoc::parse(&original)?;
     let mut placed_ids = Vec::new();
     for m in pending {
@@ -182,17 +182,25 @@ pub async fn provision_batch(
                 })
             }
         };
-        let t = qr_edid::timing::generate(standard, m.width, m.height, m.refresh_hz, native.as_ref())?;
-        match doc.insert_timing(&t, m.refresh_hz) {
-            Ok(_slot) => placed_ids.push(m.id.clone()),
+        let t = qr_edid::timing::generate_for_display(standard, m.width, m.height, m.refresh_hz, native.as_ref(), max_h)?;
+        let slot = match doc.insert_timing(&t, m.refresh_hz) {
+            Ok(s) => Some(s),
             Err(qr_edid::EdidErr::NoSlot) => {
                 // 容量不足：追加 DisplayID 2.0 扩展块再试。
                 doc.append_displayid_block()?;
-                doc.insert_timing(&t, m.refresh_hz)?;
-                placed_ids.push(m.id.clone());
+                Some(doc.insert_timing(&t, m.refresh_hz)?)
             }
             Err(e) => return Err(QrError::from(e)),
-        }
+        };
+        crate::features::quick_resolution::helper_core::audit::log(
+            "PROVISION-TIMING",
+            &format!(
+                "{}x{}@{} total={}x{} pclk={}kHz hfreq={:.1}kHz slot={:?}",
+                m.width, m.height, m.refresh_hz, t.h_total(), t.v_total(),
+                t.pixel_clock_khz(m.refresh_hz), t.h_freq_khz(m.refresh_hz), slot
+            ),
+        );
+        placed_ids.push(m.id.clone());
     }
     doc.fix_extension_count();
     doc.recompute_all_checksums();

@@ -38,10 +38,11 @@ pub fn enumerate_displays() -> Result<Vec<DisplayInfo>, QrError> {
         };
         let current = gdi::current_mode(&gdi_name).ok();
         let is_primary = gdi::is_primary(&gdi_name);
-        let max_pixel_clock_khz = native_edid
+        let edid_info = native_edid
             .as_deref()
-            .and_then(|e| qr_edid::parse::parse(e).ok())
-            .and_then(|info| info.max_pixel_clock_khz);
+            .and_then(|e| qr_edid::parse::parse(e).ok());
+        let max_pixel_clock_khz = edid_info.as_ref().and_then(|i| i.max_pixel_clock_khz);
+        let max_h_freq_khz = edid_info.as_ref().and_then(|i| i.max_h_freq_khz);
         rows.push((
             source_id,
             DisplayInfo {
@@ -54,6 +55,7 @@ pub fn enumerate_displays() -> Result<Vec<DisplayInfo>, QrError> {
                 link: None,
                 dsc: DscState::Unknown { reason: "未检测".into(), debug: Vec::new() },
                 max_pixel_clock_khz,
+                max_h_freq_khz,
             },
         ));
     }

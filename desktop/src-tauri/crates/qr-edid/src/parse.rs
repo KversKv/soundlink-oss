@@ -18,6 +18,10 @@ pub struct EdidInfo {
     pub name: Option<String>,
     /// Display Range Limits 上报的最大像素时钟（kHz）。
     pub max_pixel_clock_khz: Option<u32>,
+    /// Display Range Limits 上报的最大行频（kHz）——驱动按此裁剪高刷自定义模式。
+    pub max_h_freq_khz: Option<u32>,
+    /// Display Range Limits 上报的最大场频（Hz）。
+    pub max_v_rate_hz: Option<u32>,
     /// 全部详细 timing（按出现顺序；首个通常即原生模式）。
     pub detailed_timings: Vec<TimingParams>,
     /// DTD 对应的刷新率估计（kHz 像素时钟 / total）。
@@ -107,7 +111,14 @@ fn parse_base(b: &[u8], info: &mut EdidInfo) {
                     }
                 }
                 0xFD => {
-                    // Display Range Limits：d[9] = 最大像素时钟（×10MHz），0xFF 表示见扩展。
+                    // Display Range Limits：d[5..=9] = minV/maxV(Hz) minH/maxH(kHz) maxPclk(×10MHz)。
+                    // 0 或 0xFF 表示「未知/见扩展」。
+                    if d[6] != 0xFF && d[6] != 0 {
+                        info.max_v_rate_hz = Some(d[6] as u32);
+                    }
+                    if d[8] != 0xFF && d[8] != 0 {
+                        info.max_h_freq_khz = Some(d[8] as u32);
+                    }
                     if d[9] != 0xFF && d[9] != 0 {
                         info.max_pixel_clock_khz = Some(d[9] as u32 * 10_000);
                     }

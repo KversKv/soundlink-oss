@@ -30,6 +30,8 @@
 
 ### 修复
 
+- **自定义分辨率预置报「BadHandshake: nonce 不匹配」（helper 驻留旧 nonce）**：快速分辨率切换中第二次及以后点「立即预置」必现。根因：helper 进程按设计空闲驻留 5 分钟，主进程每次新会话都会重写 nonce 文件，但 `schtasks /Run` 对已运行的计划任务不会拉起第二个 helper 实例——驻留的旧 helper 仍用启动时的旧 nonce 校验，新客户端握手即被拒。修复：helper 每个新管道连接重读 nonce 文件刷新期望值（`pipe_server::handle_session` 入口），启动 nonce 仅作兜底。`qr_probe` 新增 `--test-helper-session`（连续两次握手复现/验证该场景）。
+- **自定义高刷分辨率预置后被驱动裁剪出系统列表（2304×1440@165 等）**：两类修复。① `Auto`（native-blanking 继承）产物像素时钟超 DTD 编码上限 655.35MHz 时回退 CVT-RB2——此前超限 timing 只能写入 DisplayID Type VII，而 Windows 显示驱动栈普遍不把它枚举为系统模式；② 新增按显示器行频上限（EDID range limits）压缩垂直消隐——此前 RB2 的 460µs 最小 vblank 会把 2304×1440@165 行频推到 257kHz，超显示器 250kHz 上限而被驱动静默丢弃。现经 `generate_for_display` 统一走「继承→DTD 上限回退→行频压缩」三段，预置/校验共用。
 - **快速分辨率切换「安装辅助组件」报「辅助进程通信失败：q」**：双重缺陷。① 前端 `parseQrError` 把 serde newtype 变体的字符串 `detail` 当对象取 `d[0]`，真实原因「qr_helper.exe 不存在（需随包发布）」被截成首字符 "q"（`HelperIpc`/`BadRequest`/`Edid`/`Io` 四处同修）；② NSIS/MSI 安装包未携带 `qr_helper.exe`——已加入 `tauri.conf.json` bundle resources，安装后与主程序同目录，`qr_install_helper` 可正常拉起。
 - **已装辅助组件却仍提示「需要一次管理员授权以启用 EDID 注入」**：预置前置守卫误信内存/落盘的 `helper_installed` 标志——前端点「安装」只改了 React 内存 state、从未持久化，重启 App 后标志回落 false，计划任务明明注册成功仍被误判未安装。修复：① 预置守卫改为实时探测计划任务（`helper_installed()`），不再信标志；② `qr_install_helper` 成功后回写并持久化该标志；③ 前端加载与安装成功均以实时 `qr_helper_status` 为准。
 - **便携 exe 支持「安装辅助组件」自举**：便携单文件形态下主程序旁没有 `qr_helper.exe`，安装时会把主程序复制为同目录 `qr_helper.exe`（主程序按 exe 文件名自动进入 helper 模式，先于 Tauri/单实例初始化分发），随后照常弹一次 UAC 注册计划任务。此后 EDID 注入流程与安装版一致。⚠ 便携版所在目录需可写（否则复制失败并给出明确提示）。
