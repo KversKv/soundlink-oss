@@ -108,6 +108,93 @@ pub type NvApiGetTimingFn =
 /// NvAPI_DISP_GetEdid: (handle, u32 offset, *mut u8 buf(EDID 长度上限 1024)) -> i32
 pub type NvApiGetEdidFn = unsafe extern "C" fn(NvDisplayHandle, u32, *mut u8) -> i32;
 
+// ---- M8：CustomDisplay（NV_CUSTOM_DISPLAY / NV_TIMING，布局逐字段对照官方 nvapi.h） ----
+
+/// NV_TIMINGEXT（NV_TIMING 尾部内嵌扩展，官方布局，无独立 version）。
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct NvTimingExt {
+    pub flag: u32,      // 保留（double-scan 等硬件增强），0
+    pub rr: u16,        // 逻辑刷新率（整数 Hz）
+    pub rrx1k: u32,     // 物理垂直刷新率 ×1000（165Hz = 165000）
+    pub aspect: u32,    // Hi:水平宽高比 Low:垂直宽高比（0 = 驱动自算）
+    pub rep: u16,       // 像素重复因子（1 = 无重复）
+    pub status: u32,    // timing 标准（0）
+    pub name: [u8; 40], // timing 名（可全 0）
+}
+impl Default for NvTimingExt {
+    fn default() -> Self {
+        Self { flag: 0, rr: 0, rrx1k: 0, aspect: 0, rep: 1, status: 0, name: [0; 40] }
+    }
+}
+
+/// NV_TIMING（官方布局；**无 version 字段**，pclk 单位 10kHz，border=0）。
+#[repr(C)]
+#[derive(Clone, Copy, Default)]
+pub struct NvTimingStandard {
+    pub h_visible: u16,
+    pub h_border: u16,
+    pub h_front_porch: u16,
+    pub h_sync_width: u16,
+    pub h_total: u16,
+    pub h_sync_pol: u8, // 1=负 0=正
+    pub v_visible: u16,
+    pub v_border: u16,
+    pub v_front_porch: u16,
+    pub v_sync_width: u16,
+    pub v_total: u16,
+    pub v_sync_pol: u8, // 1=负 0=正
+    pub interlaced: u16, // 0=逐行
+    pub pclk: u32,       // 10kHz 单位
+    pub etc: NvTimingExt,
+}
+
+/// NV_VIEWPORTF（multimon 分区，应为 (0,0,1.0,1.0)）。
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct NvViewportF {
+    pub x: f32,
+    pub y: f32,
+    pub w: f32,
+    pub h: f32,
+}
+impl Default for NvViewportF {
+    fn default() -> Self {
+        Self { x: 0.0, y: 0.0, w: 1.0, h: 1.0 }
+    }
+}
+
+/// NV_CUSTOM_DISPLAY（Try/SaveCustomDisplay 输入，官方布局）。
+#[repr(C)]
+#[derive(Clone, Copy, Default)]
+pub struct NvCustomDisplay {
+    pub version: u32,
+    pub width: u32,
+    pub height: u32,
+    pub depth: u32,        // 色深 bpp；0 = 全部 8/16/32
+    pub color_format: u32, // NV_FORMAT（D3DFORMAT；22 = X8R8G8B8）
+    pub src_partition: NvViewportF,
+    pub x_ratio: f32,
+    pub y_ratio: f32,
+    pub timing: NvTimingStandard,
+    pub hw_mode_set_only: u32, // bitfield:1；0 = 含 OS 更新的完整 modeset
+}
+
+impl NvCustomDisplay {
+    pub fn v1() -> Self {
+        Self {
+            version: nvapi_ver(std::mem::size_of::<NvCustomDisplay>(), 1),
+            ..Default::default()
+        }
+    }
+}
+
+pub type NvApiTryCustomDisplayFn =
+    unsafe extern "C" fn(*const u32 /*displayIds*/, u32 /*count*/, *mut NvCustomDisplay) -> i32;
+pub type NvApiSaveCustomDisplayFn =
+    unsafe extern "C" fn(*const u32 /*displayIds*/, u32 /*count*/, u32 /*isThisOutputIdOnly*/, u32 /*isThisMonitorIdOnly*/) -> i32;
+pub type NvApiRevertCustomDisplayTrialFn = unsafe extern "C" fn(*const u32 /*displayIds*/, u32 /*count*/) -> i32;
+
 #[cfg(test)]
 mod tests {
     use super::*;

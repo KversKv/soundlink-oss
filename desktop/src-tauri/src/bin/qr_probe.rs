@@ -355,6 +355,105 @@ fn main() {
         println!("  }},");
     }
 
+    // 11) NVAPI 自定义分辨率实测（--test-nvapi-custom 2304x1440@165 [--save]）：
+    //     构造 timing → TryCustomDisplay 临时应用（绕过 EDID 已声明分辨率限制）。
+    //     带 --save 时随后 SaveCustomDisplay 持久化。
+    if let Some(mode_str) = parse_flag(&args, "--test-nvapi-custom") {
+        println!("  \"nvapi_custom_test\": {{");
+        println!("    \"mode\": \"{}\",", mode_str);
+        let r = (|| -> Result<(), soundlink_lib::features::quick_resolution::model::QrError> {
+            use soundlink_lib::features::quick_resolution::model::QrError;
+            let (w, h, hz) = parse_mode(&mode_str)
+                .ok_or_else(|| QrError::BadRequest("模式格式应形如 2304x1440@165".into()))?;
+            let ds = ccd::enumerate_displays()?;
+            let d = ds
+                .iter()
+                .find(|d| d.is_primary)
+                .or(ds.first())
+                .ok_or_else(|| QrError::BadRequest("无可用显示器".into()))?;
+            let edid = edid_reg::read_effective_edid(&d.key.instance_path)?;
+            let info = qr_edid::EdidDoc::parse(&edid).ok().map(|doc| doc.info());
+            let native = info.as_ref().and_then(|i| qr_edid::parse::native_timing(i).copied());
+            let max_h = info.as_ref().and_then(|i| i.max_h_freq_khz);
+            let t = qr_edid::timing::generate_for_display(
+                qr_edid::timing::TimingStandard::Auto, w, h, hz, native.as_ref(), max_h,
+            )?;
+            println!(
+                "    \"timing\": \"{}x{} total {}x{} pclk {}kHz hfreq {:.1}kHz\",",
+                t.h_active, t.v_active, t.h_total(), t.v_total(),
+                t.pixel_clock_khz(hz), t.h_freq_khz(hz)
+            );
+            let api = NvApi::load().map_err(|_| QrError::NvApiUnavailable)?;
+            let handle = api.display_handles().into_iter().next()
+                .ok_or_else(|| QrError::NvApiUnavailable)?;
+            let mut cd = NvApi::build_custom_display(&t, hz);
+            let st_try = api.try_custom_display(handle, &mut cd)?;
+            println!("    \"try_status\": {} ({}),", st_try, api.status_text(st_try));
+            if st_try == 0 {
+                if args.iter().any(|a| a == "--save") {
+                    let st_save = api.save_custom_display(handle)?;
+                    println!("    \"save_status\": {} ({}),", st_save, api.status_text(st_save));
+                } else {
+                    let st_rev = api.revert_custom_display(handle)?;
+                    println!("    \"revert_status\": {} ({}),", st_rev, api.status_text(st_rev));
+                }
+            }
+            Ok(())
+        })();
+        match r {
+            Ok(()) => println!("    \"result\": \"ok\","),
+            Err(e) => println!("    \"result\": \"fail: {}\",", e),
+        }
+        println!("  }},");
+    }
+
+    // 12) NVAPI ordinal 探测（--probe-ordinal 0xXXXXXXXX,...）：运行时验证 QueryInterface 是否返回非空。
+    if let Some(list) = parse_flag(&args, "--probe-ordinal") {
+        println!("  \"ordinal_probe\": {{");
+        if let Ok(api) = NvApi::load() {
+            for tok in list.split(',') {
+                let t = tok.trim();
+                let v = u32::from_str_radix(t.trim_start_matches("0x"), 16)
+                    .or_else(|_| t.parse::<u32>());
+                match v {
+                    Ok(o) => println!("    \"0x{:08X}\": {},", o, api.probe_ordinal_present(o)),
+                    Err(_) => println!("    \"{}\": \"parse-error\",", t),
+                }
+            }
+        } else {
+            println!("    \"error\": \"NvApi load failed\",");
+        }
+        println!("  }},");
+    }
+
+    // 13) 批量 ordinal 运行时校验（--scan-ordinal <file>）：文件内每行一个 0xXXXXXXXX，
+    //      输出其中 QueryInterface 返回非空的 ordinal（本机真实支持集）。
+    if let Some(file) = parse_flag(&args, "--scan-ordinal") {
+        println!("  \"scan_result\": [");
+        if let Ok(api) = NvApi::load() {
+            if let Ok(content) = std::fs::read_to_string(&file) {
+                let mut first = true;
+                for line in content.lines() {
+                    let t = line.trim();
+                    if t.is_empty() { continue; }
+                    if let Ok(o) = u32::from_str_radix(t.trim_start_matches("0x"), 16) {
+                        if api.probe_ordinal_present(o) {
+                            if !first { println!(","); }
+                            print!("    \"0x{:08X}\"", o);
+                            first = false;
+                        }
+                    }
+                }
+                println!();
+            } else {
+                println!("    // 无法读取文件 {}", file);
+            }
+        } else {
+            println!("    // NvApi load failed");
+        }
+        println!("  ],");
+    }
+
     println!("  \"done\": true");
     println!("}}");
 }

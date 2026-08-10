@@ -5,7 +5,7 @@
 //!
 //! Try/Save/Revert CustomDisplay 在 M8 接入（`ordinals` 已预留）。
 
-use super::ffi::*;
+use super::ffi::{self, *};
 use super::NvApi;
 use crate::features::quick_resolution::model::QrError;
 
@@ -155,20 +155,71 @@ pub struct NvCustomMode {
 }
 
 impl NvApi {
-    /// TryCustomDisplay（临时生效，弹确认）。返回原始 status。
-    pub fn try_custom_display(&self, _handle: NvDisplayHandle, _mode: &NvCustomMode) -> Result<i32, QrError> {
-        // ordinal 已预留；FFI 布局未验证，M0 实测前保守返回 Unsupported。
-        Err(QrError::NvApiUnavailable)
+    /// 由 TimingParams + 刷新率构造 NV_CUSTOM_DISPLAY（布局逐字段对照官方 nvapi.h）。
+    pub fn build_custom_display(
+        t: &qr_edid::timing::TimingParams,
+        refresh_hz: u32,
+    ) -> ffi::NvCustomDisplay {
+        let etc = ffi::NvTimingExt {
+            rr: refresh_hz as u16,
+            rrx1k: refresh_hz * 1000,
+            rep: 1,
+            ..Default::default()
+        };
+        let tm = ffi::NvTimingStandard {
+            h_visible: t.h_active as u16,
+            h_border: 0,
+            h_front_porch: t.h_front as u16,
+            h_sync_width: t.h_sync as u16,
+            h_total: t.h_total() as u16,
+            h_sync_pol: (!t.h_sync_pol) as u8, // NV: 1=负 0=正（项目内 true=正）
+            v_visible: t.v_active as u16,
+            v_border: 0,
+            v_front_porch: t.v_front as u16,
+            v_sync_width: t.v_sync as u16,
+            v_total: t.v_total() as u16,
+            v_sync_pol: (!t.v_sync_pol) as u8,
+            interlaced: 0,
+            pclk: t.pixel_clock_khz(refresh_hz) / 10, // NV 单位 10kHz
+            etc,
+        };
+        ffi::NvCustomDisplay {
+            width: t.h_active,
+            height: t.v_active,
+            depth: 32,
+            color_format: 22, // NV_FORMAT X8R8G8B8（D3DFMT）
+            x_ratio: 1.0,
+            y_ratio: 1.0,
+            timing: tm,
+            ..ffi::NvCustomDisplay::v1()
+        }
     }
 
-    /// SaveCustomDisplay。
-    pub fn save_custom_display(&self, _handle: NvDisplayHandle, _mode: &NvCustomMode) -> Result<i32, QrError> {
-        Err(QrError::NvApiUnavailable)
+    /// TryCustomDisplay（临时生效）。签名 `NvAPI_DISP_TryCustomDisplay(NvU32* displayIds, NvU32 count, NV_CUSTOM_DISPLAY*)`。
+    /// displayId 取 NvDisplayHandle 低 32 位（NVAPI 句柄即 displayId 编码）。
+    /// 返回原始 NVAPI status（0=成功）。
+    pub fn try_custom_display(&self, handle: NvDisplayHandle, cd: &mut ffi::NvCustomDisplay) -> Result<i32, QrError> {
+        let f = self.try_custom_display.ok_or(QrError::NvApiUnavailable)?;
+        let display_id = handle as usize as u32;
+        let ids = [display_id];
+        let st = unsafe { f(ids.as_ptr(), 1, cd) };
+        Ok(st)
     }
 
-    /// RevertCustomDisplay。
-    pub fn revert_custom_display(&self, _handle: NvDisplayHandle) -> Result<i32, QrError> {
-        Err(QrError::NvApiUnavailable)
+    /// SaveCustomDisplay（持久化到驱动的自定义分辨率列表）。
+    pub fn save_custom_display(&self, handle: NvDisplayHandle) -> Result<i32, QrError> {
+        let f = self.save_custom_display.ok_or(QrError::NvApiUnavailable)?;
+        let ids = [handle as usize as u32];
+        let st = unsafe { f(ids.as_ptr(), 1, 1, 1) };
+        Ok(st)
+    }
+
+    /// RevertCustomDisplayTrial（撤销 Try 的临时模式）。
+    pub fn revert_custom_display(&self, handle: NvDisplayHandle) -> Result<i32, QrError> {
+        let f = self.revert_custom_display.ok_or(QrError::NvApiUnavailable)?;
+        let ids = [handle as usize as u32];
+        let st = unsafe { f(ids.as_ptr(), 1) };
+        Ok(st)
     }
 }
 

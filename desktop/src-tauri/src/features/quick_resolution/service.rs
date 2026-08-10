@@ -742,6 +742,40 @@ impl QrService {
         if pending.is_empty() {
             return Err(QrError::BadRequest("没有待预置模式".into()));
         }
+        let target = target.ok_or_else(|| QrError::BadRequest("模式无目标显示器".into()))?;
+        let disp = self.resolve(&target)?;
+
+        // 分流（先于提权守卫）：已在系统列表的模式（含 NVIDIA 控制面板等外部注册的
+        // 自定义分辨率）无需 EDID 注入、也无需提权，直接标 Ready/System。只把真正
+        // 缺失的攒批注入。否则全新分辨率会被强行注入 EDID、被驱动按 range limits
+        // 裁剪而误判失败；纯系统列表场景也因此不要求安装辅助组件。
+        let sys_modes = self.backend.enum_modes(&disp.gdi_name)?;
+        let (already, pending): (Vec<DisplayModeEntry>, Vec<DisplayModeEntry>) = pending
+            .into_iter()
+            .partition(|m| sys_modes.iter().any(|s| s.matches(m)));
+        let mut pre_ready: Vec<String> = Vec::new();
+        if !already.is_empty() {
+            let mut s = self.settings.write();
+            for m in s.modes.iter_mut().filter(|m| already.iter().any(|a| a.id == m.id)) {
+                m.state = ModeState::Ready;
+                m.provision_path = Some(ProvisionPath::System);
+                pre_ready.push(m.id.clone());
+            }
+            let saved = s.clone();
+            drop(s);
+            let _ = self.store.save_settings(&saved);
+            let _ = app.emit("qr://mode-state-changed", ());
+        }
+        // 全部已在列表：无需提权/注入，直接回报。
+        if pending.is_empty() {
+            return Ok(ProvisionReport {
+                succeeded: pre_ready,
+                failed: Vec::new(),
+                activation: "AlreadyInSystemList".into(),
+                backup_id: String::new(),
+            });
+        }
+
         // 实时探测提权能力，不信内存/落盘的 helper_installed 标志
         // （该标志可能因未持久化而过期，导致已具备能力却被误判）。
         // 放行条件二选一：① 主进程自身已是管理员（直写路径）；② 计划任务已注册（helper 转发）。
@@ -769,8 +803,6 @@ impl QrService {
                 let _ = self.store.save_settings(&saved);
             }
         }
-        let target = target.ok_or_else(|| QrError::BadRequest("模式无目标显示器".into()))?;
-        let disp = self.resolve(&target)?;
 
         // 标记 provisioning 状态。
         {
@@ -827,7 +859,14 @@ impl QrService {
         let _ = self.store.save_settings(&saved);
         let _ = app.emit("qr://mode-state-changed", ());
         crate::features::quick_resolution::after_settings_changed(app);
-        result
+        // 把分流时已就绪的模式并入最终报告（succeeded 计数完整）。
+        match result {
+            Ok(mut report) if !pre_ready.is_empty() => {
+                report.succeeded.splice(0..0, pre_ready);
+                Ok(report)
+            }
+            other => other,
+        }
     }
 
     /// 启动自检（L2）：上次预置未收尾 → 回滚。

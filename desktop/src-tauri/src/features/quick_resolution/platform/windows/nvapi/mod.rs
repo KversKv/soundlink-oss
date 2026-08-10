@@ -23,6 +23,9 @@ pub struct NvApi {
     pub get_timing: Option<NvApiGetTimingFn>,
     pub get_edid: Option<NvApiGetEdidFn>,
     pub get_error_string: Option<NvApiGetErrorMessageFn>,
+    pub try_custom_display: Option<NvApiTryCustomDisplayFn>,
+    pub save_custom_display: Option<NvApiSaveCustomDisplayFn>,
+    pub revert_custom_display: Option<NvApiRevertCustomDisplayTrialFn>,
 }
 
 static LOAD_ATTEMPTED: AtomicBool = AtomicBool::new(false);
@@ -52,6 +55,9 @@ impl NvApi {
                 get_timing: None,
                 get_edid: None,
                 get_error_string: None,
+                try_custom_display: None,
+                save_custom_display: None,
+                revert_custom_display: None,
             };
             api.probe_all();
             // Initialize 失败 = NVAPI 实际不可用（非 N 卡）。
@@ -87,6 +93,15 @@ impl NvApi {
         self.get_timing = self.probe(ordinals::NVAPI_DISP_GET_TIMING);
         self.get_edid = self.probe(ordinals::NVAPI_DISP_GET_EDID);
         self.get_error_string = self.probe(ordinals::NVAPI_GET_ERROR_MESSAGE);
+        self.try_custom_display = self.probe(ordinals::NVAPI_DISP_TRY_CUSTOM_DISPLAY);
+        self.save_custom_display = self.probe(ordinals::NVAPI_DISP_SAVE_CUSTOM_DISPLAY);
+        self.revert_custom_display = self.probe(ordinals::NVAPI_DISP_REVERT_CUSTOM_DISPLAY);
+    }
+
+    /// 探测任意 ordinal 是否被驱动支持（返回非空指针）。
+    /// 仅诊断用：nvapi_QueryInterface 对未知 ordinal 返回 NULL。
+    pub fn probe_ordinal_present(&self, ordinal: u32) -> bool {
+        unsafe { !(self.query)(ordinal).is_null() }
     }
 
     /// 状态码 → 文本（取不到函数指针时返回数字）。

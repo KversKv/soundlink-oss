@@ -76,6 +76,40 @@ EDID 声明集合）。与 CRU 行为一致（CRU 新增分辨率也需重启显
 - M8 NVAPI CustomDisplay（Try/Save/Revert）与「重启显卡驱动激活」未实现——是突破「仅 EDID 已声明分辨率」
   限制的可选方向。
 
+## 追加（同日二轮）：2304 实测「无法预置」的真正根因与修复
+
+用户反馈「我通过自定义分辨率接口（NVIDIA 控制面板）能正常用 2304×1440@165」。据此深挖，定位到**真正的业务逻辑 bug**：
+
+- **根因 3（核心）**：「立即预置」`provision()` 对所有 pending 模式**一律强行 EDID 注入**，
+  不检查模式是否已在系统模式列表。2304×1440@165 被用户在 NVCPL 创建后已注册进系统列表
+  （PowerShell `EnumDisplaySettings` 实测 `2304x1440@165` 在列），软件仍注入 → 驱动按
+  range limits 裁剪 → 误判「预置验证失败」。
+- **修复**：[service.rs](../../../desktop/src-tauri/src/features/quick_resolution/service.rs) `provision()`
+  预置前按系统列表分流——已在列表的直接标 `Ready/System`、跳过注入且**免提权**；只对真正缺失的
+  走 EDID 注入；分流报告并入最终 `succeeded`。
+
+### NVAPI CustomDisplay（M8）调研实录（本轮顺带完成 FFI）
+
+- 按官方 nvapi.h 逐字段重写 `NV_CUSTOM_DISPLAY` / `NV_TIMING` / `NV_TIMINGEXT` / `NV_VIEWPORTF`
+  布局（[ffi.rs](../../../desktop/src-tauri/src/features/quick_resolution/platform/windows/nvapi/ffi.rs)），
+  实现 Try/Save/RevertCustomDisplay 与 `build_custom_display`。
+- **运行时 ordinal 探测**（新增 `probe_ordinal_present` + probe `--probe-ordinal`/`--scan-ordinal`）确认：
+  `TryCustomDisplay(0x1F7DB630)`、`EnumNvidiaDisplays(0x9ABDD40D)`、`GetDisplayPortInfo(0xC64FF367)` 正确；
+  而既有代码的 `GetTiming(0x175165E9)`/`GetEdid(0x37D4CC8D)`/`SaveCustomDisplay(0x998828C1)`/`RevertCustomDisplay(0xC40D1268)`
+  **ordinal 全错**（这是 `timing_err「未检测到 NVIDIA 驱动接口」`、DPInfo `-9` 的根因）。
+- 修正 Try 签名为社区验证的 `(NvU32* displayIds, u32 count, NV_CUSTOM_DISPLAY*)` 后，错误从
+  `-5 INVALID_ARGUMENT` 推进到 **`-187 INVALID_DISPLAY_ID`**——签名对了，剩 displayId 解析
+  （`GetDisplayIdByDisplayName` 的 ordinal 未在公开资料取得，本机 dll 反汇编提取了 2311 项表但缺名映射）。
+- **社区证据**：`TryCustomDisplay` 仅对「已注册进驱动」的分辨率有效，注册新分辨率需完整 CustomDisplay
+  流程（GetTiming(CVT_RB) 让驱动算 timing）。这与「EDID 注入无法凭空新增分辨率」互为印证。
+
+### 结论（2304×1440@165 在这台机器上的最终答案）
+
+- 该分辨率经 NVCPL 注册后**已在系统列表** → 分流修复后「立即预置」直接成功（免注入、免提权）→
+  之后正常走 `ChangeDisplaySettingsEx` 快切。**用户无需再做任何预置**。
+- 软件自身对「全新分辨率」的注入受硬件限制（EDID 裁剪 + NVAPI CustomDisplay 需正确 displayId），
+  M8 完整落地待 displayId 解析补齐。
+
 ## 建议版本级别
 
 **PATCH**（缺陷修复，无新能力、无破坏性变更）。
